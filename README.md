@@ -22,8 +22,29 @@ pip install arcgis
 The default configuration authenticates anonymously against the
 `summitcountyco.maps.arcgis.com` organization and queries the hosted
 `Short_Term_Rental_Public` feature layer that powers the public map experience
-referenced in the project brief. Provide `--username/--password` or `--api-key`
-if you need access to secured content.
+referenced in the project brief. The layer is published as part of the Summit
+County, Colorado Short-Term Rental dashboard and is discoverable through the
+following ArcGIS Online resources:
+
+* [Experience Builder rental map](https://experience.arcgis.com/experience/706a6886322445479abadb904db00bc0)
+* [Feature layer item details](https://summitcountyco.maps.arcgis.com/home/item.html?id=5a97d3b5a6b94f15b3d5b1ef82b5f9ab)
+* [REST service directory entry](https://services7.arcgis.com/S70B1F1C0U4eOCNh/ArcGIS/rest/services/Short_Term_Rental_Public/FeatureServer)
+
+Provide `--username/--password` or `--api-key` if you need access to secured
+content or want to increase request limits.
+
+## ArcGIS developer accounts and API keys
+
+Anonymous requests are sufficient for the public Summit County data set, but
+many ArcGIS Online services require an authenticated developer account. To
+register and obtain an API key:
+
+1. Create a free [ArcGIS Developer account](https://developers.arcgis.com/sign-up/) or sign in with an existing ArcGIS Online organization account.
+2. Navigate to the [Dashboard](https://developers.arcgis.com/dashboard/) and open **New API key**.
+3. Assign a descriptive name, choose the desired capability scopes (e.g., **Location services** for hosted feature layers), and click **Create API key**.
+4. Copy the generated key and supply it to the scraper with `--api-key` when querying secured layers or when you need higher rate limits.
+
+Refer to the [ArcGIS authentication guide](https://developers.arcgis.com/documentation/mapping-apis-and-services/security/) for detailed instructions on OAuth workflows, API key usage limits, and best practices for storing credentials.
 
 ## Usage
 
