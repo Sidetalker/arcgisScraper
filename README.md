@@ -36,15 +36,10 @@ content or want to increase request limits.
 ## ArcGIS developer accounts and API keys
 
 Anonymous requests are sufficient for the public Summit County data set, but
-many ArcGIS Online services require an authenticated developer account. To
-register and obtain an API key:
-
-1. Create a free [ArcGIS Developer account](https://developers.arcgis.com/sign-up/) or sign in with an existing ArcGIS Online organization account.
-2. Navigate to the [Dashboard](https://developers.arcgis.com/dashboard/) and open **New API key**.
-3. Assign a descriptive name, choose the desired capability scopes (e.g., **Location services** for hosted feature layers), and click **Create API key**.
-4. Copy the generated key and supply it to the scraper with `--api-key` when querying secured layers or when you need higher rate limits.
-
-Refer to the [ArcGIS authentication guide](https://developers.arcgis.com/documentation/mapping-apis-and-services/security/) for detailed instructions on OAuth workflows, API key usage limits, and best practices for storing credentials.
+many ArcGIS Online services require an authenticated developer account. Follow
+the step-by-step playbook in [API_ACCESS.md](API_ACCESS.md) to create a developer
+account, generate an API key, and store the credentials for use with the
+scraper.
 
 ## Usage
 
