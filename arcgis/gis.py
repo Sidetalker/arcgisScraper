@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import ProxyHandler, Request, build_opener
 
 
@@ -24,10 +24,14 @@ class GIS:
         *,
         api_key: Optional[str] = None,
         anonymous: bool = False,
+        referer: Optional[str] = None,
     ) -> None:
         self._portal_url = portal_url.rstrip("/")
         self._token: Optional[str] = None
         self._opener = build_opener(ProxyHandler({}))
+        self._referer = referer.rstrip("/") if referer else None
+        parsed_portal = urlparse(self._portal_url)
+        self._portal_origin = f"{parsed_portal.scheme}://{parsed_portal.netloc}"
 
         if api_key:
             self._token = api_key
@@ -71,22 +75,28 @@ class GIS:
             merged.setdefault("token", self._token)
         return merged
 
-    def _default_headers(self) -> Dict[str, str]:
+    def _default_headers(self, request_url: str) -> Dict[str, str]:
+        referer = self._portal_url
+        parsed = urlparse(request_url)
+        request_origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme else ""
+        if self._referer and request_origin and request_origin != self._portal_origin:
+            referer = self._referer
         return {
-            "Referer": self._portal_url,
+            "Referer": referer,
             "User-Agent": "arcgis-scraper/0.1",
         }
 
     def _post(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         encoded = urlencode(params).encode("utf-8")
-        request = Request(url, data=encoded, headers=self._default_headers())
+        request = Request(url, data=encoded, headers=self._default_headers(url))
         with self._opener.open(request, timeout=60) as response:
             body = response.read().decode("utf-8")
         return json.loads(body)
 
     def _get(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         query = urlencode(params)
-        request = Request(f"{url}?{query}", headers=self._default_headers())
+        request_url = f"{url}?{query}" if query else url
+        request = Request(request_url, headers=self._default_headers(request_url))
         with self._opener.open(request, timeout=60) as response:
             body = response.read().decode("utf-8")
         return json.loads(body)

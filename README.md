@@ -33,7 +33,12 @@ following ArcGIS Online resources:
 Provide `--username/--password` or `--api-key` if you need access to secured
 content or want to increase request limits. The CLI automatically checks the
 `ARCGIS_API_KEY` environment variable when `--api-key` is omitted, making it
-easy to keep credentials out of shell history and source control.
+easy to keep credentials out of shell history and source control. Summit
+County's Enterprise deployment also expects cross-domain requests to include a
+`Referer` header that matches the county GIS host. The scraper sends
+`https://gis.summitcountyco.gov` by default and honours an override supplied via
+`--referer` or the `ARCGIS_REFERER` environment variable when you need to target
+different services.
 
 ## ArcGIS developer accounts and API keys
 
@@ -62,6 +67,8 @@ Key options:
 * `--no-geometry` – drop geometry payloads when you only need attributes.
 * `--layer-url` – point at a different feature layer (or use `--item-id` and
   `--layer-index` to resolve a layer from ArcGIS Online content).
+* `--referer` – customise the HTTP referer header if the target service enforces
+  a different host check.
 
 Run `python scrape_arcgis.py --help` for the full list of supported flags.
 
@@ -76,20 +83,23 @@ script, try rerunning from a different network or configure a proxy that
 permits outbound HTTPS connections to `*.arcgis.com` and
 `gis.summitcountyco.gov`.
 
-### 400 `Invalid URL` responses
+### 400 `Invalid URL` or 404 `Not Found` responses
 
 Summit County's ArcGIS Enterprise deployment validates the HTTP `Referer` header
-on every feature-layer request. If the header is missing, the server responds
-with `{"code": 400, "message": "Invalid URL"}` even though the endpoint itself
-exists. The bundled scraper automatically sends the correct referer, but you may
-see the same error when experimenting with other HTTP clients.
+on every feature-layer request. If the header is missing or does not match the
+expected `https://gis.summitcountyco.gov` origin, the server responds with JSON
+payloads such as `{ "code": 400, "message": "Invalid URL" }` or falls back to
+an HTTP 404 response even when the endpoint exists. The bundled scraper now sets
+the correct header automatically, but you may see the same error when
+experimenting with other HTTP clients or when pointing the CLI at a different
+service that requires its own referer value.
 
 To confirm you have the right endpoint and headers:
 
 1. Open the [REST service directory](https://gis.summitcountyco.gov/server/rest/services/Hosted/Short_Term_Rental_Public/FeatureServer/0?f=pjson)
    in a browser to verify the layer URL returns JSON.
-2. Include a `Referer: https://summitcountyco.maps.arcgis.com` header (or use
-   the scraper, which does this automatically) whenever you query the service.
+2. Include a `Referer: https://gis.summitcountyco.gov` header (or use the
+   scraper, which does this automatically) whenever you query the service.
 3. Repeat your request. The layer should now return feature data instead of the
-   400 error.
+   400/404 error.
 

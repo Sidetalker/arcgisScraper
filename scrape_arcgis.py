@@ -30,6 +30,12 @@ DEFAULT_LAYER_URL = (
 # content.
 DEFAULT_PORTAL_URL = "https://summitcountyco.maps.arcgis.com"
 
+# Summit County's feature services expect cross-domain requests to include a
+# Referer header that matches the county's GIS hostname. Allow callers to
+# override the header, but default to the county host so that queries work out
+# of the box.
+DEFAULT_REFERER = "https://gis.summitcountyco.gov"
+
 
 @dataclass
 class QueryResult:
@@ -45,11 +51,17 @@ class QueryResult:
         return payload
 
 
-def create_gis(portal_url: str, username: Optional[str], password: Optional[str], api_key: Optional[str]) -> GIS:
+def create_gis(
+    portal_url: str,
+    username: Optional[str],
+    password: Optional[str],
+    api_key: Optional[str],
+    referer: Optional[str],
+) -> GIS:
     """Authenticate against an ArcGIS portal."""
 
     if api_key:
-        return GIS(portal_url, api_key=api_key)
+        return GIS(portal_url, api_key=api_key, referer=referer)
 
     if username:
         if password is None:
@@ -57,9 +69,9 @@ def create_gis(portal_url: str, username: Optional[str], password: Optional[str]
                 password = getpass.getpass(f"Password for {username}: ")
             else:  # pragma: no cover - non-interactive fallback
                 raise RuntimeError("Password is required when providing --username")
-        return GIS(portal_url, username, password)
+        return GIS(portal_url, username, password, referer=referer)
 
-    return GIS(portal_url, anonymous=True)
+    return GIS(portal_url, anonymous=True, referer=referer)
 
 
 def resolve_layer(gis: GIS, layer_url: Optional[str], item_id: Optional[str], layer_index: int) -> FeatureLayer:
@@ -182,6 +194,15 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="ArcGIS portal URL to authenticate against (default: %(default)s)",
     )
     parser.add_argument(
+        "--referer",
+        default=os.getenv("ARCGIS_REFERER", DEFAULT_REFERER),
+        help=(
+            "Referer header to send with ArcGIS requests. Defaults to the Summit "
+            "County GIS host so cross-domain queries succeed. Override when "
+            "targeting other services."
+        ),
+    )
+    parser.add_argument(
         "--api-key",
         default=os.getenv("ARCGIS_API_KEY"),
         help=(
@@ -239,7 +260,13 @@ def main(argv: List[str]) -> int:
     args = parse_args(argv)
 
     try:
-        gis = create_gis(args.portal_url, args.username, args.password, args.api_key)
+        gis = create_gis(
+            args.portal_url,
+            args.username,
+            args.password,
+            args.api_key,
+            args.referer,
+        )
         layer = resolve_layer(gis, args.layer_url, args.item_id, args.layer_index)
         geometry = build_search_geometry(args.lat, args.lng, args.radius)
         result = query_features(
