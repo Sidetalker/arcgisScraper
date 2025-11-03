@@ -25,10 +25,22 @@ class FeatureLayer:
     def __init__(self, url: str, *, gis: GIS) -> None:
         self.url = url.rstrip("/")
         self._gis = gis
+        self._service_url = self.url.rsplit("/", 1)[0]
         self.properties = self._load_properties()
 
     def _load_properties(self) -> Dict[str, Any]:
         return self._gis.request(self.url)
+
+    @property
+    def service_url(self) -> str:
+        """Return the parent FeatureServer URL for this layer."""
+
+        return self._service_url
+
+    def service_info(self) -> Dict[str, Any]:
+        """Fetch metadata about the parent feature service."""
+
+        return self._gis.request(self._service_url)
 
     def query(
         self,

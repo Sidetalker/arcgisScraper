@@ -20,8 +20,12 @@ from arcgis.geometry.filters import intersects
 # The hosted feature layer that powers the Summit County, CO Short-Term Rental
 # public map. The layer exposes individual rental properties keyed by their
 # Summit County schedule number (``Schno``) alongside permit metadata.
+# Summit County publishes the layer via ArcGIS Online's multi-tenant services7
+# infrastructure instead of their on-premises server. Using the hosted
+# endpoint avoids HTTP 404 errors when anonymous requests target the older GIS
+# server URL.
 DEFAULT_LAYER_URL = (
-    "https://gis.summitcountyco.gov/server/rest/services/Hosted/"
+    "https://services7.arcgis.com/S70B1F1C0U4eOCNh/ArcGIS/rest/services/"
     "Short_Term_Rental_Public/FeatureServer/0"
 )
 
@@ -167,8 +171,8 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
             "ArcGIS Python API and dump the raw JSON response for inspection."
         )
     )
-    parser.add_argument("lat", type=float, help="Latitude in decimal degrees")
-    parser.add_argument("lng", type=float, help="Longitude in decimal degrees")
+    parser.add_argument("lat", type=float, nargs="?", help="Latitude in decimal degrees")
+    parser.add_argument("lng", type=float, nargs="?", help="Longitude in decimal degrees")
     parser.add_argument(
         "-r",
         "--radius",
@@ -231,8 +235,42 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Omit geometry from the response payload",
     )
     parser.set_defaults(return_geometry=True)
+    parser.add_argument(
+        "--list-layers",
+        action="store_true",
+        help=(
+            "Describe the parent feature service and exit instead of querying "
+            "for features"
+        ),
+    )
     parser.add_argument("--output", help="Optional file path to save the JSON payload")
     return parser.parse_args(argv)
+
+
+def _list_service_layers(layer: FeatureLayer) -> None:
+    """Print a catalog of layers and tables exposed by the feature service."""
+
+    info = layer.service_info()
+    title = info.get("serviceDescription") or info.get("name") or "Feature Service"
+    print(f"Service: {title}")
+    print(f"URL: {layer.service_url}\n")
+
+    def _print_entries(kind: str, entries: List[Dict[str, Any]]) -> None:
+        if not entries:
+            return
+        print(f"{kind}:")
+        for entry in entries:
+            name = entry.get("name", "<unnamed>")
+            entry_id = entry.get("id", "?")
+            desc = entry.get("description") or ""
+            summary = f" - {entry_id}: {name}"
+            if desc:
+                summary += f" — {desc.strip()}"
+            print(summary)
+        print("")
+
+    _print_entries("Layers", info.get("layers", []))
+    _print_entries("Tables", info.get("tables", []))
 
 
 def main(argv: List[str]) -> int:
@@ -241,6 +279,12 @@ def main(argv: List[str]) -> int:
     try:
         gis = create_gis(args.portal_url, args.username, args.password, args.api_key)
         layer = resolve_layer(gis, args.layer_url, args.item_id, args.layer_index)
+        if args.list_layers:
+            _list_service_layers(layer)
+            return 0
+
+        if args.lat is None or args.lng is None:
+            raise RuntimeError("Latitude and longitude are required unless --list-layers is used")
         geometry = build_search_geometry(args.lat, args.lng, args.radius)
         result = query_features(
             layer=layer,

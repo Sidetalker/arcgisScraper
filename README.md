@@ -35,6 +35,21 @@ content or want to increase request limits. The CLI automatically checks the
 `ARCGIS_API_KEY` environment variable when `--api-key` is omitted, making it
 easy to keep credentials out of shell history and source control.
 
+### Summit County short-term rental services
+
+Summit County exposes its public short-term rental inventory from ArcGIS
+Online's multi-tenant hosting environment (`services7.arcgis.com`). The feature
+service contains a single layer focused on rental properties:
+
+| Layer ID | Name                       | Description                                                      | REST URL |
+|----------|----------------------------|------------------------------------------------------------------|----------|
+| 0        | `Short_Term_Rental_Public` | Public view of licensed short-term rentals and associated fields | [`https://services7.arcgis.com/S70B1F1C0U4eOCNh/ArcGIS/rest/services/Short_Term_Rental_Public/FeatureServer/0`](https://services7.arcgis.com/S70B1F1C0U4eOCNh/ArcGIS/rest/services/Short_Term_Rental_Public/FeatureServer/0) |
+
+Run `python scrape_arcgis.py --list-layers` to emit the authoritative service
+catalog (including any future layers or related tables) before querying for
+features. Pair the command with `--item-id` or `--layer-url` if you need to
+inspect other Summit County services.
+
 ## ArcGIS developer accounts and API keys
 
 Anonymous requests are sufficient for the public Summit County data set, but
@@ -64,6 +79,11 @@ Key options:
   `--layer-index` to resolve a layer from ArcGIS Online content).
 
 Run `python scrape_arcgis.py --help` for the full list of supported flags.
+
+Use `python scrape_arcgis.py --list-layers` to inspect the feature service
+schema without supplying coordinates. Combine the flag with `--layer-url` or
+`--item-id` if you need to explore other ArcGIS content before performing a
+spatial query.
 
 The script prints the combined JSON response to stdout and optionally writes it
 to the path specified by `--output`.

@@ -27,10 +27,13 @@ class GIS:
     ) -> None:
         self._portal_url = portal_url.rstrip("/")
         self._token: Optional[str] = None
+        self._api_key: Optional[str] = None
         self._opener = build_opener(ProxyHandler({}))
+        self._headers = {"Referer": self._portal_url}
 
         if api_key:
-            self._token = api_key
+            self._api_key = api_key
+            self._headers["Authorization"] = f"Bearer {api_key}"
         elif username:
             if password is None:
                 raise RuntimeError("Password is required when username is provided")
@@ -73,14 +76,14 @@ class GIS:
 
     def _post(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         encoded = urlencode(params).encode("utf-8")
-        request = Request(url, data=encoded)
+        request = Request(url, data=encoded, headers=self._headers)
         with self._opener.open(request, timeout=60) as response:
             body = response.read().decode("utf-8")
         return json.loads(body)
 
     def _get(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         query = urlencode(params)
-        request = Request(f"{url}?{query}")
+        request = Request(f"{url}?{query}", headers=self._headers)
         with self._opener.open(request, timeout=60) as response:
             body = response.read().decode("utf-8")
         return json.loads(body)
