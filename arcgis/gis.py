@@ -29,7 +29,10 @@ class GIS:
         self._portal_url = portal_url.rstrip("/")
         self._token: Optional[str] = None
         self._opener = build_opener(ProxyHandler({}))
-        self._referer = referer.rstrip("/") if referer else None
+        # Preserve the caller-supplied referer exactly as provided. Certain ArcGIS
+        # services validate the full string (including trailing slashes), so avoid
+        # normalising it here.
+        self._referer = referer if referer else None
         parsed_portal = urlparse(self._portal_url)
         self._portal_origin = f"{parsed_portal.scheme}://{parsed_portal.netloc}"
 
