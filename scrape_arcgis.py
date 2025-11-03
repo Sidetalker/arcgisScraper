@@ -6,6 +6,7 @@ import argparse
 import getpass
 import json
 import math
+import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -180,7 +181,14 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         default=DEFAULT_PORTAL_URL,
         help="ArcGIS portal URL to authenticate against (default: %(default)s)",
     )
-    parser.add_argument("--api-key", help="ArcGIS API key for authentication")
+    parser.add_argument(
+        "--api-key",
+        default=os.getenv("ARCGIS_API_KEY"),
+        help=(
+            "ArcGIS API key for authentication (defaults to the ARCGIS_API_KEY "
+            "environment variable if set)"
+        ),
+    )
     parser.add_argument("--username", help="ArcGIS username for authentication")
     parser.add_argument(
         "--password",

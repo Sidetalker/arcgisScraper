@@ -31,7 +31,9 @@ following ArcGIS Online resources:
 * [REST service directory entry](https://services7.arcgis.com/S70B1F1C0U4eOCNh/ArcGIS/rest/services/Short_Term_Rental_Public/FeatureServer)
 
 Provide `--username/--password` or `--api-key` if you need access to secured
-content or want to increase request limits.
+content or want to increase request limits. The CLI automatically checks the
+`ARCGIS_API_KEY` environment variable when `--api-key` is omitted, making it
+easy to keep credentials out of shell history and source control.
 
 ## ArcGIS developer accounts and API keys
 
