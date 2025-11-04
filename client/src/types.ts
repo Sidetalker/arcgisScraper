@@ -17,6 +17,7 @@ export interface ArcgisField {
 export interface ArcgisResponse {
   features: ArcgisFeature[];
   fields?: ArcgisField[];
+  exceededTransferLimit?: boolean;
 }
 
 export interface GeoCircle {

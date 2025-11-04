@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArcgisFeature } from '../types';
+import { FieldDefinition } from '../utils/fields';
 import { getFeatureId } from '../utils/features';
 
 interface DataTableProps {
+  fields: FieldDefinition[];
   features: ArcgisFeature[];
   selectedFeatureId: string | null;
   onSelectFeature: (featureId: string | null) => void;
@@ -10,16 +12,38 @@ interface DataTableProps {
 
 const PAGE_SIZE = 25;
 
-export function DataTable({ features, selectedFeatureId, onSelectFeature }: DataTableProps) {
+function normaliseColumns(
+  fields: FieldDefinition[],
+  features: ArcgisFeature[],
+): FieldDefinition[] {
+  if (fields.length) {
+    return fields;
+  }
+  if (features.length) {
+    const attributes = features[0].attributes ?? {};
+    return Object.keys(attributes).map((name) => ({
+      name,
+      label: name,
+      type: 'unknown',
+    }));
+  }
+  return [];
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+}
+
+export function DataTable({ fields, features, selectedFeatureId, onSelectFeature }: DataTableProps) {
   const [page, setPage] = useState(0);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   const columns = useMemo(() => {
-    if (!features.length) {
-      return [] as string[];
-    }
-    return Object.keys(features[0].attributes ?? {});
-  }, [features]);
+    return normaliseColumns(fields, features);
+  }, [fields, features]);
 
   const featureIds = useMemo(() => features.map((feature) => getFeatureId(feature)), [features]);
 
@@ -101,7 +125,7 @@ export function DataTable({ features, selectedFeatureId, onSelectFeature }: Data
           <thead>
             <tr>
               {columns.map((column) => (
-                <th key={column}>{column}</th>
+                <th key={column.name}>{column.label}</th>
               ))}
             </tr>
           </thead>
@@ -116,9 +140,10 @@ export function DataTable({ features, selectedFeatureId, onSelectFeature }: Data
                   className={isSelected ? 'table-row table-row--selected' : 'table-row'}
                   onClick={() => onSelectFeature(isSelected ? null : featureId)}
                 >
-                  {columns.map((column) => (
-                    <td key={column}>{String(feature.attributes[column] ?? '')}</td>
-                  ))}
+                  {columns.map((column) => {
+                    const attribute = feature.attributes[column.name];
+                    return <td key={column.name}>{formatValue(attribute)}</td>;
+                  })}
                 </tr>
               );
             })}

@@ -27,6 +27,7 @@ export function getFeatureId(feature: ArcgisFeature): string {
   const attributes = feature.attributes ?? {};
   const candidate =
     pickAttribute(attributes, [
+      '__rowId',
       'OBJECTID',
       'ObjectID',
       'OBJECTID_1',
@@ -38,6 +39,7 @@ export function getFeatureId(feature: ArcgisFeature): string {
       'HC_RegistrationsOriginalCleaned',
       'HC_RegistrationOriginalCleaned',
       'PropertyScheduleText',
+      'Schedule Number',
     ]) ??
     (feature.geometry ? `${feature.geometry.x},${feature.geometry.y}` : undefined);
 

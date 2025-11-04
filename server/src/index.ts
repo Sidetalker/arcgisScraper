@@ -21,7 +21,15 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.use('/api/properties', createPropertiesRouter({ client }));
+app.use(
+  '/api/properties',
+  createPropertiesRouter({
+    client,
+    sheetsDocId: config.sheetsDocId,
+    complexGid: config.complexGid,
+    ownerGid: config.ownerGid,
+  }),
+);
 
 const clientBuildPath = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientBuildPath)) {

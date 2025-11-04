@@ -12,7 +12,7 @@ import {
 } from './utils/fields';
 import { getFeatureId } from './utils/features';
 
-const CACHE_KEY = 'arcgis-properties-cache-v1';
+const CACHE_KEY = 'arcgis-properties-cache-v2';
 
 interface CachePayload {
   data: ArcgisResponse;
@@ -184,6 +184,7 @@ export default function App() {
             onSelectFeature={handleSelectFeature}
           />
           <DataTable
+            fields={fields}
             features={filteredFeatures}
             selectedFeatureId={selectedFeatureId}
             onSelectFeature={handleSelectFeature}

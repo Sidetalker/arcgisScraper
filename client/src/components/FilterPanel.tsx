@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { FieldDefinition } from '../utils/fields';
 
 export interface FilterPanelProps {
@@ -9,11 +8,6 @@ export interface FilterPanelProps {
 }
 
 export function FilterPanel({ fields, filters, onFilterChange, onReset }: FilterPanelProps) {
-  const sortedFields = useMemo(
-    () => [...fields].sort((a, b) => a.label.localeCompare(b.label)),
-    [fields]
-  );
-
   return (
     <section className="panel">
       <header className="panel__header">
@@ -23,14 +17,20 @@ export function FilterPanel({ fields, filters, onFilterChange, onReset }: Filter
         </button>
       </header>
       <div className="filters-list">
-        {sortedFields.map((field) => {
+        {fields.map((field) => {
           const inputId = `filter-${field.name}`;
-          const helperLabel = field.alias && field.alias !== field.label ? field.alias : field.name;
+          const helperLabel = field.alias && field.alias !== field.label
+            ? field.alias
+            : field.name !== field.label
+              ? field.name
+              : '';
           return (
             <div key={field.name} className="filter-field">
               <label htmlFor={inputId} className="filter-field__label">
                 <span className="filter-field__name">{field.label}</span>
-                <span className="filter-field__meta">{helperLabel}</span>
+                {helperLabel ? (
+                  <span className="filter-field__meta">{helperLabel}</span>
+                ) : null}
               </label>
               <input
                 id={inputId}

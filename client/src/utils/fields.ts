@@ -61,14 +61,14 @@ function humanizeIdentifier(name: string): string {
 }
 
 function normalizeLabel(field: ArcgisField): string {
+  const alias = field.alias?.trim();
+  if (alias) {
+    return alias;
+  }
+
   const custom = CUSTOM_LABELS[field.name];
   if (custom) {
     return custom;
-  }
-
-  const alias = field.alias?.trim();
-  if (alias && alias.toLowerCase() !== field.name.toLowerCase()) {
-    return alias;
   }
 
   return humanizeIdentifier(field.name);
