@@ -1,3 +1,5 @@
+import type { ListingTableState } from '@/constants/listingTable';
+
 export interface SpatialReference {
   wkid?: number;
   latestWkid?: number;
@@ -84,6 +86,7 @@ export interface ConfigurationProfile {
   name: string;
   filters: ListingFilters;
   regions: RegionCircle[];
+  table: ListingTableState;
   updatedAt: Date | null;
 }
 
