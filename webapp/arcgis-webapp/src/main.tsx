@@ -1,13 +1,20 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+
 import App from './App';
 import { CacheProvider } from './context/CacheContext';
+import { ListingsProvider } from './context/ListingsContext';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <CacheProvider>
-      <App />
-    </CacheProvider>
+    <BrowserRouter>
+      <CacheProvider>
+        <ListingsProvider>
+          <App />
+        </ListingsProvider>
+      </CacheProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );

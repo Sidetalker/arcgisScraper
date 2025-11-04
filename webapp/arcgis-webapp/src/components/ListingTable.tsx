@@ -1,5 +1,7 @@
 import './ListingTable.css';
 
+import { Link } from 'react-router-dom';
+
 import type { ListingRecord } from '@/types';
 
 interface ListingTableProps {
@@ -101,7 +103,13 @@ export function ListingTable({
               </tr>
             ) : (
               pageListings.map((listing) => {
-                const ownerDisplay = listing.ownerName || '—';
+                const owners = Array.from(
+                  new Set(
+                    listing.ownerNames
+                      .map((name) => name.trim())
+                      .filter((name) => name.length > 0),
+                  ),
+                );
                 const businessLabel = listing.isBusinessOwner ? 'Yes' : 'No';
                 const mailingLines = listing.mailingAddress
                   ? listing.mailingAddress.split('\n')
@@ -122,13 +130,40 @@ export function ListingTable({
 
                 return (
                   <tr key={listing.id}>
-                    <td>{listing.complex || '—'}</td>
+                    <td>
+                      {listing.complex ? (
+                        <Link
+                          to={`/complex/${encodeURIComponent(listing.complex)}`}
+                          className="listing-table__link"
+                        >
+                          {listing.complex}
+                        </Link>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td>{listing.unit || '—'}</td>
                     <td>
-                      <div className="listing-table__owner">{ownerDisplay}</div>
-                      {listing.ownerNames.length > 1 ? (
+                      <div className="listing-table__owner">
+                        {owners.length > 0 ? (
+                          <div className="listing-table__owner-list">
+                            {owners.map((owner) => (
+                              <Link
+                                key={owner}
+                                to={`/owner/${encodeURIComponent(owner)}`}
+                                className="listing-table__link"
+                              >
+                                {owner}
+                              </Link>
+                            ))}
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </div>
+                      {owners.length > 1 ? (
                         <div className="listing-table__owner-count">
-                          {listing.ownerNames.length} owners
+                          {owners.length} owners
                         </div>
                       ) : null}
                     </td>

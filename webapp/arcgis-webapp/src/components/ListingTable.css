@@ -83,6 +83,12 @@
   color: #0f172a;
 }
 
+.listing-table__owner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .listing-table__owner-count {
   font-size: 0.8rem;
   color: #64748b;

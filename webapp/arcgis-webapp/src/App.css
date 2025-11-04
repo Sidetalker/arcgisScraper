@@ -98,6 +98,66 @@
   gap: 2.5rem;
 }
 
+.detail-sidebar {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 1.5rem;
+  box-shadow: 0 20px 35px -30px rgba(15, 23, 42, 0.6);
+  padding: 1.75rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.detail-sidebar__back {
+  color: #1d4ed8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.detail-sidebar__back:hover,
+.detail-sidebar__back:focus {
+  text-decoration: underline;
+}
+
+.detail-sidebar__title {
+  margin: 0;
+  font-size: 1.9rem;
+  color: #0f172a;
+}
+
+.detail-sidebar__stats {
+  margin: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.detail-sidebar__stats div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.detail-sidebar__stats dt {
+  font-size: 0.95rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-sidebar__stats dd {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.detail-table {
+  display: flex;
+  flex-direction: column;
+}
+
 @media (max-width: 960px) {
   .app {
     padding: 2.5rem clamp(1.25rem, 4vw, 2rem) 3.5rem;
@@ -124,6 +184,10 @@
   .app__main {
     gap: 2rem;
   }
+
+  .detail-sidebar {
+    gap: 1.25rem;
+  }
 }
 
 @media (max-width: 720px) {
@@ -133,5 +197,9 @@
 
   .app__header {
     padding: 1.75rem 1.85rem;
+  }
+
+  .detail-sidebar {
+    padding: 1.5rem 1.6rem;
   }
 }
