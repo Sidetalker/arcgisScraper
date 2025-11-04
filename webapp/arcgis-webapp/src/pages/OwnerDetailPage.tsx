@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 
 import ListingTable from '@/components/ListingTable';
 import { type LayoutOutletContext } from '@/App';
 import { DEFAULT_PAGE_SIZE } from '@/constants/listings';
+import {
+  createDefaultTableState,
+  type ListingTableColumnFilters,
+  type ListingTableColumnKey,
+} from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
 import type { ListingRecord } from '@/types';
 
@@ -27,6 +32,7 @@ function OwnerDetailPage(): JSX.Element {
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [tableState, setTableState] = useState(createDefaultTableState);
 
   const normalizedOwner = useMemo(() => ownerName.trim().toLowerCase(), [ownerName]);
 
@@ -77,6 +83,27 @@ function OwnerDetailPage(): JSX.Element {
     setStatusMessage(statusMessage);
   }, [setStatusMessage, statusMessage]);
 
+  const handleColumnOrderChange = useCallback((order: ListingTableColumnKey[]) => {
+    setTableState((previous) => ({
+      ...previous,
+      columnOrder: [...order],
+    }));
+  }, []);
+
+  const handleHiddenColumnsChange = useCallback((hidden: ListingTableColumnKey[]) => {
+    setTableState((previous) => ({
+      ...previous,
+      hiddenColumns: [...hidden],
+    }));
+  }, []);
+
+  const handleColumnFiltersChange = useCallback((filters: ListingTableColumnFilters) => {
+    setTableState((previous) => ({
+      ...previous,
+      columnFilters: { ...filters },
+    }));
+  }, []);
+
   return (
     <>
       <div className="detail-sidebar">
@@ -103,6 +130,12 @@ function OwnerDetailPage(): JSX.Element {
           onPageChange={setCurrentPage}
           isLoading={loading}
           error={error}
+          columnOrder={tableState.columnOrder}
+          hiddenColumns={tableState.hiddenColumns}
+          columnFilters={tableState.columnFilters}
+          onColumnOrderChange={handleColumnOrderChange}
+          onHiddenColumnsChange={handleHiddenColumnsChange}
+          onColumnFiltersChange={handleColumnFiltersChange}
         />
       </div>
     </>

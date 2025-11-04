@@ -21,6 +21,7 @@ function Layout(): JSX.Element {
     source,
     syncing,
     syncFromArcgis,
+    clearCacheAndReload,
   } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
 
@@ -37,9 +38,9 @@ function Layout(): JSX.Element {
 
   const supabaseSummary = useMemo(() => {
     if (!cachedAt) {
-      return 'No Supabase sync yet';
+      return 'ArcGIS source of truth sync pending';
     }
-    return `Synced ${cachedAt.toLocaleTimeString([], {
+    return `ArcGIS source of truth synced ${cachedAt.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -61,7 +62,7 @@ function Layout(): JSX.Element {
     <div className="app">
       <header className="app__header">
         <div>
-          <h1>ArcGIS 2.0</h1>
+          <h1>ArcGIS Revolution</h1>
           <p>Everything you need for short-term rental listings, all in one place. Sync data with ArcGIS on demand at any time, and instantly query across 10s of thousands of listings.</p>
         </div>
         <div className="app__actions">
@@ -85,6 +86,27 @@ function Layout(): JSX.Element {
             title="Fetch fresh data from ArcGIS and replace the Supabase listings dataset."
           >
             {syncing ? 'Syncing…' : 'Sync from ArcGIS'}
+          </button>
+          <button
+            type="button"
+            className="app__clear-cache"
+            onClick={async () => {
+              setStatusMessage('Clearing local cache…');
+              try {
+                await clearCacheAndReload();
+                setStatusMessage('Local cache cleared. Reloaded from Supabase.');
+              } catch (error) {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to clear local cache.';
+                setStatusMessage(message);
+              }
+            }}
+            disabled={loading || syncing}
+            title="Delete the local cache and reload the dataset from Supabase."
+          >
+            Clear local cache
           </button>
           <span
             className={`app__cache${source === 'local' ? ' app__cache--active' : ''}`}

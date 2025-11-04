@@ -324,7 +324,8 @@ async function queryFeatures(
   const collected: ArcgisFeatureSet['features'] = [];
   let template: Omit<ListingFeatureSet, 'features'> & { features?: ListingFeatureSet['features'] } | undefined;
 
-  while (true) {
+  let hasMorePages = true;
+  while (hasMorePages) {
     const params = buildQueryParams({ filters, geometry, pageSize, offset, token });
     console.info('[ArcGIS] Querying features', {
       layerUrl,
@@ -355,7 +356,8 @@ async function queryFeatures(
         ...template,
         exceededTransferLimit: true,
       };
-      break;
+      hasMorePages = false;
+      continue;
     }
 
     if (!features.length || features.length < pageSize) {
@@ -363,7 +365,8 @@ async function queryFeatures(
         ...template,
         exceededTransferLimit: page.exceededTransferLimit ?? false,
       };
-      break;
+      hasMorePages = false;
+      continue;
     }
 
     offset += pageSize;

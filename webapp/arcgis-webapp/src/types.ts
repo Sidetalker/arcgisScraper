@@ -1,3 +1,5 @@
+import type { ListingTableState } from '@/constants/listingTable';
+
 export interface SpatialReference {
   wkid?: number;
   latestWkid?: number;
@@ -44,6 +46,8 @@ export type ListingAttributes = Record<string, string | number | boolean | null>
 
 export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
+export type RenewalCategory = 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'future' | 'missing';
+
 export interface ListingRecord {
   id: string;
   complex: string;
@@ -58,12 +62,19 @@ export interface ListingRecord {
   mailingZip5: string;
   mailingZip9: string;
   subdivision: string;
+  zone: string;
   scheduleNumber: string;
   publicDetailUrl: string;
   physicalAddress: string;
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;
+  estimatedRenewalDate: Date | null;
+  estimatedRenewalMethod: string | null;
+  estimatedRenewalReference: Date | null;
+  estimatedRenewalCategory: RenewalCategory;
+  estimatedRenewalMonthKey: string | null;
+  nearestEvStationDistanceMeters: number | null;
   raw: ListingAttributes;
 }
 
@@ -71,12 +82,44 @@ export interface ListingFilters {
   searchTerm: string;
   complex: string;
   owner: string;
+  subdivisions: string[];
+  renewalCategories: string[];
+  renewalMethods: string[];
+  renewalMonths: string[];
+  maxEvDistanceMiles: number | null;
+}
+
+export interface RegionPoint {
+  lat: number;
+  lng: number;
+}
+
+export interface RegionPoint {
+  lat: number;
+  lng: number;
 }
 
 export interface RegionCircle {
+  type: 'circle';
   lat: number;
   lng: number;
   radius: number;
+}
+
+export interface RegionPolygon {
+  type: 'polygon';
+  points: RegionPoint[];
+}
+
+export type RegionShape = RegionCircle | RegionPolygon;
+
+export interface ConfigurationProfile {
+  id: string;
+  name: string;
+  filters: ListingFilters;
+  regions: RegionShape[];
+  table: ListingTableState;
+  updatedAt: Date | null;
 }
 
 export interface ArcgisLayerInfo {

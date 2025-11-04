@@ -9,10 +9,15 @@ import {
 } from 'react';
 
 import { fetchListings } from '@/services/arcgisClient';
-import { loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
+import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
-import type { ListingRecord, RegionCircle } from '@/types';
+import {
+  cloneRegionShape,
+  normaliseRegionList,
+  regionsAreEqual,
+} from '@/services/regionShapes';
+import type { ListingRecord, RegionShape } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
 
@@ -20,15 +25,16 @@ export interface ListingsContextValue {
   listings: ListingRecord[];
   loading: boolean;
   error: string | null;
-  regions: RegionCircle[];
+  regions: RegionShape[];
   cachedAt: Date | null;
   localCachedAt: Date | null;
   isLocalCacheStale: boolean;
   source: 'local' | 'supabase' | 'syncing' | 'unknown';
-  onRegionsChange: (nextRegions: RegionCircle[]) => void;
+  onRegionsChange: (nextRegions: RegionShape[]) => void;
   refresh: () => void;
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
+  clearCacheAndReload: () => Promise<void>;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -37,7 +43,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [listings, setListings] = useState<ListingRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [regions, setRegions] = useState<RegionCircle[]>([]);
+  const [regions, setRegions] = useState<RegionShape[]>([]);
   const [cachedAt, setCachedAt] = useState<Date | null>(null);
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -54,31 +60,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         return;
       }
 
-      const parsed = JSON.parse(stored) as RegionCircle[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      const normalised = parsed
-        .filter(
-          (region) =>
-            region &&
-            typeof region.lat === 'number' &&
-            typeof region.lng === 'number' &&
-            typeof region.radius === 'number' &&
-            Number.isFinite(region.lat) &&
-            Number.isFinite(region.lng) &&
-            Number.isFinite(region.radius) &&
-            region.radius > 0,
-        )
-        .map((region) => ({
-          lat: region.lat,
-          lng: region.lng,
-          radius: region.radius,
-        }));
-
+      const parsed = JSON.parse(stored);
+      const normalised = normaliseRegionList(parsed);
       if (normalised.length) {
-        setRegions(normalised);
+        setRegions(normalised.map((region) => cloneRegionShape(region)));
       }
     } catch (storageError) {
       console.warn('Unable to restore saved regions from localStorage.', storageError);
@@ -101,24 +86,13 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, [regions]);
 
-  const handleRegionsChange = useCallback((nextRegions: RegionCircle[]) => {
+  const handleRegionsChange = useCallback((nextRegions: RegionShape[]) => {
     setRegions((current) => {
-      if (
-        current.length === nextRegions.length &&
-        current.every((region, index) => {
-          const next = nextRegions[index];
-          return (
-            next &&
-            region.lat === next.lat &&
-            region.lng === next.lng &&
-            region.radius === next.radius
-          );
-        })
-      ) {
+      if (regionsAreEqual(current, nextRegions)) {
         return current;
       }
 
-      return nextRegions.map((region) => ({ ...region }));
+      return nextRegions.map((region) => cloneRegionShape(region));
     });
   }, []);
 
@@ -200,6 +174,31 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     loadListingsFromSupabase();
   }, [loadListingsFromSupabase]);
 
+  const clearCacheAndReload = useCallback(async () => {
+    console.info('Clearing local listings cache and reloading from Supabase.');
+    setLoading(true);
+    setError(null);
+    try {
+      await clearListingsCache();
+      applyListingSnapshot([], null, null);
+      setCachedAt(null);
+      setLocalCachedAt(null);
+      setSource('unknown');
+      await loadListingsFromSupabase();
+      console.info('Local cache cleared and reloaded successfully.');
+    } catch (clearError) {
+      console.error('Failed to clear local cache.', clearError);
+      const message =
+        clearError instanceof Error
+          ? clearError.message
+          : 'Unable to clear local cache.';
+      setError(message);
+      throw clearError instanceof Error ? clearError : new Error(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyListingSnapshot, loadListingsFromSupabase]);
+
   const syncFromArcgis = useCallback(async () => {
     console.info('Syncing listings from ArcGIS into Supabase.');
     setSyncing(true);
@@ -240,7 +239,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [applyListingSnapshot, persistLocalCache]);
 
   const isLocalCacheStale = useMemo(() => {
     if (!localCachedAt || !cachedAt) {
@@ -263,6 +262,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       refresh,
       syncing,
       syncFromArcgis,
+      clearCacheAndReload,
     }),
     [
       cachedAt,
@@ -274,6 +274,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       isLocalCacheStale,
       source,
       refresh,
+      clearCacheAndReload,
       regions,
       syncing,
       syncFromArcgis,

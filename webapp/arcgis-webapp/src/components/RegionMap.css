@@ -21,11 +21,6 @@
   color: #475569;
 }
 
-.region-map__subtitle--active {
-  color: #1d4ed8;
-  font-weight: 600;
-}
-
 .region-map__map {
   height: 420px;
   width: 100%;
@@ -33,9 +28,210 @@
   overflow: hidden;
 }
 
-.region-map__map--drop {
-  cursor: crosshair;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25) inset;
+.region-map__toolbar {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 18px 36px -20px rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.region-map__toolbar-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.55rem 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.region-map__toolbar-button + .region-map__toolbar-button {
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.region-map__toolbar-button:hover,
+.region-map__toolbar-button:focus {
+  background: rgba(59, 130, 246, 0.25);
+  color: #f8fafc;
+}
+
+.region-map__toolbar-button:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.7);
+}
+
+.region-map__toolbar-button--active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(37, 99, 235, 0.85));
+  color: #f8fafc;
+}
+
+.region-map__toolbar-button--active:hover,
+.region-map__toolbar-button--active:focus {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.98), rgba(37, 99, 235, 0.98));
+}
+
+.region-map__toolbar-button--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.region-map__toolbar-button--disabled:hover,
+.region-map__toolbar-button--disabled:focus {
+  background: transparent;
+  color: #e2e8f0;
+  box-shadow: none;
+}
+
+.region-map__selection-wrapper {
+  width: 100%;
+  display: flex;
+  transition: height 0.2s ease;
+  height: 240px;
+}
+
+.region-map__selection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.9);
+  color: #0f172a;
+  flex: 1;
+  overflow: auto;
+}
+
+.region-map__selection--empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  color: #475569;
+  font-style: italic;
+  text-align: center;
+  height: 100%;
+  padding: 1.5rem;
+  gap: 0.9rem;
+}
+
+.region-map__selection-empty-primary,
+.region-map__selection-empty-secondary {
+  margin: 0;
+  font-style: normal;
+}
+
+.region-map__selection-empty-primary {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.region-map__selection-empty-secondary {
+  font-size: 0.82rem;
+  color: #1e293b;
+}
+
+.region-map__selection-empty-hints {
+  font-style: normal;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.region-map__selection-empty-hints ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.region-map__selection-empty-hints li {
+  list-style: disc;
+}
+
+.region-map__selection-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.region-map__selection-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.region-map__selection-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.region-map__selection-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.region-map__selection-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #1d4ed8;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.region-map__selection-link:hover,
+.region-map__selection-link:focus {
+  text-decoration: underline;
+}
+
+.region-map__selection-link-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.region-map__selection-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.region-map__selection-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.region-map__selection-grid dt {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.region-map__selection-grid dd {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.3;
+  color: #0f172a;
+}
+
+.region-map__selection-grid dd span {
+  display: block;
 }
 
 @media (max-width: 720px) {

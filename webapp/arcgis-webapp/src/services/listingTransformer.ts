@@ -1,5 +1,7 @@
 import type { ArcgisFeature } from '@/types';
 import type { ListingAttributes, ListingFilters, ListingRecord } from '@/types';
+import { categoriseRenewal } from '@/services/renewalEstimator';
+import { findNearestEvStationDistance } from '@/services/evChargingStations';
 
 const BUSINESS_KEYWORDS = [
   ' LLC',
@@ -40,8 +42,8 @@ const BUSINESS_KEYWORDS = [
 ];
 
 const SUFFIX_TOKENS = new Set(['JR', 'SR', 'II', 'III', 'IV', 'V']);
-const UNIT_RE = /UNIT\s+([A-Za-z0-9\-]+)/i;
-const BLDG_RE = /\bBLDG\s+([A-Za-z0-9\-]+)/i;
+const UNIT_RE = /UNIT\s+([A-Za-z0-9-]+)/i;
+const BLDG_RE = /\bBLDG\s+([A-Za-z0-9-]+)/i;
 const BREAK_PLACEHOLDER = '|||BREAK|||';
 
 function decodeHtml(value: unknown): string {
@@ -180,7 +182,7 @@ function splitOwnerName(rawName: string): OwnerParts {
     return { first: '', middle: '', last: '', suffix: '', title: '', company: '' };
   }
 
-  let tokens = [...rawTokens];
+  const tokens = [...rawTokens];
   let suffix = '';
   if (tokens.length && SUFFIX_TOKENS.has(tokens[tokens.length - 1].toUpperCase())) {
     suffix = tokens.pop() ?? '';
@@ -445,6 +447,9 @@ export function toListingRecord(
     typeof attributes.SubdivisionName === 'string' ? attributes.SubdivisionName : '';
   const subdivision = subdivisionRaw ? titleCase(subdivisionRaw.trim()) : '';
 
+  const zoneRaw = typeof attributes.ZoneName === 'string' ? attributes.ZoneName : '';
+  const zone = zoneRaw.trim();
+
   const detailIdRaw =
     (typeof attributes.HC_RegistrationsOriginalCleaned === 'string'
       ? attributes.HC_RegistrationsOriginalCleaned
@@ -456,6 +461,15 @@ export function toListingRecord(
     (typeof attributes.BriefPropertyDescription === 'string' &&
       attributes.BriefPropertyDescription.trim()) ||
     '';
+
+  const renewalSnapshot = categoriseRenewal(attributes);
+  const estimatedRenewalDate = renewalSnapshot.estimate?.date ?? null;
+  const estimatedRenewalMethod = renewalSnapshot.estimate?.method ?? null;
+  const estimatedRenewalReference = renewalSnapshot.estimate?.reference ?? null;
+  const estimatedRenewalCategory = renewalSnapshot.category;
+  const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
+
+  const nearestEvStationDistanceMeters = findNearestEvStationDistance(latitude, longitude);
 
   return {
     id,
@@ -471,12 +485,19 @@ export function toListingRecord(
     mailingZip5: zip5,
     mailingZip9: postcode,
     subdivision,
+    zone,
     scheduleNumber,
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
     isBusinessOwner,
     latitude,
     longitude,
+    estimatedRenewalDate,
+    estimatedRenewalMethod,
+    estimatedRenewalReference,
+    estimatedRenewalCategory,
+    estimatedRenewalMonthKey,
+    nearestEvStationDistanceMeters,
     raw: attributes,
   };
 }
@@ -491,6 +512,7 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.physicalAddress,
       listing.scheduleNumber,
       listing.subdivision,
+      listing.zone,
       listing.mailingAddress,
     ]
       .join(' ')
@@ -513,6 +535,55 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.ownerNames.some((name) => name.toLowerCase().includes(ownerQuery)) ||
       listing.ownerName.toLowerCase().includes(ownerQuery);
     if (!ownerMatches) {
+      return false;
+    }
+  }
+
+  if (filters.subdivisions.length > 0) {
+    const listingSubdivision = (listing.subdivision ?? '').toLowerCase();
+    const subdivisionMatch = filters.subdivisions.some(
+      (value) => listingSubdivision === value.toLowerCase(),
+    );
+    if (!subdivisionMatch) {
+      return false;
+    }
+  }
+
+  if (filters.renewalCategories.length > 0) {
+    const category = listing.estimatedRenewalCategory ?? 'missing';
+    if (!filters.renewalCategories.some((value) => value === category)) {
+      return false;
+    }
+  }
+
+  if (filters.renewalMethods.length > 0) {
+    const method = listing.estimatedRenewalMethod ?? 'missing';
+    if (!filters.renewalMethods.some((value) => value === method)) {
+      return false;
+    }
+  }
+
+  if (filters.renewalMonths.length > 0) {
+    const monthKey = listing.estimatedRenewalMonthKey;
+    if (!monthKey) {
+      return false;
+    }
+    const monthMatch = filters.renewalMonths.some(
+      (value) => value.toLowerCase() === monthKey.toLowerCase(),
+    );
+    if (!monthMatch) {
+      return false;
+    }
+  }
+
+  if (filters.maxEvDistanceMiles !== null && filters.maxEvDistanceMiles > 0) {
+    const distanceMeters = listing.nearestEvStationDistanceMeters;
+    if (distanceMeters === null) {
+      return false;
+    }
+    const METERS_PER_MILE = 1609.34;
+    const distanceMiles = distanceMeters / METERS_PER_MILE;
+    if (distanceMiles > filters.maxEvDistanceMiles) {
       return false;
     }
   }

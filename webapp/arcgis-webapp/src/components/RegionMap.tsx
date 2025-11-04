@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
+import type { FeatureCollection, MultiPolygon, Polygon, Position } from 'geojson';
 
 type LeafletEditTooltip = {
   updateContent: (content: { text: string; subtext: string }) => void;
@@ -38,21 +39,48 @@ const leafletWithDraw = L as typeof L & {
       useFeet?: boolean,
       useNautic?: boolean,
     ) => string;
+    readableArea?: (
+      area: number,
+      isMetric?: boolean | string | string[],
+      precision?: Record<string, number | undefined>,
+    ) => string;
+    formattedNumber?: (value: number, precision?: number | { decimals?: number }) => string;
   };
   Draw?: {
     Event: {
       EDITRESIZE: string;
     };
+    Polygon?: typeof L.Draw.Polygon;
+    Circle?: typeof L.Draw.Circle;
   };
   drawLocal?: {
     draw: {
+      toolbar?: {
+        buttons?: {
+          circle?: string;
+          polygon?: string;
+        };
+      };
       handlers: {
         circle: {
           radius: string;
         };
+        polygon?: {
+          tooltip?: {
+            start?: string;
+            cont?: string;
+            end?: string;
+          };
+        };
       };
     };
     edit: {
+      toolbar?: {
+        buttons?: {
+          edit?: string;
+          remove?: string;
+        };
+      };
       handlers: {
         edit: {
           tooltip: {
@@ -103,58 +131,792 @@ if (circleEditPrototype) {
   };
 }
 
-import type { ListingRecord, RegionCircle } from '@/types';
+const geometryUtil = leafletWithDraw.GeometryUtil;
+
+if (geometryUtil) {
+  type AreaPrecision = Record<string, number | undefined>;
+
+  const defaultPrecision: AreaPrecision = {
+    km: 2,
+    ha: 2,
+    m: 0,
+    acres: 2,
+  };
+
+  const formatNumber =
+    geometryUtil.formattedNumber?.bind(geometryUtil) ??
+    ((value: number, precision?: number | { decimals?: number }) => {
+      if (typeof precision === 'number') {
+        return value.toFixed(precision);
+      }
+
+      if (precision && typeof (precision as { decimals?: number }).decimals === 'number') {
+        return value.toFixed((precision as { decimals?: number }).decimals ?? 0);
+      }
+
+      return value.toString();
+    });
+
+  geometryUtil.readableArea = (area, metricOrUnits = true, precisionOverrides) => {
+    const precision = L.Util.extend(
+      {},
+      defaultPrecision,
+      (precisionOverrides ?? {}) as AreaPrecision,
+    ) as AreaPrecision;
+
+    const format = (value: number, digits: number | undefined, suffix: string) =>
+      `${formatNumber(value, digits)} ${suffix}`;
+
+    if (metricOrUnits) {
+      let units: string[] = ['ha', 'm'];
+
+      if (typeof metricOrUnits === 'string') {
+        units = [metricOrUnits];
+      } else if (Array.isArray(metricOrUnits)) {
+        units = metricOrUnits;
+      }
+
+      if (area >= 1_000_000 && units.includes('km')) {
+        return format(area * 1e-6, precision.km, 'km²');
+      }
+
+      if (area >= 10_000 && units.includes('ha')) {
+        return format(area * 1e-4, precision.ha, 'ha');
+      }
+
+      return format(area, precision.m, 'm²');
+    }
+
+    const acresPrecision = precision.acres ?? precision.ac;
+    return format(area * 0.000247105, acresPrecision, 'acres');
+  };
+}
+
+const drawLocal = leafletWithDraw.drawLocal;
+if (drawLocal) {
+  const toolbarButtons = drawLocal.draw?.toolbar?.buttons;
+  if (toolbarButtons) {
+    toolbarButtons.polygon = 'Draw search polygon';
+    toolbarButtons.circle = 'Draw search circle';
+  }
+
+  const polygonTooltip = drawLocal.draw?.handlers?.polygon?.tooltip;
+  if (polygonTooltip) {
+    polygonTooltip.start = 'Click to start outlining your search area';
+    polygonTooltip.cont = 'Click to continue drawing the polygon';
+    polygonTooltip.end = 'Click the first point to finish the polygon';
+  }
+
+  const editButtons = drawLocal.edit?.toolbar?.buttons;
+  if (editButtons) {
+    editButtons.edit = 'Adjust shapes';
+    editButtons.remove = 'Delete shapes';
+  }
+}
+
+import type { ListingRecord, RegionShape } from '@/types';
+import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
+import { getEvStations } from '@/services/evChargingStations';
 
 import './RegionMap.css';
 
 type RegionMapProps = {
-  regions: RegionCircle[];
-  onRegionsChange: (regions: RegionCircle[]) => void;
-  pinDropMode?: boolean;
-  onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
+  regions: RegionShape[];
+  onRegionsChange: (regions: RegionShape[]) => void;
   listings?: ListingRecord[];
+  allListings?: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
+  totalListingCount?: number;
 };
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
 
-function toRegionCircle(layer: L.Circle): RegionCircle {
-  const center = layer.getLatLng();
+type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
+
+type SummitCountyBoundaryProperties = {
+  geoid?: string;
+  GEOID?: string;
+  name?: string;
+  boundarySource?: string;
+  [key: string]: unknown;
+};
+
+type SummitCountyFeature = SummitCountyFeatureCollection['features'][number] & {
+  properties?: SummitCountyBoundaryProperties;
+};
+
+const SUMMIT_COUNTY_FIPS = '08117';
+const SUMMIT_BOUNDARY_SOURCE_URL =
+  'https://cdn.jsdelivr.net/gh/plotly/datasets@master/geojson-counties-fips.json';
+
+const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
+  color: '#1f78b4',
+  weight: 2,
+  fillColor: '#1f78b4',
+  fillOpacity: 0.05,
+};
+
+const SUMMIT_OVERLAY_MASK_STYLE: L.PathOptions = {
+  color: '#001b2b',
+  weight: 0,
+  fillColor: '#001b2b',
+  fillOpacity: 0.35,
+  fillRule: 'evenodd',
+};
+
+type LinearRing = Position[];
+
+const WORLD_MASK_OUTER_RING: LinearRing = [
+  [-180, -90],
+  [-180, 90],
+  [180, 90],
+  [180, -90],
+  [-180, -90],
+];
+
+function extractOuterRings(
+  geometry: Polygon | MultiPolygon | null | undefined,
+): LinearRing[] {
+  if (!geometry) {
+    return [];
+  }
+
+  if (geometry.type === 'Polygon') {
+    return geometry.coordinates.length > 0 ? [geometry.coordinates[0]] : [];
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates
+      .map((polygonCoordinates) => polygonCoordinates[0])
+      .filter((ring): ring is LinearRing => Array.isArray(ring) && ring.length > 0);
+  }
+
+  return [];
+}
+
+function createInvertedMask(
+  boundary: SummitCountyFeatureCollection | null,
+): FeatureCollection<Polygon> | null {
+  if (!boundary?.features?.length) {
+    return null;
+  }
+
+  const holes: LinearRing[] = boundary.features.flatMap((feature) => {
+    if (!feature || typeof feature !== 'object') {
+      return [];
+    }
+    return extractOuterRings(feature.geometry);
+  });
+
+  if (holes.length === 0) {
+    return null;
+  }
+
   return {
-    lat: center.lat,
-    lng: center.lng,
-    radius: layer.getRadius(),
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {
+          mask: true,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [WORLD_MASK_OUTER_RING, ...holes],
+        },
+      },
+    ],
   };
 }
 
-function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
-  const results: RegionCircle[] = [];
+const LOCAL_SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
+  try {
+    const geometry = JSON.parse(summitCountyGeoJsonRaw) as SummitCountyFeatureCollection;
+    return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- surface parsing issues for the bundled fallback asset
+      console.warn('Failed to parse local Summit County boundary GeoJSON', error);
+    }
+    return null;
+  }
+})();
+
+function useSummitCountyBoundary(): SummitCountyFeatureCollection | null {
+  const [boundary, setBoundary] = useState<SummitCountyFeatureCollection | null>(
+    LOCAL_SUMMIT_COUNTY_OVERLAY,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBoundary(): Promise<void> {
+      try {
+        const response = await fetch(SUMMIT_BOUNDARY_SOURCE_URL, {
+          cache: 'force-cache',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch county boundaries: ${response.status}`);
+        }
+
+        const dataset = (await response.json()) as FeatureCollection<Polygon | MultiPolygon> & {
+          features: SummitCountyFeature[];
+        };
+
+        const summitFeature = dataset.features.find((feature) => {
+          if (!feature) {
+            return false;
+          }
+
+          if (feature.id === SUMMIT_COUNTY_FIPS) {
+            return true;
+          }
+
+          const properties = feature.properties ?? {};
+          const candidateGeoid =
+            typeof properties.geoid === 'string'
+              ? properties.geoid
+              : typeof properties.GEOID === 'string'
+                ? properties.GEOID
+                : undefined;
+
+          return candidateGeoid === SUMMIT_COUNTY_FIPS;
+        });
+
+        if (!summitFeature?.geometry || cancelled) {
+          return;
+        }
+
+        const nextBoundary: SummitCountyFeatureCollection = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                name: 'Summit County',
+                geoid: SUMMIT_COUNTY_FIPS,
+                boundarySource: 'remote',
+                ...(summitFeature.properties ?? {}),
+              },
+              geometry: summitFeature.geometry,
+            },
+          ],
+        };
+
+        if (!cancelled) {
+          setBoundary(nextBoundary);
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- surface network issues in development only
+          console.warn('Failed to load Summit County boundary overlay', error);
+        }
+      }
+    }
+
+    void loadBoundary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return boundary;
+}
+
+function SummitCountyOverlay(): JSX.Element | null {
+  const overlayGeometry = useSummitCountyBoundary();
+  const overlayRef = useRef<L.GeoJSON | null>(null);
+  const maskGeometry = useMemo(() => createInvertedMask(overlayGeometry), [overlayGeometry]);
+  const map = useMap();
+  const fittedSourceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!overlayGeometry || !overlayRef.current) {
+      return;
+    }
+
+    const bounds = overlayRef.current.getBounds();
+    if (!bounds.isValid()) {
+      return;
+    }
+
+    const overlaySource =
+      overlayGeometry.features[0]?.properties &&
+      typeof overlayGeometry.features[0].properties === 'object'
+        ? (overlayGeometry.features[0].properties as SummitCountyBoundaryProperties)
+            .boundarySource ?? 'unknown'
+        : 'unknown';
+
+    if (fittedSourceRef.current === overlaySource) {
+      return;
+    }
+
+    const mapSize = map.getSize();
+    const paddingFraction = 0.15;
+    const paddingValue = Math.round(Math.min(mapSize.x, mapSize.y) * paddingFraction);
+
+    map.fitBounds(bounds, {
+      padding: [paddingValue, paddingValue],
+    });
+
+    overlayRef.current.bringToBack();
+    fittedSourceRef.current = overlaySource;
+  }, [map, overlayGeometry]);
+
+  if (!overlayGeometry) {
+    return null;
+  }
+
+  return (
+    <>
+      {maskGeometry ? (
+        <GeoJSON data={maskGeometry} style={() => SUMMIT_OVERLAY_MASK_STYLE} interactive={false} />
+      ) : null}
+      <GeoJSON
+        data={overlayGeometry}
+        ref={(instance) => {
+          overlayRef.current = instance;
+        }}
+        style={() => SUMMIT_OVERLAY_STYLE}
+        interactive={false}
+      />
+    </>
+  );
+}
+
+const REGION_STYLE: L.PathOptions = {
+  color: '#2563eb',
+  fillColor: '#3b82f6',
+  fillOpacity: 0.2,
+  weight: 2,
+};
+
+function toRegionShape(layer: L.Layer): RegionShape | null {
+  if (layer instanceof L.Circle) {
+    const center = layer.getLatLng();
+    const radius = layer.getRadius();
+    if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || !Number.isFinite(radius)) {
+      return null;
+    }
+    return { type: 'circle', lat: center.lat, lng: center.lng, radius };
+  }
+
+  if (layer instanceof L.Polygon) {
+    const latLngs = layer.getLatLngs();
+    const ring = Array.isArray(latLngs[0]) ? (latLngs[0] as L.LatLng[]) : (latLngs as unknown as L.LatLng[]);
+    const points = ring
+      .map((latLng) => ({ lat: latLng.lat, lng: latLng.lng }))
+      .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (Math.abs(first.lat - last.lat) < 1e-9 && Math.abs(first.lng - last.lng) < 1e-9) {
+      points.pop();
+    }
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    return { type: 'polygon', points };
+  }
+
+  return null;
+}
+
+function createLayerFromRegion(region: RegionShape): L.Circle | L.Polygon {
+  if (region.type === 'circle') {
+    return L.circle([region.lat, region.lng], {
+      ...REGION_STYLE,
+      radius: region.radius,
+    });
+  }
+
+  const latLngs = region.points.map<[number, number]>((point) => [point.lat, point.lng]);
+  return L.polygon(latLngs, {
+    ...REGION_STYLE,
+    smoothFactor: 0.2,
+  });
+}
+
+function collectRegions(featureGroup: L.FeatureGroup): RegionShape[] {
+  const results: RegionShape[] = [];
   featureGroup.eachLayer((layer) => {
-    if (layer instanceof L.Circle) {
-      results.push(toRegionCircle(layer));
+    const shape = toRegionShape(layer);
+    if (shape) {
+      results.push(shape);
     }
   });
   return results;
 }
 
-type DrawManagerProps = {
-  regions: RegionCircle[];
-  onRegionsChange: (regions: RegionCircle[]) => void;
-  pinDropMode?: boolean;
-  onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
+function getUniqueOwners(listing: ListingRecord): string[] {
+  const owners = new Set<string>();
+  listing.ownerNames.forEach((name) => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      owners.add(trimmed);
+    }
+  });
+
+  const fallbackOwner = listing.ownerName?.trim();
+  if (owners.size === 0 && fallbackOwner) {
+    owners.add(fallbackOwner);
+  }
+
+  return Array.from(owners);
+}
+
+function normaliseDetailUrl(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function splitLines(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+type ListingSelectionPanelProps = {
+  listing: ListingRecord | null;
+  hasListings: boolean;
+  totalListingCount: number;
 };
+
+function ListingSelectionPanel({ listing, hasListings, totalListingCount }: ListingSelectionPanelProps): JSX.Element {
+    if (!listing) {
+      const formattedCount = totalListingCount.toLocaleString();
+      const pluralised = totalListingCount === 1 ? 'property matches' : 'properties match';
+      const countMessage =
+        totalListingCount === 0
+          ? 'No properties match the current filters.'
+          : `${formattedCount} ${pluralised} the current filters.`;
+    return (
+      <div className="region-map__selection region-map__selection--empty" aria-live="polite">
+        <p className="region-map__selection-empty-primary">
+          {hasListings
+            ? 'Hover over a property marker to see details.'
+            : 'Draw a region or adjust filters to find properties.'}
+        </p>
+        <p className="region-map__selection-empty-secondary">
+          {countMessage}
+        </p>
+        <div className="region-map__selection-empty-hints">
+          <p>Need somewhere to start?</p>
+          <ul>
+            <li>Use the filters to narrow down complexes or owners.</li>
+            <li>Draw regions on the map to focus on specific neighborhoods.</li>
+            <li>Hover any marker to preview the property before jumping to the table.</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
+    const title =
+      listing.complex?.trim() ||
+      listing.physicalAddress?.trim() ||
+      listing.ownerName?.trim() ||
+      listing.scheduleNumber?.trim() ||
+      'Listing';
+
+    const owners = getUniqueOwners(listing);
+    const mailingAddressLines = splitLines(listing.mailingAddress);
+    const detailUrl = normaliseDetailUrl(listing.publicDetailUrl);
+
+    return (
+      <div className="region-map__selection" aria-live="polite">
+        <div className="region-map__selection-header">
+          <div className="region-map__selection-heading">
+            <h3 className="region-map__selection-title">{title}</h3>
+          </div>
+          {detailUrl ? (
+            <a
+              href={detailUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="region-map__selection-link"
+              aria-label="Open listing details in a new tab"
+            >
+              <svg className="region-map__selection-link-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <circle cx="12" cy="8" r="1" fill="currentColor" />
+                <path
+                  d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <span>Official details</span>
+            </a>
+          ) : null}
+        </div>
+
+        <dl className="region-map__selection-grid">
+          {owners.length ? (
+            <div>
+              <dt>Owner(s)</dt>
+              <dd>{owners.join(', ')}</dd>
+            </div>
+          ) : null}
+          {listing.physicalAddress ? (
+            <div>
+              <dt>Physical address</dt>
+              <dd>{listing.physicalAddress}</dd>
+            </div>
+          ) : null}
+          {listing.scheduleNumber ? (
+            <div>
+              <dt>Schedule #</dt>
+              <dd>{listing.scheduleNumber}</dd>
+            </div>
+          ) : null}
+          {listing.mailingAddress ? (
+            <div>
+              <dt>Mailing address</dt>
+              <dd>
+                {mailingAddressLines.length > 0
+                  ? mailingAddressLines.map((line, index) => <span key={index}>{line}</span>)
+                  : listing.mailingAddress}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      </div>
+    );
+}
+
+ListingSelectionPanel.displayName = 'ListingSelectionPanel';
+
+type DrawManagerProps = {
+  regions: RegionShape[];
+  onRegionsChange: (regions: RegionShape[]) => void;
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
+};
+
+type MapToolbarProps = {
+  onDrawPolygon: () => void;
+  onDrawCircle: () => void;
+  onClearRegions: () => void;
+  onFitRegions: () => void;
+  hasRegions: boolean;
+  activeTool: 'polygon' | 'circle' | null;
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
+};
+
+function MapToolbar({
+  onDrawPolygon,
+  onDrawCircle,
+  onClearRegions,
+  onFitRegions,
+  hasRegions,
+  activeTool,
+  showAllProperties,
+  onToggleShowAll,
+}: MapToolbarProps): null {
+  const map = useMap();
+  const buttonRefs = useRef<
+    | {
+        clearButton?: HTMLButtonElement;
+        fitButton?: HTMLButtonElement;
+        polygonButton?: HTMLButtonElement;
+        circleButton?: HTMLButtonElement;
+        toggleAllButton?: HTMLButtonElement;
+      }
+    | null
+  >(null);
+
+  useEffect(() => {
+    const toolbarControl = new L.Control({ position: 'topright' });
+    toolbarControl.onAdd = () => {
+      const container = L.DomUtil.create('div', 'leaflet-bar region-map__toolbar') as HTMLDivElement;
+      container.setAttribute('role', 'group');
+      container.setAttribute('aria-label', 'Drawing controls');
+
+      const polygonButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      polygonButton.type = 'button';
+      polygonButton.title = 'Draw a custom polygon';
+      polygonButton.textContent = 'Draw polygon';
+      polygonButton.setAttribute('aria-pressed', 'false');
+      polygonButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onDrawPolygon();
+      });
+
+      const circleButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      circleButton.type = 'button';
+      circleButton.title = 'Draw a circular search area';
+      circleButton.textContent = 'Draw circle';
+      circleButton.setAttribute('aria-pressed', 'false');
+      circleButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onDrawCircle();
+      });
+
+      const fitButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      fitButton.type = 'button';
+      fitButton.title = 'Zoom the map to your drawn regions';
+      fitButton.textContent = 'Zoom to shapes';
+      fitButton.dataset.action = 'fit';
+      fitButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (!fitButton.disabled) {
+          onFitRegions();
+        }
+      });
+
+      const clearButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      clearButton.type = 'button';
+      clearButton.title = 'Remove all drawn regions';
+      clearButton.textContent = 'Clear shapes';
+      clearButton.dataset.action = 'clear';
+      clearButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (!clearButton.disabled) {
+          onClearRegions();
+        }
+      });
+
+      const toggleAllButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      toggleAllButton.type = 'button';
+      toggleAllButton.title = 'Show all properties or only those within regions';
+      toggleAllButton.textContent = 'Show all properties';
+      toggleAllButton.dataset.action = 'toggle-all';
+      toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+      if (showAllProperties) {
+        toggleAllButton.classList.add('region-map__toolbar-button--active');
+      }
+      toggleAllButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggleShowAll();
+      });
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      [clearButton, fitButton].forEach((button) => {
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+        button.classList.add('region-map__toolbar-button--disabled');
+      });
+
+      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton, toggleAllButton };
+
+      return container;
+    };
+
+    toolbarControl.addTo(map);
+
+    return () => {
+      buttonRefs.current = null;
+      toolbarControl.remove();
+    };
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs) {
+      return;
+    }
+
+    const buttons = [refs.clearButton, refs.fitButton];
+    buttons.forEach((button) => {
+      if (!button) {
+        return;
+      }
+      const disabled = !hasRegions;
+      button.disabled = disabled;
+      button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      button.classList.toggle('region-map__toolbar-button--disabled', disabled);
+    });
+  }, [hasRegions]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs || !refs.toggleAllButton) {
+      return;
+    }
+
+    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
+    refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+  }, [showAllProperties]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs) {
+      return;
+    }
+
+    const toggleActiveState = (button: HTMLButtonElement | undefined, isActive: boolean) => {
+      if (!button) {
+        return;
+      }
+      button.classList.toggle('region-map__toolbar-button--active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    };
+
+    toggleActiveState(refs.polygonButton, activeTool === 'polygon');
+    toggleActiveState(refs.circleButton, activeTool === 'circle');
+  }, [activeTool]);
+
+  return null;
+}
 
 function DrawManager({
   regions,
   onRegionsChange,
-  pinDropMode = false,
-  onPinLocationSelect,
-}: DrawManagerProps): null {
+  showAllProperties,
+  onToggleShowAll,
+}: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
   const drawControlRef = useRef<L.Control.Draw | null>(null);
+  const polygonDrawerRef = useRef<L.Draw.Polygon | null>(null);
+  const circleDrawerRef = useRef<L.Draw.Circle | null>(null);
   const previousCountRef = useRef(0);
+  const [activeTool, setActiveTool] = useState<'polygon' | 'circle' | null>(null);
 
   const initialiseLayers = useCallback(() => {
     if (!featureGroupRef.current) {
@@ -166,19 +928,15 @@ function DrawManager({
       drawControlRef.current = new L.Control.Draw({
         edit: {
           featureGroup: featureGroupRef.current,
+          edit: {
+            poly: { allowIntersection: false },
+          },
         },
         draw: {
-          circle: {
-            shapeOptions: {
-              color: '#2563eb',
-              fillColor: '#3b82f6',
-              fillOpacity: 0.2,
-              weight: 2,
-            },
-          },
           polygon: false,
           polyline: false,
           rectangle: false,
+          circle: false,
           marker: false,
           circlemarker: false,
         },
@@ -200,6 +958,26 @@ function DrawManager({
   }, [map]);
 
   useEffect(() => {
+    const drawMap = map as unknown as L.DrawMap;
+
+    polygonDrawerRef.current = new L.Draw.Polygon(drawMap, {
+      allowIntersection: false,
+      showArea: true,
+      shapeOptions: REGION_STYLE,
+    });
+    circleDrawerRef.current = new L.Draw.Circle(drawMap, {
+      shapeOptions: REGION_STYLE,
+    });
+
+    return () => {
+      polygonDrawerRef.current?.disable();
+      circleDrawerRef.current?.disable();
+      polygonDrawerRef.current = null;
+      circleDrawerRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
     initialiseLayers();
 
     const handleCreated = (event: L.DrawEvents.Created) => {
@@ -207,11 +985,14 @@ function DrawManager({
         return;
       }
 
-      const layer = event.layer;
-      if (layer instanceof L.Circle) {
-        featureGroupRef.current.addLayer(layer);
-        onRegionsChange(collectRegions(featureGroupRef.current));
+      const layer = event.layer as L.Layer;
+      const shape = toRegionShape(layer);
+      if (!shape) {
+        return;
       }
+
+      featureGroupRef.current.addLayer(layer);
+      onRegionsChange(collectRegions(featureGroupRef.current));
     };
 
     const handleEdited = () => {
@@ -241,20 +1022,37 @@ function DrawManager({
   }, [initialiseLayers, map, onRegionsChange, teardown]);
 
   useEffect(() => {
+    const handleDrawStart = (event: L.DrawEvents.DrawStart) => {
+      const layerType = event.layerType;
+      if (layerType === 'polygon' || layerType === 'circle') {
+        setActiveTool(layerType);
+      } else {
+        setActiveTool(null);
+      }
+    };
+
+    const handleDrawStop = () => {
+      setActiveTool(null);
+    };
+
+    map.on(L.Draw.Event.DRAWSTART, handleDrawStart);
+    map.on(L.Draw.Event.DRAWSTOP, handleDrawStop);
+
+    return () => {
+      map.off(L.Draw.Event.DRAWSTART, handleDrawStart);
+      map.off(L.Draw.Event.DRAWSTOP, handleDrawStop);
+    };
+  }, [map]);
+
+  useEffect(() => {
     if (!featureGroupRef.current) {
       return;
     }
 
     featureGroupRef.current.clearLayers();
     regions.forEach((region) => {
-      const circle = L.circle([region.lat, region.lng], {
-        radius: region.radius,
-        color: '#2563eb',
-        fillColor: '#3b82f6',
-        fillOpacity: 0.2,
-        weight: 2,
-      });
-      featureGroupRef.current?.addLayer(circle);
+      const layer = createLayerFromRegion(region);
+      featureGroupRef.current?.addLayer(layer);
     });
   }, [regions]);
 
@@ -272,8 +1070,8 @@ function DrawManager({
 
     const bounds = new L.LatLngBounds([]);
     featureGroupRef.current.eachLayer((layer) => {
-      if (layer instanceof L.Circle) {
-        bounds.extend(layer.getBounds());
+      if ('getBounds' in layer && typeof (layer as L.Circle | L.Polygon).getBounds === 'function') {
+        bounds.extend((layer as L.Circle | L.Polygon).getBounds());
       }
     });
 
@@ -282,38 +1080,64 @@ function DrawManager({
     }
   }, [map, regions]);
 
-  useEffect(() => {
-    if (!pinDropMode) {
-      return undefined;
+  const startPolygon = useCallback(() => {
+    circleDrawerRef.current?.disable();
+    polygonDrawerRef.current?.enable();
+  }, []);
+
+  const startCircle = useCallback(() => {
+    polygonDrawerRef.current?.disable();
+    circleDrawerRef.current?.enable();
+  }, []);
+
+  const clearRegions = useCallback(() => {
+    if (!featureGroupRef.current) {
+      return;
+    }
+    featureGroupRef.current.clearLayers();
+    onRegionsChange([]);
+  }, [onRegionsChange]);
+
+  const fitRegions = useCallback(() => {
+    if (!featureGroupRef.current) {
+      return;
     }
 
-    const container = map.getContainer();
-    container.classList.add('region-map__map--drop');
+    const bounds = new L.LatLngBounds([]);
+    featureGroupRef.current.eachLayer((layer) => {
+      if ('getBounds' in layer && typeof (layer as L.Circle | L.Polygon).getBounds === 'function') {
+        bounds.extend((layer as L.Circle | L.Polygon).getBounds());
+      }
+    });
 
-    const handlePinClick = (event: L.LeafletMouseEvent) => {
-      onPinLocationSelect?.({
-        lat: event.latlng.lat,
-        lng: event.latlng.lng,
-      });
-    };
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.25));
+    }
+  }, [map]);
 
-    map.on('click', handlePinClick);
-
-    return () => {
-      map.off('click', handlePinClick);
-      container.classList.remove('region-map__map--drop');
-    };
-  }, [map, onPinLocationSelect, pinDropMode]);
-
-  return null;
+  return (
+    <MapToolbar
+      onDrawPolygon={startPolygon}
+      onDrawCircle={startCircle}
+      onClearRegions={clearRegions}
+      onFitRegions={fitRegions}
+      hasRegions={regions.length > 0}
+      activeTool={activeTool}
+      showAllProperties={showAllProperties}
+      onToggleShowAll={onToggleShowAll}
+    />
+  );
 }
 
 type ListingMarkersProps = {
   listings: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
+  selectedListingId?: string | null;
+  hoveredListingId?: string | null;
+  onListingHover?: (listingId: string | null) => void;
 };
 
-function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): null {
+function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredListingId, onListingHover }: ListingMarkersProps): null {
   const map = useMap();
   const layerRef = useRef<L.LayerGroup | null>(null);
 
@@ -329,25 +1153,17 @@ function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): nul
         return;
       }
 
+      const isSelected = listing.id === selectedListingId;
+      const isHovered = listing.id === hoveredListingId;
+      const isActive = isSelected || isHovered;
+
       const marker = L.circleMarker([listing.latitude, listing.longitude], {
-        radius: 5,
-        color: '#991b1b',
-        weight: 1,
-        fillColor: '#ef4444',
-        fillOpacity: 0.85,
+        radius: isActive ? 7 : 5,
+        color: isActive ? '#1d4ed8' : '#991b1b',
+        weight: isActive ? 2 : 1,
+        fillColor: isActive ? '#3b82f6' : '#ef4444',
+        fillOpacity: isActive ? 0.95 : 0.85,
         pane: 'markerPane',
-      });
-
-      const tooltipLabel =
-        listing.complex ||
-        listing.physicalAddress ||
-        listing.ownerName ||
-        listing.scheduleNumber ||
-        'Listing';
-
-      marker.bindTooltip(tooltipLabel, {
-        direction: 'top',
-        offset: L.point(0, -6),
       });
 
       marker.on('click', (event: L.LeafletMouseEvent) => {
@@ -356,9 +1172,65 @@ function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): nul
         onListingSelect?.(listing.id);
       });
 
+      marker.on('mouseover', () => {
+        onListingHover?.(listing.id);
+      });
+
+      if (isActive) {
+        marker.bringToFront();
+      }
+
       marker.addTo(layerGroup);
     });
-  }, [listings, map, onListingSelect]);
+  }, [hoveredListingId, listings, map, onListingHover, onListingSelect, selectedListingId]);
+
+  useEffect(() => {
+    return () => {
+      if (layerRef.current) {
+        layerRef.current.removeFrom(map);
+        layerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  return null;
+}
+
+function EvStationMarkers(): null {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+
+  useEffect(() => {
+    if (!layerRef.current) {
+      layerRef.current = L.layerGroup().addTo(map);
+    }
+    const layerGroup = layerRef.current;
+    layerGroup.clearLayers();
+
+    const stations = getEvStations();
+
+    stations.forEach((station) => {
+      const marker = L.circleMarker([station.latitude, station.longitude], {
+        radius: 4,
+        color: '#059669',
+        weight: 1,
+        fillColor: '#10b981',
+        fillOpacity: 0.7,
+        pane: 'markerPane',
+      });
+
+      const popupContent = `
+        <div style="font-family: system-ui, sans-serif; line-height: 1.4;">
+          <strong style="display: block; margin-bottom: 4px;">${station.name || 'EV Charging Station'}</strong>
+          ${station.address ? `<div style="font-size: 0.9em; color: #666;">${station.address}</div>` : ''}
+          ${station.chargerType ? `<div style="font-size: 0.85em; color: #888; margin-top: 4px;">Type: ${station.chargerType}</div>` : ''}
+        </div>
+      `;
+
+      marker.bindPopup(popupContent);
+      marker.addTo(layerGroup);
+    });
+  }, [map]);
 
   useEffect(() => {
     return () => {
@@ -375,27 +1247,84 @@ function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): nul
 function RegionMap({
   regions,
   onRegionsChange,
-  pinDropMode = false,
-  onPinLocationSelect,
   listings = [],
+  allListings = [],
   onListingSelect,
+  totalListingCount = 0,
 }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
-  const subtitle = pinDropMode
-    ? 'Click anywhere on the map to drop your pin. The radius filter will apply automatically.'
-    : 'Draw circles to focus the ArcGIS search on specific areas of Summit County.';
+  const subtitle = 'Use the toolbar to draw polygons or circles and focus on specific areas.';
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
+  const [showAllProperties, setShowAllProperties] = useState(false);
+
+  const displayedListings = useMemo(() => {
+    // When toggle is on, always show all filtered listings
+    // When toggle is off, show region-filtered listings only
+    return showAllProperties ? allListings : listings;
+  }, [showAllProperties, allListings, listings]);
+
+  useEffect(() => {
+    if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
+      setSelectedListingId(null);
+    }
+  }, [displayedListings, selectedListingId]);
+
+  useEffect(() => {
+    if (hoveredListingId && !displayedListings.some((listing) => listing.id === hoveredListingId)) {
+      setHoveredListingId(null);
+    }
+  }, [hoveredListingId, displayedListings]);
+
+  useEffect(() => {
+    if (!selectedListingId && displayedListings.length === 1) {
+      setSelectedListingId(displayedListings[0]?.id ?? null);
+    }
+  }, [displayedListings, selectedListingId]);
+
+  const activeListingId = hoveredListingId ?? selectedListingId;
+
+  const activeListing = useMemo(() => {
+    if (!activeListingId) {
+      return null;
+    }
+    return displayedListings.find((listing) => listing.id === activeListingId) ?? null;
+  }, [activeListingId, displayedListings]);
+
+  const handleMarkerSelect = useCallback(
+    (listingId: string) => {
+      setSelectedListingId(listingId);
+      onListingSelect?.(listingId);
+    },
+    [onListingSelect],
+  );
+
+  const handleMarkerHover = useCallback((listingId: string | null) => {
+    setHoveredListingId(listingId);
+  }, []);
+
+  const handleToggleShowAll = useCallback(() => {
+    setShowAllProperties((prev) => !prev);
+  }, []);
 
   return (
     <section
       className="region-map"
       aria-label="Draw regions to filter listings"
-      title="Draw circles to focus the ArcGIS search on specific areas"
+      title="Draw polygons or circles to focus the ArcGIS search on specific areas"
     >
       <div>
         <h2 className="region-map__title">Search Regions</h2>
-        <p className={`region-map__subtitle${pinDropMode ? ' region-map__subtitle--active' : ''}`}>
+        <p className="region-map__subtitle">
           {subtitle}
         </p>
+      </div>
+      <div className="region-map__selection-wrapper">
+        <ListingSelectionPanel
+          listing={activeListing}
+          hasListings={displayedListings.length > 0}
+          totalListingCount={totalListingCount}
+        />
       </div>
       <MapContainer
         className="region-map__map"
@@ -404,14 +1333,22 @@ function RegionMap({
         scrollWheelZoom
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+        <SummitCountyOverlay />
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
-          pinDropMode={pinDropMode}
-          onPinLocationSelect={onPinLocationSelect}
+          showAllProperties={showAllProperties}
+          onToggleShowAll={handleToggleShowAll}
         />
-        {listings.length ? (
-          <ListingMarkers listings={listings} onListingSelect={onListingSelect} />
+        <EvStationMarkers />
+        {displayedListings.length ? (
+          <ListingMarkers
+            listings={displayedListings}
+            onListingSelect={handleMarkerSelect}
+            selectedListingId={selectedListingId}
+            hoveredListingId={hoveredListingId}
+            onListingHover={handleMarkerHover}
+          />
         ) : null}
       </MapContainer>
     </section>
