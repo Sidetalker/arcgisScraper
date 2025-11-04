@@ -83,7 +83,7 @@ export interface ListingRow {
   estimated_renewal_reference: Nullable<string>;
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
-  distance_to_ev_station_meters: Nullable<number>;
+  nearest_ev_station_distance_meters: Nullable<number>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -119,7 +119,7 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
-    distance_to_ev_station_meters:
+    nearest_ev_station_distance_meters:
       typeof record.nearestEvStationDistanceMeters === 'number'
         ? record.nearestEvStationDistanceMeters
         : null,
@@ -186,6 +186,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
+    nearestEvStationDistanceMeters: typeof row.nearest_ev_station_distance_meters === 'number' ? row.nearest_ev_station_distance_meters : null,
     raw: rawAttributes,
   };
 }
@@ -215,6 +216,7 @@ const LISTING_COLUMNS = [
   'estimated_renewal_reference',
   'estimated_renewal_category',
   'estimated_renewal_month_key',
+  'nearest_ev_station_distance_meters',
   'raw',
   'updated_at',
 ] as const;
