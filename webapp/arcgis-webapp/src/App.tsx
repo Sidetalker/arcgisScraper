@@ -621,18 +621,40 @@ function App(): JSX.Element {
   }, [listingCacheEntry]);
 
   useEffect(() => {
+    console.groupCollapsed('ArcGIS listing fetch request');
+    console.debug('Geometry signature', geometrySignature);
+    console.debug('Query geometry', queryGeometry);
+
+    let groupClosed = false;
+    const endGroup = () => {
+      if (!groupClosed) {
+        console.groupEnd();
+        groupClosed = true;
+      }
+    };
+
     const dependencies = [geometrySignature] as const;
     const cached = getCache<ListingRecord[]>(LISTINGS_CACHE_KEY, { dependencies });
     if (cached) {
+      console.info(
+        `Using ${cached.length.toLocaleString()} cached ArcGIS listings for geometry signature ${geometrySignature}.`,
+      );
       setListings(cached);
       setError(null);
       setLoading(false);
+      endGroup();
       return;
     }
 
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+
+    console.info('Requesting listings from ArcGIS.', {
+      dependencies,
+      hasGeometry: Boolean(queryGeometry),
+      regionCount: regions.length,
+    });
 
     fetchListings({
       filters: { returnGeometry: false },
@@ -641,7 +663,9 @@ function App(): JSX.Element {
     })
       .then((featureSet) => {
         const features = featureSet.features ?? [];
+        console.info(`Received ${features.length.toLocaleString()} listings from ArcGIS.`);
         const mapped = features.map((feature, index) => toListingRecord(feature, index));
+        console.debug('Mapped listing sample', mapped.slice(0, 3));
         setListings(mapped);
         setCache(LISTINGS_CACHE_KEY, mapped, {
           dependencies,
@@ -650,22 +674,42 @@ function App(): JSX.Element {
       })
       .catch((fetchError) => {
         if (controller.signal.aborted) {
+          console.warn('ArcGIS listings request aborted.');
+          endGroup();
           return;
         }
         const message =
           fetchError instanceof Error ? fetchError.message : 'Unable to load listings from ArcGIS.';
+        console.error('ArcGIS listings request failed.', fetchError);
         setError(message);
       })
       .finally(() => {
         if (!controller.signal.aborted) {
           setLoading(false);
         }
+        endGroup();
       });
 
     return () => {
+      console.info('Aborting in-flight ArcGIS listing request.');
       controller.abort();
+      endGroup();
     };
-  }, [geometrySignature, getCache, queryGeometry, refreshCounter, setCache]);
+  }, [geometrySignature, getCache, queryGeometry, refreshCounter, regions.length, setCache]);
+
+  useEffect(() => {
+    console.debug('Filters updated', filters);
+  }, [filters]);
+
+  useEffect(() => {
+    console.debug('Regions updated', regions);
+  }, [regions]);
+
+  useEffect(() => {
+    if (listings.length) {
+      console.info(`Applying filters to ${listings.length.toLocaleString()} listings.`);
+    }
+  }, [listings.length]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -674,6 +718,15 @@ function App(): JSX.Element {
   const filteredListings = useMemo(() => {
     return listings.filter((listing) => applyFilters(listing, filters));
   }, [listings, filters]);
+
+  useEffect(() => {
+    if (!listings.length) {
+      return;
+    }
+    console.info(
+      `Filters narrowed ${listings.length.toLocaleString()} listings down to ${filteredListings.length.toLocaleString()} results.`,
+    );
+  }, [filteredListings.length, listings.length]);
 
   const subdivisionOptions = useMemo(() => {
     const values = new Set<string>();
@@ -696,6 +749,7 @@ function App(): JSX.Element {
   }, [listings]);
 
   const handleRefresh = useCallback(() => {
+    console.info('Manual refresh requested. Clearing caches and forcing ArcGIS refetch.');
     clearPersistentCache(LISTINGS_CACHE_KEY);
     clearArcgisCaches();
     setRefreshCounter((current) => current + 1);
