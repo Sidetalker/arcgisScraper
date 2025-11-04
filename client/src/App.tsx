@@ -5,6 +5,12 @@ import { FilterPanel } from './components/FilterPanel';
 import { GeoMap } from './components/GeoMap';
 import { DataTable } from './components/DataTable';
 import { filterByCircles } from './utils/geo';
+import {
+  FieldDefinition,
+  createFieldDefinition,
+  createFieldDefinitionFromName,
+} from './utils/fields';
+import { getFeatureId } from './utils/features';
 
 const CACHE_KEY = 'arcgis-properties-cache-v1';
 
@@ -41,12 +47,13 @@ function saveCache(payload: CachePayload) {
 
 export default function App() {
   const [features, setFeatures] = useState<ArcgisFeature[]>([]);
-  const [fields, setFields] = useState<string[]>([]);
+  const [fields, setFields] = useState<FieldDefinition[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [circles, setCircles] = useState<GeoCircle[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
 
   const applyFilters = useCallback(
     (source: ArcgisFeature[], activeFilters: Record<string, string>, activeCircles: GeoCircle[]) => {
@@ -95,10 +102,17 @@ export default function App() {
           saveCache({ data: payload, timestamp: timestamp.toISOString() });
         }
 
-        setFeatures(payload.features ?? []);
-        const derivedFields = payload.fields?.map((field) => field.name) ??
-          (payload.features.length ? Object.keys(payload.features[0].attributes) : []);
-        setFields(derivedFields);
+        const loadedFeatures = payload.features ?? [];
+        setFeatures(loadedFeatures);
+
+        if (payload.fields && payload.fields.length) {
+          setFields(payload.fields.map((field) => createFieldDefinition(field)));
+        } else if (loadedFeatures.length) {
+          const attributeKeys = Object.keys(loadedFeatures[0].attributes ?? {});
+          setFields(attributeKeys.map((key) => createFieldDefinitionFromName(key)));
+        } else {
+          setFields([]);
+        }
         setLastUpdated(timestamp);
       } catch (err) {
         console.error(err);
@@ -120,7 +134,28 @@ export default function App() {
 
   const handleResetFilters = () => {
     setFilters({});
+    setSelectedFeatureId(null);
   };
+
+  const handleCirclesChange = useCallback((next: GeoCircle[]) => {
+    setCircles(next);
+  }, []);
+
+  const handleSelectFeature = useCallback((featureId: string | null) => {
+    setSelectedFeatureId(featureId);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedFeatureId) {
+      return;
+    }
+    const exists = filteredFeatures.some(
+      (feature) => getFeatureId(feature) === selectedFeatureId
+    );
+    if (!exists) {
+      setSelectedFeatureId(null);
+    }
+  }, [filteredFeatures, selectedFeatureId]);
 
   const handleRefresh = () => {
     localStorage.removeItem(CACHE_KEY);
@@ -141,8 +176,18 @@ export default function App() {
           />
         </div>
         <div className="layout__column layout__column--content">
-          <GeoMap features={filteredFeatures} circles={circles} onCirclesChange={setCircles} />
-          <DataTable features={filteredFeatures} />
+          <GeoMap
+            features={filteredFeatures}
+            circles={circles}
+            onCirclesChange={handleCirclesChange}
+            selectedFeatureId={selectedFeatureId}
+            onSelectFeature={handleSelectFeature}
+          />
+          <DataTable
+            features={filteredFeatures}
+            selectedFeatureId={selectedFeatureId}
+            onSelectFeature={handleSelectFeature}
+          />
         </div>
       </main>
     </div>
