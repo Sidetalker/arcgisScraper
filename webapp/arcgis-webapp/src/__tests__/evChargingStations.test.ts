@@ -32,17 +32,18 @@ describe('evChargingStations', () => {
     });
 
     it('should calculate distance to nearest EV station', () => {
-      // Test coordinates near Summit County, Colorado
-      const distance = findNearestEvStationDistance(41.0838, -81.5190);
+      // Coordinates near Breckenridge, Colorado
+      const distance = findNearestEvStationDistance(39.4817, -106.0455);
       expect(distance).not.toBeNull();
       expect(typeof distance).toBe('number');
       expect(distance!).toBeGreaterThan(0);
+      expect(distance!).toBeLessThan(2000);
     });
 
     it('should return different distances for different locations', () => {
-      const distance1 = findNearestEvStationDistance(41.0838, -81.5190);
-      const distance2 = findNearestEvStationDistance(40.9600, -81.4650);
-      
+      const distance1 = findNearestEvStationDistance(39.4817, -106.0455);
+      const distance2 = findNearestEvStationDistance(39.6109, -106.0967);
+
       expect(distance1).not.toBeNull();
       expect(distance2).not.toBeNull();
       // Distances should be different (unless extremely unlikely coincidence)
