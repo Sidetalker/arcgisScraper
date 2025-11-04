@@ -90,6 +90,18 @@ interface RawZoneMetric {
   updated_at: string | null;
 }
 
+function parseZoneMetrics(rows: RawZoneMetric[] | null | undefined): ZoneMetric[] {
+  return (
+    rows?.map((row) => ({
+      zone: row.zone && row.zone.trim().length > 0 ? row.zone : 'Unknown zone',
+      totalListings: typeof row.total_listings === 'number' ? row.total_listings : 0,
+      businessOwnerCount: typeof row.business_owner_count === 'number' ? row.business_owner_count : 0,
+      individualOwnerCount: typeof row.individual_owner_count === 'number' ? row.individual_owner_count : 0,
+      updatedAt: parseDate(row.updated_at),
+    })) ?? []
+  );
+}
+
 interface RawRenewalMetric {
   renewal_month: string;
   listing_count: number | null;
@@ -183,13 +195,7 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
     }),
   ) ?? [];
 
-  const zones: ZoneMetric[] = (zonesResult.data as RawZoneMetric[] | null | undefined)?.map((row) => ({
-    zone: row.zone && row.zone.trim().length > 0 ? row.zone : 'Unknown zone',
-    totalListings: typeof row.total_listings === 'number' ? row.total_listings : 0,
-    businessOwnerCount: typeof row.business_owner_count === 'number' ? row.business_owner_count : 0,
-    individualOwnerCount: typeof row.individual_owner_count === 'number' ? row.individual_owner_count : 0,
-    updatedAt: parseDate(row.updated_at),
-  })) ?? [];
+  const zones: ZoneMetric[] = parseZoneMetrics(zonesResult.data as RawZoneMetric[] | null | undefined);
 
   const renewalTimeline: RenewalMetric[] = (renewalTimelineResult.data as RawRenewalMetric[] | null | undefined)?.map(
     (row) => {
@@ -248,6 +254,20 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
     renewalMethods,
     landBarons,
   };
+}
+
+export async function fetchZoneMetrics(): Promise<ZoneMetric[]> {
+  const client = assertSupabaseClient();
+
+  const { data, error } = await client.from(ZONE_VIEW).select('*');
+
+  if (error) {
+    throw error;
+  }
+
+  const zones = parseZoneMetrics(data as RawZoneMetric[] | null | undefined);
+  zones.sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
+  return zones;
 }
 
 export function deriveLatestMetricsTimestamp(metrics: ListingMetrics): Date | null {
