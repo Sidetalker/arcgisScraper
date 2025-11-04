@@ -85,8 +85,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 async function main() {
   const result = await refreshListingAggregates(supabase, { logger: console });
   console.info('[metrics] Aggregates refreshed successfully.');
+  const landBaronsWritten =
+    typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
   console.info(
-    `Processed ${result.listingsProcessed.toLocaleString()} listings → ${result.subdivisionsWritten} subdivisions, ${result.renewalTimelineBuckets} timeline buckets, ${result.renewalSummaryBuckets} summary buckets, ${result.renewalMethodBuckets} method buckets.`,
+    `Processed ${result.listingsProcessed.toLocaleString()} listings → ${result.subdivisionsWritten} subdivisions, ${landBaronsWritten} land barons, ${result.renewalTimelineBuckets} timeline buckets, ${result.renewalSummaryBuckets} summary buckets, ${result.renewalMethodBuckets} method buckets.`,
   );
 }
 

@@ -36,18 +36,29 @@ create table if not exists public.listing_renewal_method_summary (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+-- Land Baron Leaderboard tracks owners with the highest property counts.
+create table if not exists public.land_baron_leaderboard (
+  owner_name text primary key,
+  property_count integer not null,
+  business_property_count integer not null,
+  individual_property_count integer not null,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 -- Disable row-level security so anonymous clients can read the precomputed
 -- aggregates (writes still require the service role key).
 alter table public.listing_subdivision_metrics disable row level security;
 alter table public.listing_renewal_metrics disable row level security;
 alter table public.listing_renewal_summary disable row level security;
 alter table public.listing_renewal_method_summary disable row level security;
+alter table public.land_baron_leaderboard disable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant select on public.listing_subdivision_metrics to anon, authenticated;
 grant select on public.listing_renewal_metrics to anon, authenticated;
 grant select on public.listing_renewal_summary to anon, authenticated;
 grant select on public.listing_renewal_method_summary to anon, authenticated;
+grant select on public.land_baron_leaderboard to anon, authenticated;
 
 -- Shared trigger to maintain updated_at
 create or replace function public.touch_updated_at()
@@ -79,6 +90,12 @@ execute procedure public.touch_updated_at();
 drop trigger if exists set_listing_renewal_method_summary_updated_at on public.listing_renewal_method_summary;
 create trigger set_listing_renewal_method_summary_updated_at
 before update on public.listing_renewal_method_summary
+for each row
+execute procedure public.touch_updated_at();
+
+drop trigger if exists set_land_baron_leaderboard_updated_at on public.land_baron_leaderboard;
+create trigger set_land_baron_leaderboard_updated_at
+before update on public.land_baron_leaderboard
 for each row
 execute procedure public.touch_updated_at();
 
@@ -136,3 +153,15 @@ from public.listing_renewal_method_summary
 order by listing_count desc, method asc;
 
 grant select on public.listing_renewal_method_breakdown to anon, authenticated;
+
+create or replace view public.land_baron_leaderboard_view as
+select
+  owner_name,
+  property_count,
+  business_property_count,
+  individual_property_count,
+  updated_at
+from public.land_baron_leaderboard
+order by property_count desc, owner_name asc;
+
+grant select on public.land_baron_leaderboard_view to anon, authenticated;

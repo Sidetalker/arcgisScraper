@@ -82,6 +82,7 @@ const SUMMARY_DESCRIPTORS: Record<
 };
 
 const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
+const LAND_BARON_LIMIT = 10;
 
 function resolveSummaryDescriptor(category: RenewalSummaryMetric['category']) {
   if (SUMMARY_ORDER.includes(category as SummaryCategory)) {
@@ -245,12 +246,14 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       const refreshedAt = new Date(result.refreshedAt);
       const safeRefreshedAt = Number.isNaN(refreshedAt.getTime()) ? new Date() : refreshedAt;
       setLastSupabaseRunAt(safeRefreshedAt);
+      const ownersWritten =
+        typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions. Loading latest insights…`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
       );
       await loadMetrics();
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions. Insights refreshed.`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
       );
     } catch (refreshError) {
       console.error('Failed to trigger listing metrics refresh.', refreshError);
@@ -283,6 +286,13 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     }
     return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
   }, [metrics, subdivisionLimit]);
+
+  const landBaronEntries = useMemo(() => {
+    if (!metrics) {
+      return [] as ListingMetrics['landBarons'];
+    }
+    return metrics.landBarons.slice(0, LAND_BARON_LIMIT);
+  }, [metrics]);
 
   const timelinePoints = useMemo(() => filterTimeline(metrics), [metrics]);
 
@@ -317,9 +327,15 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return subdivisionRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
   }, [subdivisionRows]);
 
+  const maxLandBaronProperties = useMemo(() => {
+    return landBaronEntries.reduce((max, item) => Math.max(max, item.propertyCount), 0);
+  }, [landBaronEntries]);
+
   const maxRenewalListings = useMemo(() => {
     return timelinePoints.reduce((max, item) => Math.max(max, item.listingCount), 0);
   }, [timelinePoints]);
+
+  const totalLandBarons = metrics?.landBarons.length ?? 0;
 
   const handleSubdivisionToggle = useCallback(
     (subdivision: string, synthetic?: boolean) => {
@@ -487,6 +503,59 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
             </ul>
           )}
           <p className="insight-card__hint">Subdivision filters sync with the search inputs and drawn map regions.</p>
+        </article>
+
+        <article className="insight-card insight-card--land-barons" aria-labelledby="insights-land-barons">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-land-barons">Land Baron Leaderboard</h3>
+              <p className="insight-card__description">
+                Meet the owners linked to the most Summit County properties in the Supabase cache.
+              </p>
+            </div>
+          </div>
+          {landBaronEntries.length === 0 ? (
+            <p className="insight-card__empty">No owner records available yet.</p>
+          ) : (
+            <ol className="insight-card__leaderboard" role="list">
+              {landBaronEntries.map((entry, index) => {
+                const percentage = maxLandBaronProperties
+                  ? Math.max(12, Math.round((entry.propertyCount / maxLandBaronProperties) * 100))
+                  : 0;
+                return (
+                  <li key={`${entry.ownerName}-${index}`} role="listitem">
+                    <div className="insight-card__leaderboard-item">
+                      <div className="insight-card__leaderboard-rank" aria-hidden="true">
+                        {index + 1}
+                      </div>
+                      <div className="insight-card__leaderboard-content">
+                        <div className="insight-card__list-line">
+                          <span className="insight-card__list-label">{entry.ownerName}</span>
+                          <span className="insight-card__list-value">
+                            {entry.propertyCount.toLocaleString()} properties
+                          </span>
+                        </div>
+                        <div className="insight-card__bar" aria-hidden="true">
+                          <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                        </div>
+                        <div className="insight-card__list-meta">
+                          <span className="insight-card__badge">
+                            {entry.individualPropertyCount.toLocaleString()} individual-run
+                          </span>
+                          <span className="insight-card__badge insight-card__badge--muted">
+                            {entry.businessPropertyCount.toLocaleString()} business entities
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          <p className="insight-card__hint">
+            Totals credit each co-owner on a listing. Leaderboard tracks {totalLandBarons.toLocaleString()} unique owners.
+          </p>
         </article>
 
         <article className="insight-card insight-card--outlook" aria-labelledby="insights-renewal-summary">
