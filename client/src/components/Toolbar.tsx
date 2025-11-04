@@ -1,0 +1,26 @@
+interface ToolbarProps {
+  isRefreshing: boolean;
+  onRefresh: () => void;
+  lastUpdated?: Date | null;
+}
+
+export function Toolbar({ isRefreshing, onRefresh, lastUpdated }: ToolbarProps) {
+  return (
+    <header className="toolbar">
+      <h1>ArcGIS Explorer (but doesn't suck ass)</h1>
+      <div className="toolbar__actions">
+        {lastUpdated ? (
+          <span className="toolbar__timestamp">
+            Last updated: {lastUpdated.toLocaleString()}
+          </span>
+        ) : (
+          <span className="toolbar__timestamp">No cached data</span>
+        )}
+        <button type="button" onClick={onRefresh} disabled={isRefreshing}>
+          {isRefreshing && <span className="spinner spinner--inline" aria-hidden="true" />}
+          <span>{isRefreshing ? 'Refreshing…' : 'Update All Data'}</span>
+        </button>
+      </div>
+    </header>
+  );
+}
