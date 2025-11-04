@@ -1210,10 +1210,10 @@ function RegionMap({
   const [showAllProperties, setShowAllProperties] = useState(false);
 
   const displayedListings = useMemo(() => {
-    // When toggle is on and regions exist, show all filtered listings
-    // Otherwise show region-filtered listings (or all if no regions)
-    return showAllProperties && regions.length > 0 ? allListings : listings;
-  }, [showAllProperties, regions.length, allListings, listings]);
+    // When toggle is on, always show all filtered listings
+    // When toggle is off, show region-filtered listings only
+    return showAllProperties ? allListings : listings;
+  }, [showAllProperties, allListings, listings]);
 
   useEffect(() => {
     if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
