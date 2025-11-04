@@ -1,3 +1,5 @@
+export type ShortTermRentalPriority = 'high' | 'medium' | 'baseline';
+
 export interface ResidentialZoneDefinition {
   code: string;
   name: string;
@@ -7,6 +9,7 @@ export interface ResidentialZoneDefinition {
   aliases?: string[];
   filterable?: boolean;
   notes?: string;
+  shortTermRentalPriority?: ShortTermRentalPriority;
 }
 
 function normaliseZoneKey(value: string): string {
@@ -65,6 +68,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Unincorporated Summit County'],
     description:
       'Quarter-acre single-family neighborhoods. Commonly mapped in established townsites with compact lots while maintaining detached housing.',
+    shortTermRentalPriority: 'medium',
   },
   {
     code: 'R-6',
@@ -74,6 +78,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Unincorporated Summit County', 'Town of Silverthorne (R-6)'],
     description:
       'Higher-intensity neighborhood district that mixes small-lot single-family homes with duplexes—roughly six homes or three duplexes per acre.',
+    shortTermRentalPriority: 'medium',
   },
   {
     code: 'R-15',
@@ -83,6 +88,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Town of Silverthorne'],
     description:
       'Silverthorne’s multifamily zone for compact condo or apartment projects near the town core and Blue River corridor.',
+    shortTermRentalPriority: 'high',
   },
   {
     code: 'R-25',
@@ -92,6 +98,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Unincorporated Summit County'],
     description:
       'High-density residential district tailored to condominium or apartment buildings in resort centers or mixed-use cores.',
+    shortTermRentalPriority: 'high',
   },
   {
     code: 'RC-40000',
@@ -101,6 +108,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Unincorporated Summit County (Legacy Townsites)'],
     description:
       'Historic rural community platting with near-acre lots that preserve a village feel in older unincorporated settlements.',
+    shortTermRentalPriority: 'medium',
   },
   {
     code: 'RC-5000',
@@ -110,6 +118,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Unincorporated Summit County (Legacy Townsites)'],
     description:
       'Legacy mining-era townsites platted with tiny lots. Supports one detached home per 5,000 sq ft but is rarely applied to new subdivisions.',
+    shortTermRentalPriority: 'high',
   },
   {
     code: 'R-P',
@@ -131,6 +140,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
       'Breckenridge regulates residential development through numbered Land Use Districts with performance-based guidelines instead of uniform R-zones. Downtown districts support townhomes, condos, and mixed use, while outlying slopes limit density to protect open space.',
     filterable: false,
     notes: 'Filter by specific Land Use District numbers using the table search when detailed parcel data is available.',
+    shortTermRentalPriority: 'high',
   },
   {
     code: 'RS',
@@ -155,6 +165,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Town of Dillon', 'Town of Frisco'],
     description:
       'Transition-scale districts. Dillon’s RL protects single-family neighborhoods on modest lots, while Frisco’s RL enables duplex or small townhouse clusters up to eight units per acre.',
+    shortTermRentalPriority: 'medium',
   },
   {
     code: 'RM',
@@ -163,6 +174,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Town of Dillon', 'Town of Frisco'],
     description:
       'Enables duplexes, townhomes, and small condo buildings that bridge low-density areas with higher-intensity mixed-use districts.',
+    shortTermRentalPriority: 'high',
   },
   {
     code: 'RH',
@@ -171,6 +183,7 @@ export const RESIDENTIAL_ZONES: ResidentialZoneDefinition[] = [
     jurisdictions: ['Town of Dillon', 'Town of Frisco'],
     description:
       'High-density zones for multi-story condominiums or apartments near town centers and amenities.',
+    shortTermRentalPriority: 'high',
   },
 ];
 

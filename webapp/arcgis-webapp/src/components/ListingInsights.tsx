@@ -93,6 +93,11 @@ const LAND_BARON_SECTION_SIZE = 5;
 const MAX_ZONE_OVERVIEW_ROWS = 16;
 // Treat zones with fewer than five cached listings as noise so the overview stays focused.
 const MIN_ZONE_LISTING_THRESHOLD = 5;
+const SHORT_TERM_RENTAL_PRIORITY_WEIGHTS: Record<'high' | 'medium' | 'baseline', number> = {
+  high: 2,
+  medium: 1,
+  baseline: 0,
+};
 
 const MANUAL_NON_PERSON_NAMES = new Set(
   (nonPersonOwnerNames as string[]).map((value) => value.toUpperCase()),
@@ -195,6 +200,12 @@ interface ZoneSuppressionStats {
   missingMetrics: number;
   belowThreshold: number;
   truncated: number;
+  highValueOmitted: number;
+}
+
+function resolveZonePriority(definition: ResidentialZoneDefinition): number {
+  const level = definition.shortTermRentalPriority ?? 'baseline';
+  return SHORT_TERM_RENTAL_PRIORITY_WEIGHTS[level];
 }
 
 function buildSubdivisionDisplay(
@@ -404,22 +415,34 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       missingMetrics: 0,
       belowThreshold: 0,
       truncated: 0,
+      highValueOmitted: 0,
     };
 
     const filtered = rows.filter((row) => {
+      const priorityWeight = resolveZonePriority(row.definition);
       if (!row.metric) {
         suppression.missingMetrics += 1;
+        if (priorityWeight > 0) {
+          suppression.highValueOmitted += 1;
+        }
         return false;
       }
       const totalListings = row.metric.totalListings;
       if (typeof totalListings !== 'number' || totalListings < MIN_ZONE_LISTING_THRESHOLD) {
         suppression.belowThreshold += 1;
+        if (priorityWeight > 0) {
+          suppression.highValueOmitted += 1;
+        }
         return false;
       }
       return true;
     });
 
     filtered.sort((a, b) => {
+      const priorityDelta = resolveZonePriority(b.definition) - resolveZonePriority(a.definition);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
       const totalA = a.metric?.totalListings ?? 0;
       const totalB = b.metric?.totalListings ?? 0;
       if (totalA === totalB) {
@@ -429,7 +452,9 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     });
 
     if (filtered.length > MAX_ZONE_OVERVIEW_ROWS) {
-      suppression.truncated = filtered.length - MAX_ZONE_OVERVIEW_ROWS;
+      const truncatedRows = filtered.slice(MAX_ZONE_OVERVIEW_ROWS);
+      suppression.truncated = truncatedRows.length;
+      suppression.highValueOmitted += truncatedRows.filter((row) => resolveZonePriority(row.definition) > 0).length;
       return { rows: filtered.slice(0, MAX_ZONE_OVERVIEW_ROWS), suppression };
     }
 
@@ -708,7 +733,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
               <h3 id="insights-top-zones">Residential zoning overview</h3>
               <p className="insight-card__description">
                 Click a tile to reveal zoning guidance. Filterable zones also narrow the listings table when Supabase counts are
-                available.
+                available. High-opportunity short-term rental districts are surfaced first based on Summit County zoning guidance.
               </p>
             </div>
           </div>
@@ -805,6 +830,9 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
               : ''}
             {zoneSuppression.truncated > 0
               ? ` ${zoneSuppression.truncated.toLocaleString()} additional zone${zoneSuppression.truncated === 1 ? '' : 's'} were truncated to keep the grid concise.`
+              : ''}
+            {zoneSuppression.highValueOmitted > 0
+              ? ` ${zoneSuppression.highValueOmitted.toLocaleString()} high-value short-term rental zone${zoneSuppression.highValueOmitted === 1 ? '' : 's'} are hidden until more Supabase data lands.`
               : ''}
             {' '}Tiles highlighted in blue filter the listings table; dashed tiles surface metrics that need zoning research.
           </p>
