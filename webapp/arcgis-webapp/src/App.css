@@ -1,0 +1,47 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color: #1a1a1a;
+  background: radial-gradient(circle at top, #f0f4ff, #ffffff 60%);
+}
+
+.app__header {
+  text-align: center;
+  padding: 2rem;
+  border-radius: 1.5rem;
+  background-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 20px 25px -15px rgba(15, 23, 42, 0.35);
+}
+
+.app__logo {
+  height: 8rem;
+  width: 8rem;
+  will-change: filter;
+  transition: filter 300ms ease;
+}
+
+.app__logo:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+p {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  max-width: 35ch;
+  margin: 0 auto;
+}
+
+code {
+  font-size: 0.95em;
+  background-color: rgba(15, 23, 42, 0.08);
+  padding: 0.2em 0.4em;
+  border-radius: 0.4em;
+}
