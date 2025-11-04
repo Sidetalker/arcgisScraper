@@ -8,6 +8,7 @@ import {
   ListingFeatureSet,
   QueryGeometry,
   SearchEnvelopeOptions,
+  SpatialReference,
 } from '@/types';
 
 const DEFAULT_LAYER_URL =
@@ -71,6 +72,26 @@ function ensureSpatialReference(geometry?: QueryGeometry): QueryGeometry | undef
     ...geometry,
     spatialReference: { wkid: 4326 },
   } as QueryGeometry;
+}
+
+function serialiseSpatialReference(spatialReference?: SpatialReference): string | undefined {
+  if (!spatialReference) {
+    return undefined;
+  }
+
+  const { latestWkid, wkid } = spatialReference;
+  if (typeof latestWkid === 'number' && Number.isFinite(latestWkid)) {
+    return String(latestWkid);
+  }
+  if (typeof wkid === 'number' && Number.isFinite(wkid)) {
+    return String(wkid);
+  }
+
+  try {
+    return JSON.stringify(spatialReference);
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchJson(
@@ -229,6 +250,14 @@ function buildQueryParams({
     const geometryType = inferGeometryType(preparedGeometry) ?? 'esriGeometryEnvelope';
     params.set('geometryType', geometryType);
     params.set('geometry', JSON.stringify(preparedGeometry));
+    const spatialReference =
+      typeof preparedGeometry === 'object' && preparedGeometry !== null
+        ? (preparedGeometry as { spatialReference?: SpatialReference }).spatialReference
+        : undefined;
+    const inSr = serialiseSpatialReference(spatialReference);
+    if (inSr) {
+      params.set('inSR', inSr);
+    }
   }
 
   if (token) {
@@ -261,7 +290,7 @@ async function queryFeatures(
   const collected: ArcgisFeatureSet['features'] = [];
   let template: Omit<ListingFeatureSet, 'features'> & { features?: ListingFeatureSet['features'] } | undefined;
 
-  while (true) {
+  for (;;) {
     const params = buildQueryParams({ filters, geometry, pageSize, offset, token });
     const page = (await fetchJson(`${layerUrl}/query`, params, { referer, signal })) as ListingFeatureSet;
 
