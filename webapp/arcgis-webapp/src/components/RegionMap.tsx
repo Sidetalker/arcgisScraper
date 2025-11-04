@@ -737,6 +737,13 @@ function MapToolbar({
   onToggleShowAll,
 }: MapToolbarProps): null {
   const map = useMap();
+  const latestHandlersRef = useRef({
+    onDrawPolygon,
+    onDrawCircle,
+    onClearRegions,
+    onFitRegions,
+    onToggleShowAll,
+  });
   const buttonRefs = useRef<
     | {
         clearButton?: HTMLButtonElement;
@@ -747,6 +754,16 @@ function MapToolbar({
       }
     | null
   >(null);
+
+  useEffect(() => {
+    latestHandlersRef.current = {
+      onDrawPolygon,
+      onDrawCircle,
+      onClearRegions,
+      onFitRegions,
+      onToggleShowAll,
+    };
+  }, [onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll]);
 
   useEffect(() => {
     const toolbarControl = new L.Control({ position: 'topright' });
@@ -766,7 +783,7 @@ function MapToolbar({
       polygonButton.setAttribute('aria-pressed', 'false');
       polygonButton.addEventListener('click', (event) => {
         event.preventDefault();
-        onDrawPolygon();
+        latestHandlersRef.current.onDrawPolygon();
       });
 
       const circleButton = L.DomUtil.create(
@@ -780,7 +797,7 @@ function MapToolbar({
       circleButton.setAttribute('aria-pressed', 'false');
       circleButton.addEventListener('click', (event) => {
         event.preventDefault();
-        onDrawCircle();
+        latestHandlersRef.current.onDrawCircle();
       });
 
       const fitButton = L.DomUtil.create(
@@ -795,7 +812,7 @@ function MapToolbar({
       fitButton.addEventListener('click', (event) => {
         event.preventDefault();
         if (!fitButton.disabled) {
-          onFitRegions();
+          latestHandlersRef.current.onFitRegions();
         }
       });
 
@@ -811,7 +828,7 @@ function MapToolbar({
       clearButton.addEventListener('click', (event) => {
         event.preventDefault();
         if (!clearButton.disabled) {
-          onClearRegions();
+          latestHandlersRef.current.onClearRegions();
         }
       });
 
@@ -830,7 +847,7 @@ function MapToolbar({
       }
       toggleAllButton.addEventListener('click', (event) => {
         event.preventDefault();
-        onToggleShowAll();
+        latestHandlersRef.current.onToggleShowAll();
       });
 
       L.DomEvent.disableClickPropagation(container);
@@ -853,7 +870,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties]);
+  }, [map]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -879,8 +896,13 @@ function MapToolbar({
       return;
     }
 
-    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
-    refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+    const isShowingAll = Boolean(showAllProperties);
+    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', isShowingAll);
+    refs.toggleAllButton.setAttribute('aria-pressed', isShowingAll ? 'true' : 'false');
+    refs.toggleAllButton.textContent = isShowingAll ? 'Show drawn regions only' : 'Show all properties';
+    refs.toggleAllButton.title = isShowingAll
+      ? 'Show only the properties that fall within drawn regions'
+      : 'Show all properties or only those within regions';
   }, [showAllProperties]);
 
   useEffect(() => {
