@@ -25,12 +25,6 @@ export function FilterPanel({
       onChange({ ...filters, complex: value });
     } else if (name === 'owner') {
       onChange({ ...filters, owner: value });
-    } else if (name === 'maxEvDistanceMiles') {
-      const numValue = value.trim() === '' ? null : parseFloat(value);
-      onChange({ 
-        ...filters, 
-        maxEvDistanceMiles: numValue !== null && isFinite(numValue) && numValue > 0 ? numValue : null 
-      });
     }
   };
 
@@ -201,21 +195,6 @@ export function FilterPanel({
         />
       </div>
 
-      <div className="filters__group">
-        <label htmlFor="maxEvDistanceMiles">Max distance to EV station (miles)</label>
-        <input
-          id="maxEvDistanceMiles"
-          name="maxEvDistanceMiles"
-          type="number"
-          min="0"
-          step="0.1"
-          value={filters.maxEvDistanceMiles ?? ''}
-          onChange={handleInputChange}
-          placeholder="e.g. 5"
-          disabled={disabled}
-          title="Only show listings within this distance to an EV charging station"
-        />
-      </div>
     </aside>
   );
 }

@@ -6,7 +6,6 @@ import {
   resolveRenewalCategory,
   type RenewalEstimate,
 } from '@/services/renewalEstimator';
-import { findNearestEvStationDistance } from '@/services/evChargingStations';
 import { assertSupabaseClient } from '@/services/supabaseClient';
 
 type Nullable<T> = T | null;
@@ -85,7 +84,6 @@ export interface ListingRow {
   estimated_renewal_reference: Nullable<string>;
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
-  nearest_ev_station_distance_meters: Nullable<number>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -122,10 +120,6 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
-    nearest_ev_station_distance_meters:
-      typeof record.nearestEvStationDistanceMeters === 'number'
-        ? record.nearestEvStationDistanceMeters
-        : null,
     raw: (record.raw as Record<string, unknown>) ?? null,
   };
 }
@@ -169,19 +163,6 @@ function fromListingRow(row: ListingRow): ListingRecord {
   const latitude = typeof row.latitude === 'number' ? row.latitude : null;
   const longitude = typeof row.longitude === 'number' ? row.longitude : null;
 
-  let nearestEvStationDistanceMeters: number | null =
-    typeof row.nearest_ev_station_distance_meters === 'number' &&
-    Number.isFinite(row.nearest_ev_station_distance_meters)
-      ? row.nearest_ev_station_distance_meters
-      : null;
-
-  if (nearestEvStationDistanceMeters === null && latitude !== null && longitude !== null) {
-    const computed = findNearestEvStationDistance(latitude, longitude);
-    if (typeof computed === 'number' && Number.isFinite(computed)) {
-      nearestEvStationDistanceMeters = computed;
-    }
-  }
-
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -208,7 +189,6 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
-    nearestEvStationDistanceMeters,
     raw: rawAttributes,
   };
 }
@@ -239,7 +219,6 @@ const LISTING_COLUMNS = [
   'estimated_renewal_reference',
   'estimated_renewal_category',
   'estimated_renewal_month_key',
-  'nearest_ev_station_distance_meters',
   'raw',
   'updated_at',
 ] as const;

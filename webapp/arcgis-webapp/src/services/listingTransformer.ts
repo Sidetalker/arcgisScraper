@@ -1,7 +1,6 @@
 import type { ArcgisFeature } from '@/types';
 import type { ListingAttributes, ListingFilters, ListingRecord } from '@/types';
 import { categoriseRenewal } from '@/services/renewalEstimator';
-import { findNearestEvStationDistance } from '@/services/evChargingStations';
 
 const BUSINESS_KEYWORDS = [
   ' LLC',
@@ -469,8 +468,6 @@ export function toListingRecord(
   const estimatedRenewalCategory = renewalSnapshot.category;
   const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
 
-  const nearestEvStationDistanceMeters = findNearestEvStationDistance(latitude, longitude);
-
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -497,26 +494,8 @@ export function toListingRecord(
     estimatedRenewalReference,
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
-    nearestEvStationDistanceMeters,
     raw: attributes,
   };
-}
-
-function ensureNearestEvDistance(listing: ListingRecord): number | null {
-  const currentDistance = listing.nearestEvStationDistanceMeters;
-  if (typeof currentDistance === 'number' && Number.isFinite(currentDistance)) {
-    return currentDistance;
-  }
-
-  if (typeof listing.latitude === 'number' && typeof listing.longitude === 'number') {
-    const computed = findNearestEvStationDistance(listing.latitude, listing.longitude);
-    if (typeof computed === 'number' && Number.isFinite(computed)) {
-      listing.nearestEvStationDistanceMeters = computed;
-      return computed;
-    }
-  }
-
-  return null;
 }
 
 export function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean {
@@ -589,18 +568,6 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       (value) => value.toLowerCase() === monthKey.toLowerCase(),
     );
     if (!monthMatch) {
-      return false;
-    }
-  }
-
-  if (filters.maxEvDistanceMiles !== null && filters.maxEvDistanceMiles > 0) {
-    const resolvedDistance = ensureNearestEvDistance(listing);
-    if (resolvedDistance === null) {
-      return false;
-    }
-    const METERS_PER_MILE = 1609.34;
-    const distanceMiles = resolvedDistance / METERS_PER_MILE;
-    if (distanceMiles > filters.maxEvDistanceMiles) {
       return false;
     }
   }
