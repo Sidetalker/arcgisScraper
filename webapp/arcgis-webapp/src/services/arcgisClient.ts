@@ -191,7 +191,6 @@ function buildQueryParams({
     resultOffset: offset.toString(),
     resultRecordCount: pageSize.toString(),
     returnGeometry: filters?.returnGeometry === false ? 'false' : 'true',
-    spatialRel: 'esriSpatialRelIntersects',
   });
 
   const orderByFields = filters?.orderByFields;
@@ -229,6 +228,7 @@ function buildQueryParams({
     const geometryType = inferGeometryType(preparedGeometry) ?? 'esriGeometryEnvelope';
     params.set('geometryType', geometryType);
     params.set('geometry', JSON.stringify(preparedGeometry));
+    params.set('spatialRel', 'esriSpatialRelIntersects');
   }
 
   if (token) {
