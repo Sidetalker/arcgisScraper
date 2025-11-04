@@ -240,7 +240,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [applyListingSnapshot, persistLocalCache]);
 
   const isLocalCacheStale = useMemo(() => {
     if (!localCachedAt || !cachedAt) {

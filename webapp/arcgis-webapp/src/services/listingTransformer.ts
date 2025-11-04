@@ -40,8 +40,8 @@ const BUSINESS_KEYWORDS = [
 ];
 
 const SUFFIX_TOKENS = new Set(['JR', 'SR', 'II', 'III', 'IV', 'V']);
-const UNIT_RE = /UNIT\s+([A-Za-z0-9\-]+)/i;
-const BLDG_RE = /\bBLDG\s+([A-Za-z0-9\-]+)/i;
+const UNIT_RE = /UNIT\s+([A-Za-z0-9-]+)/i;
+const BLDG_RE = /\bBLDG\s+([A-Za-z0-9-]+)/i;
 const BREAK_PLACEHOLDER = '|||BREAK|||';
 
 function decodeHtml(value: unknown): string {
@@ -180,7 +180,7 @@ function splitOwnerName(rawName: string): OwnerParts {
     return { first: '', middle: '', last: '', suffix: '', title: '', company: '' };
   }
 
-  let tokens = [...rawTokens];
+  const tokens = [...rawTokens];
   let suffix = '';
   if (tokens.length && SUFFIX_TOKENS.has(tokens[tokens.length - 1].toUpperCase())) {
     suffix = tokens.pop() ?? '';

@@ -18,7 +18,7 @@ export async function saveListingsToCache(
 ): Promise<Date> {
   const savedAt = new Date();
   const payload: ListingCachePayload = {
-    records: records.map(({ raw, ...rest }) => rest),
+    records: records.map(({ raw: _raw, ...rest }) => rest),
     savedAt: savedAt.toISOString(),
     supabaseUpdatedAt: supabaseUpdatedAt ? supabaseUpdatedAt.toISOString() : null,
   };

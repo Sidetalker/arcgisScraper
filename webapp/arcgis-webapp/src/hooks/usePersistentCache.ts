@@ -281,14 +281,16 @@ export function usePersistentCache(): PersistentCacheApi {
     notifyChange();
   }, [notifyChange]);
 
-  const entries = useMemo(() => {
+  const entrySnapshot = useMemo(() => {
     const storage = storageRef.current;
     if (!storage) {
-      return [] as CacheEntrySnapshot[];
+      return { version, entries: [] as CacheEntrySnapshot[] };
     }
 
-    return readAllEntries(storage);
+    return { version, entries: readAllEntries(storage) };
   }, [version]);
+
+  const entries = entrySnapshot.entries;
 
   return useMemo<PersistentCacheApi>(
     () => ({

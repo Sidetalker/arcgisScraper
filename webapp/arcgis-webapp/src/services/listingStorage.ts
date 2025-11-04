@@ -114,7 +114,8 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
   let latest: Date | null = null;
   const records: ListingRecord[] = [];
 
-  while (true) {
+  let hasMore = true;
+  while (hasMore) {
     const to = from + PAGE_SIZE - 1;
     const { data, error } = await client
       .from('listings')
@@ -138,7 +139,8 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
     });
 
     if (rows.length < PAGE_SIZE) {
-      break;
+      hasMore = false;
+      continue;
     }
 
     from += PAGE_SIZE;

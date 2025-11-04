@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -134,6 +134,145 @@ function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
     }
   });
   return results;
+}
+
+function getUniqueOwners(listing: ListingRecord): string[] {
+  const owners = new Set<string>();
+  listing.ownerNames.forEach((name) => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      owners.add(trimmed);
+    }
+  });
+
+  const fallbackOwner = listing.ownerName?.trim();
+  if (owners.size === 0 && fallbackOwner) {
+    owners.add(fallbackOwner);
+  }
+
+  return Array.from(owners);
+}
+
+function normaliseDetailUrl(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function splitLines(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+type ListingSelectionPanelProps = {
+  listing: ListingRecord | null;
+  hasListings: boolean;
+};
+
+function ListingSelectionPanel({ listing, hasListings }: ListingSelectionPanelProps): JSX.Element {
+  if (!listing) {
+    return (
+      <div className="region-map__selection region-map__selection--empty" aria-live="polite">
+        <span>{hasListings ? 'Select a marker to see property details.' : 'Draw a region or adjust filters to find properties.'}</span>
+      </div>
+    );
+  }
+
+  const title =
+    listing.complex?.trim() ||
+    listing.physicalAddress?.trim() ||
+    listing.ownerName?.trim() ||
+    listing.scheduleNumber?.trim() ||
+    'Listing';
+
+  const subtitleParts: string[] = [];
+  const unit = listing.unit?.trim();
+  if (unit) {
+    subtitleParts.push(`Unit ${unit}`);
+  }
+  const subdivision = listing.subdivision?.trim();
+  if (subdivision) {
+    subtitleParts.push(subdivision);
+  }
+  const subtitle = subtitleParts.join(' · ');
+
+  const owners = getUniqueOwners(listing);
+  const mailingAddressLines = splitLines(listing.mailingAddress);
+  const detailUrl = normaliseDetailUrl(listing.publicDetailUrl);
+
+  return (
+    <div className="region-map__selection" aria-live="polite">
+      <div className="region-map__selection-header">
+        <div className="region-map__selection-heading">
+          <h3 className="region-map__selection-title">{title}</h3>
+          {subtitle ? <p className="region-map__selection-subtitle">{subtitle}</p> : null}
+        </div>
+        {detailUrl ? (
+          <a
+            href={detailUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="region-map__selection-link"
+            aria-label="Open listing details in a new tab"
+          >
+            <svg className="region-map__selection-link-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="12" cy="8" r="1" fill="currentColor" />
+              <path
+                d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z"
+                fill="currentColor"
+              />
+            </svg>
+            <span>Official details</span>
+          </a>
+        ) : null}
+      </div>
+
+      <dl className="region-map__selection-grid">
+        {owners.length ? (
+          <div>
+            <dt>Owner(s)</dt>
+            <dd>{owners.join(', ')}</dd>
+          </div>
+        ) : null}
+        {listing.physicalAddress ? (
+          <div>
+            <dt>Physical address</dt>
+            <dd>{listing.physicalAddress}</dd>
+          </div>
+        ) : null}
+        {listing.scheduleNumber ? (
+          <div>
+            <dt>Schedule #</dt>
+            <dd>{listing.scheduleNumber}</dd>
+          </div>
+        ) : null}
+        {listing.mailingAddress ? (
+          <div>
+            <dt>Mailing address</dt>
+            <dd>
+              {mailingAddressLines.length > 0
+                ? mailingAddressLines.map((line, index) => <span key={index}>{line}</span>)
+                : listing.mailingAddress}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
+  );
 }
 
 type DrawManagerProps = {
@@ -282,9 +421,12 @@ function DrawManager({
 type ListingMarkersProps = {
   listings: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
+  selectedListingId?: string | null;
+  hoveredListingId?: string | null;
+  onListingHover?: (listingId: string | null) => void;
 };
 
-function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): null {
+function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredListingId, onListingHover }: ListingMarkersProps): null {
   const map = useMap();
   const layerRef = useRef<L.LayerGroup | null>(null);
 
@@ -300,25 +442,17 @@ function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): nul
         return;
       }
 
+      const isSelected = listing.id === selectedListingId;
+      const isHovered = listing.id === hoveredListingId;
+      const isActive = isSelected || isHovered;
+
       const marker = L.circleMarker([listing.latitude, listing.longitude], {
-        radius: 5,
-        color: '#991b1b',
-        weight: 1,
-        fillColor: '#ef4444',
-        fillOpacity: 0.85,
+        radius: isActive ? 7 : 5,
+        color: isActive ? '#1d4ed8' : '#991b1b',
+        weight: isActive ? 2 : 1,
+        fillColor: isActive ? '#3b82f6' : '#ef4444',
+        fillOpacity: isActive ? 0.95 : 0.85,
         pane: 'markerPane',
-      });
-
-      const tooltipLabel =
-        listing.complex ||
-        listing.physicalAddress ||
-        listing.ownerName ||
-        listing.scheduleNumber ||
-        'Listing';
-
-      marker.bindTooltip(tooltipLabel, {
-        direction: 'top',
-        offset: L.point(0, -6),
       });
 
       marker.on('click', (event: L.LeafletMouseEvent) => {
@@ -327,9 +461,21 @@ function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): nul
         onListingSelect?.(listing.id);
       });
 
+      marker.on('mouseover', () => {
+        onListingHover?.(listing.id);
+      });
+
+      marker.on('mouseout', () => {
+        onListingHover?.(null);
+      });
+
+      if (isActive) {
+        marker.bringToFront();
+      }
+
       marker.addTo(layerGroup);
     });
-  }, [listings, map, onListingSelect]);
+  }, [hoveredListingId, listings, map, onListingHover, onListingSelect, selectedListingId]);
 
   useEffect(() => {
     return () => {
@@ -351,6 +497,47 @@ function RegionMap({
 }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
   const subtitle = 'Draw circles on the map to filter listings by one or more regions.';
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedListingId && !listings.some((listing) => listing.id === selectedListingId)) {
+      setSelectedListingId(null);
+    }
+  }, [listings, selectedListingId]);
+
+  useEffect(() => {
+    if (hoveredListingId && !listings.some((listing) => listing.id === hoveredListingId)) {
+      setHoveredListingId(null);
+    }
+  }, [hoveredListingId, listings]);
+
+  useEffect(() => {
+    if (!selectedListingId && listings.length === 1) {
+      setSelectedListingId(listings[0]?.id ?? null);
+    }
+  }, [listings, selectedListingId]);
+
+  const activeListingId = hoveredListingId ?? selectedListingId;
+
+  const activeListing = useMemo(() => {
+    if (!activeListingId) {
+      return null;
+    }
+    return listings.find((listing) => listing.id === activeListingId) ?? null;
+  }, [activeListingId, listings]);
+
+  const handleMarkerSelect = useCallback(
+    (listingId: string) => {
+      setSelectedListingId(listingId);
+      onListingSelect?.(listingId);
+    },
+    [onListingSelect],
+  );
+
+  const handleMarkerHover = useCallback((listingId: string | null) => {
+    setHoveredListingId(listingId);
+  }, []);
 
   return (
     <section
@@ -364,6 +551,7 @@ function RegionMap({
           {subtitle}
         </p>
       </div>
+      <ListingSelectionPanel listing={activeListing} hasListings={listings.length > 0} />
       <MapContainer
         className="region-map__map"
         center={mapCenter}
@@ -376,7 +564,13 @@ function RegionMap({
           onRegionsChange={onRegionsChange}
         />
         {listings.length ? (
-          <ListingMarkers listings={listings} onListingSelect={onListingSelect} />
+          <ListingMarkers
+            listings={listings}
+            onListingSelect={handleMarkerSelect}
+            selectedListingId={selectedListingId}
+            hoveredListingId={hoveredListingId}
+            onListingHover={handleMarkerHover}
+          />
         ) : null}
       </MapContainer>
     </section>
