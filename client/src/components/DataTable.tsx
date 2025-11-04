@@ -6,6 +6,7 @@ import { getFeatureId } from '../utils/features';
 interface DataTableProps {
   features: ArcgisFeature[];
   fields: FieldDefinition[];
+  isLoading: boolean;
   selectedFeatureId: string | null;
   onSelectFeature: (featureId: string | null) => void;
 }
@@ -15,6 +16,7 @@ const PAGE_SIZE = 25;
 export function DataTable({
   features,
   fields,
+  isLoading,
   selectedFeatureId,
   onSelectFeature,
 }: DataTableProps) {
@@ -94,47 +96,60 @@ export function DataTable({
   return (
     <section className="panel">
       <header className="panel__header">
-        <h2>Results ({features.length.toLocaleString()})</h2>
+        <h2>
+          Results {isLoading ? '(Updating…)' : `(${features.length.toLocaleString()})`}
+        </h2>
         <div className="pagination">
-          <button type="button" onClick={handlePrev} disabled={page === 0}>
+          <button type="button" onClick={handlePrev} disabled={page === 0 || isLoading}>
             Previous
           </button>
           <span>
-            Page {page + 1} of {totalPages}
+            {isLoading ? 'Updating…' : `Page ${page + 1} of ${totalPages}`}
           </span>
-          <button type="button" onClick={handleNext} disabled={page >= totalPages - 1}>
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={page >= totalPages - 1 || isLoading}
+          >
             Next
           </button>
         </div>
       </header>
-      <div className="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th key={column.name}>{column.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {pageFeatures.map((feature) => {
-              const featureId = getFeatureId(feature);
-              const isSelected = selectedFeatureId === featureId;
-              return (
-                <tr
-                  key={featureId}
-                  ref={registerRowRef(featureId)}
-                  className={isSelected ? 'table-row table-row--selected' : 'table-row'}
-                  onClick={() => onSelectFeature(isSelected ? null : featureId)}
-                >
-                  {columns.map((column) => (
-                    <td key={column.name}>{String(feature.attributes[column.name] ?? '')}</td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className={isLoading ? 'table-wrapper table-wrapper--loading' : 'table-wrapper'}>
+        {isLoading ? (
+          <div className="table-loading" role="status" aria-live="polite">
+            <span className="spinner spinner--large" aria-hidden="true" />
+            <p>Updating property data…</p>
+          </div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th key={column.name}>{column.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pageFeatures.map((feature) => {
+                const featureId = getFeatureId(feature);
+                const isSelected = selectedFeatureId === featureId;
+                return (
+                  <tr
+                    key={featureId}
+                    ref={registerRowRef(featureId)}
+                    className={isSelected ? 'table-row table-row--selected' : 'table-row'}
+                    onClick={() => onSelectFeature(isSelected ? null : featureId)}
+                  >
+                    {columns.map((column) => (
+                      <td key={column.name}>{String(feature.attributes[column.name] ?? '')}</td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </section>
   );
