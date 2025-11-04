@@ -9,9 +9,13 @@ import {
   type RenewalSummaryMetric,
   type SubdivisionMetric,
 } from '@/services/listingMetrics';
+import { computeRenewalMonthKey } from '@/services/renewalEstimator';
+import type { ListingFilters } from '@/types';
 
 interface ListingInsightsProps {
   supabaseAvailable: boolean;
+  filters: ListingFilters;
+  onFiltersChange: (filters: ListingFilters) => void;
 }
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -77,6 +81,8 @@ const SUMMARY_DESCRIPTORS: Record<
   },
 };
 
+const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
+
 function resolveSummaryDescriptor(category: RenewalSummaryMetric['category']) {
   if (SUMMARY_ORDER.includes(category as SummaryCategory)) {
     return SUMMARY_DESCRIPTORS[category as SummaryCategory];
@@ -123,13 +129,22 @@ function resolveMethodDescriptor(method: string) {
   };
 }
 
-function aggregateRemainingSubdivisions(subdivisions: SubdivisionMetric[]): SubdivisionMetric[] {
-  if (subdivisions.length <= 6) {
-    return subdivisions;
+type DisplaySubdivisionMetric = SubdivisionMetric & { synthetic?: boolean };
+
+function buildSubdivisionDisplay(
+  subdivisions: SubdivisionMetric[],
+  limit: number,
+): DisplaySubdivisionMetric[] {
+  if (limit <= 0) {
+    return [];
   }
 
-  const top = subdivisions.slice(0, 6);
-  const remaining = subdivisions.slice(6);
+  if (subdivisions.length <= limit) {
+    return subdivisions.slice(0, limit);
+  }
+
+  const top = subdivisions.slice(0, limit);
+  const remaining = subdivisions.slice(limit);
   const totalListings = remaining.reduce((sum, item) => sum + item.totalListings, 0);
   if (totalListings === 0) {
     return top;
@@ -146,8 +161,22 @@ function aggregateRemainingSubdivisions(subdivisions: SubdivisionMetric[]): Subd
       businessOwnerCount,
       individualOwnerCount,
       updatedAt: top[0]?.updatedAt ?? null,
+      synthetic: true,
     },
   ];
+}
+
+function toggleStringValue(list: string[], value: string): string[] {
+  const normalised = value.toLowerCase();
+  const existingIndex = list.findIndex((item) => item.toLowerCase() === normalised);
+  if (existingIndex === -1) {
+    return [...list, value];
+  }
+  return list.filter((_, index) => index !== existingIndex);
+}
+
+function isStringActive(list: string[], value: string): boolean {
+  return list.some((item) => item.toLowerCase() === value.toLowerCase());
 }
 
 function filterTimeline(metrics: ListingMetrics | null): ListingMetrics['renewalTimeline'] {
@@ -165,7 +194,7 @@ function filterTimeline(metrics: ListingMetrics | null): ListingMetrics['renewal
   });
 }
 
-function ListingInsights({ supabaseAvailable }: ListingInsightsProps): JSX.Element {
+function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: ListingInsightsProps): JSX.Element {
   const [metrics, setMetrics] = useState<ListingMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +203,7 @@ function ListingInsights({ supabaseAvailable }: ListingInsightsProps): JSX.Eleme
   const [jobError, setJobError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [lastSupabaseRunAt, setLastSupabaseRunAt] = useState<Date | null>(null);
+  const [subdivisionLimit, setSubdivisionLimit] = useState<number>(8);
 
   const loadMetrics = useCallback(async () => {
     if (!supabaseAvailable) {
@@ -247,12 +277,12 @@ function ListingInsights({ supabaseAvailable }: ListingInsightsProps): JSX.Eleme
     void loadMetrics();
   }, [loadMetrics, supabaseAvailable]);
 
-  const topSubdivisions = useMemo(() => {
+  const subdivisionRows = useMemo(() => {
     if (!metrics) {
-      return [] as SubdivisionMetric[];
+      return [] as DisplaySubdivisionMetric[];
     }
-    return aggregateRemainingSubdivisions(metrics.subdivisions);
-  }, [metrics]);
+    return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
+  }, [metrics, subdivisionLimit]);
 
   const timelinePoints = useMemo(() => filterTimeline(metrics), [metrics]);
 
@@ -284,12 +314,47 @@ function ListingInsights({ supabaseAvailable }: ListingInsightsProps): JSX.Eleme
   }, [metrics]);
 
   const maxSubdivisionListings = useMemo(() => {
-    return topSubdivisions.reduce((max, item) => Math.max(max, item.totalListings), 0);
-  }, [topSubdivisions]);
+    return subdivisionRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+  }, [subdivisionRows]);
 
   const maxRenewalListings = useMemo(() => {
     return timelinePoints.reduce((max, item) => Math.max(max, item.listingCount), 0);
   }, [timelinePoints]);
+
+  const handleSubdivisionToggle = useCallback(
+    (subdivision: string, synthetic?: boolean) => {
+      if (synthetic) {
+        return;
+      }
+      const next = toggleStringValue(filters.subdivisions, subdivision);
+      onFiltersChange({ ...filters, subdivisions: next });
+    },
+    [filters, onFiltersChange],
+  );
+
+  const handleRenewalCategoryToggle = useCallback(
+    (category: string) => {
+      const next = toggleStringValue(filters.renewalCategories, category);
+      onFiltersChange({ ...filters, renewalCategories: next });
+    },
+    [filters, onFiltersChange],
+  );
+
+  const handleRenewalMethodToggle = useCallback(
+    (method: string) => {
+      const next = toggleStringValue(filters.renewalMethods, method);
+      onFiltersChange({ ...filters, renewalMethods: next });
+    },
+    [filters, onFiltersChange],
+  );
+
+  const handleMonthToggle = useCallback(
+    (monthKey: string) => {
+      const next = toggleStringValue(filters.renewalMonths, monthKey);
+      onFiltersChange({ ...filters, renewalMonths: next });
+    },
+    [filters, onFiltersChange],
+  );
 
   return (
     <section className="insights" aria-labelledby="listing-insights-title">
@@ -297,8 +362,8 @@ function ListingInsights({ supabaseAvailable }: ListingInsightsProps): JSX.Eleme
         <div>
           <h2 id="listing-insights-title">Market insights</h2>
           <p>
-            Precomputed Supabase aggregates highlight subdivision hot spots and surface upcoming estimated renewal windows
-            without reprocessing the raw listings in the browser.
+            Supabase aggregates spotlight high-volume subdivisions and renewal signals. Click any insight to instantly
+            filter the listings table and regional map.
           </p>
         </div>
         <div className="insights__meta">
@@ -357,132 +422,202 @@ function ListingInsights({ supabaseAvailable }: ListingInsightsProps): JSX.Eleme
         <p className="insights__empty">Metrics will appear after the first successful Supabase sync.</p>
       ) : null}
 
-      <div className="insights__content">
-        <section className="insights__panel" aria-labelledby="insights-top-subdivisions">
-          <div className="insights__panel-header">
-            <h3 id="insights-top-subdivisions">Top subdivisions</h3>
-            <span className="insights__panel-subtitle">Most active neighbourhoods by total listings</span>
+      <div className="insights__cards">
+        <article className="insight-card insight-card--subdivisions" aria-labelledby="insights-top-subdivisions">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-top-subdivisions">Subdivision hotspots</h3>
+              <p className="insight-card__description">Largest clusters by listing volume. Tap a row to filter the results.</p>
+            </div>
+            <label className="insight-card__control" htmlFor="insights-top-n">
+              <span>Show</span>
+              <select
+                id="insights-top-n"
+                value={subdivisionLimit}
+                onChange={(event) => setSubdivisionLimit(Number(event.target.value))}
+              >
+                {SUBDIVISION_LIMIT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    Top {option}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-          {topSubdivisions.length === 0 ? (
-            <p className="insights__empty">No subdivision data available.</p>
+          {subdivisionRows.length === 0 ? (
+            <p className="insight-card__empty">No subdivision data available.</p>
           ) : (
-            <ul className="insights__bars">
-              {topSubdivisions.map((item) => {
+            <ul className="insight-card__list" role="list">
+              {subdivisionRows.map((item) => {
                 const percentage = maxSubdivisionListings
                   ? Math.max(12, Math.round((item.totalListings / maxSubdivisionListings) * 100))
                   : 0;
                 const businessShare = item.totalListings
                   ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
                   : 0;
+                const active = isStringActive(filters.subdivisions, item.subdivision);
                 return (
-                  <li key={item.subdivision} className="insights__bar">
-                    <div className="insights__bar-label">
-                      <span>{item.subdivision}</span>
-                      <span>{item.totalListings.toLocaleString()}</span>
-                    </div>
-                    <div className="insights__bar-track">
-                      <div className="insights__bar-fill" style={{ width: `${percentage}%` }} />
-                    </div>
-                    <div className="insights__bar-meta">
-                      <span className="insights__bar-badge">{businessShare}% business-owned</span>
-                      <span className="insights__bar-badge insights__bar-badge--muted">
-                        {item.individualOwnerCount.toLocaleString()} individual owners
-                      </span>
-                    </div>
+                  <li key={item.subdivision} role="listitem">
+                    <button
+                      type="button"
+                      className={`insight-card__list-item${active ? ' insight-card__list-item--active' : ''}${
+                        item.synthetic ? ' insight-card__list-item--disabled' : ''
+                      }`}
+                      onClick={() => handleSubdivisionToggle(item.subdivision, item.synthetic)}
+                      disabled={Boolean(item.synthetic)}
+                      aria-pressed={active}
+                    >
+                      <div className="insight-card__list-line">
+                        <span className="insight-card__list-label">{item.subdivision}</span>
+                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
+                      </div>
+                      <div className="insight-card__bar" aria-hidden="true">
+                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge">{businessShare}% business-owned</span>
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {item.individualOwnerCount.toLocaleString()} individual owners
+                        </span>
+                      </div>
+                    </button>
                   </li>
                 );
               })}
             </ul>
           )}
-        </section>
+          <p className="insight-card__hint">Subdivision filters sync with the search inputs and drawn map regions.</p>
+        </article>
 
-        <section className="insights__panel" aria-labelledby="insights-renewal-summary">
-          <div className="insights__panel-header">
-            <h3 id="insights-renewal-summary">Renewal outlook</h3>
-            <span className="insights__panel-subtitle">Quick actions by estimated renewal urgency</span>
+        <article className="insight-card insight-card--outlook" aria-labelledby="insights-renewal-summary">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-renewal-summary">Renewal outlook</h3>
+              <p className="insight-card__description">
+                Combine urgency buckets with the signals we used to derive each estimate. Press a tile to focus the table
+                on matching listings.
+              </p>
+            </div>
           </div>
           {summaryEntries.length === 0 ? (
-            <p className="insights__empty">No renewal summary data available.</p>
+            <p className="insight-card__empty">No renewal summary data available.</p>
           ) : (
-            <dl className="insights__summary">
-              {summaryEntries.map((entry) => {
-                const descriptor = resolveSummaryDescriptor(entry.category);
-                const toneClass = `insights__summary-item--${descriptor.tone}`;
-                return (
-                  <div key={entry.category} className={`insights__summary-item ${toneClass}`}>
-                    <dt className="insights__summary-count">{entry.listingCount.toLocaleString()}</dt>
-                    <dd className="insights__summary-label">{descriptor.label}</dd>
-                    <dd className="insights__summary-description">{descriptor.description}</dd>
-                  </div>
-                );
-              })}
-            </dl>
+            <div className="insights__outlook">
+              <div className="insights__summary-grid" role="group" aria-label="Renewal urgency buckets">
+                {summaryEntries.map((entry) => {
+                  const descriptor = resolveSummaryDescriptor(entry.category);
+                  const toneClass = `insights__summary-item--${descriptor.tone}`;
+                  const active = isStringActive(filters.renewalCategories, entry.category);
+                  return (
+                    <button
+                      key={entry.category}
+                      type="button"
+                      className={`insights__summary-item ${toneClass}${active ? ' insights__summary-item--active' : ''}`}
+                      onClick={() => handleRenewalCategoryToggle(entry.category)}
+                      aria-pressed={active}
+                    >
+                      <span className="insights__summary-count">{entry.listingCount.toLocaleString()}</span>
+                      <span className="insights__summary-label">{descriptor.label}</span>
+                      <span className="insights__summary-description">{descriptor.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="insights__method-panel" aria-labelledby="insights-renewal-methods">
+                <h4 id="insights-renewal-methods">How we infer renewals</h4>
+                {methodEntries.length === 0 ? (
+                  <p className="insight-card__empty">No renewal estimation signals detected in the source data.</p>
+                ) : (
+                  <ul className="insights__method-list" role="list">
+                    {methodEntries.map((entry) => {
+                      const descriptor = resolveMethodDescriptor(entry.method);
+                      const toneClass = `insights__method--${descriptor.tone}`;
+                      const active = isStringActive(filters.renewalMethods, entry.method);
+                      return (
+                        <li key={entry.method} role="listitem">
+                          <button
+                            type="button"
+                            className={`insights__method ${toneClass}${active ? ' insights__method--active' : ''}`}
+                            onClick={() => handleRenewalMethodToggle(entry.method)}
+                            aria-pressed={active}
+                          >
+                            <span className="insights__method-count">{entry.listingCount.toLocaleString()}</span>
+                            <div className="insights__method-copy">
+                              <span className="insights__method-label">{descriptor.label}</span>
+                              <span className="insights__method-description">{descriptor.description}</span>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
           )}
-        </section>
+          <p className="insight-card__hint">
+            Urgency buckets use UTC dates and align with the timeline filters below.
+          </p>
+        </article>
 
-        <section className="insights__panel" aria-labelledby="insights-renewal-methods">
-          <div className="insights__panel-header">
-            <h3 id="insights-renewal-methods">Renewal estimation signals</h3>
-            <span className="insights__panel-subtitle">How inferred renewal dates were derived</span>
-          </div>
-          {methodEntries.length === 0 ? (
-            <p className="insights__empty">No renewal estimation signals detected in the source data.</p>
-          ) : (
-            <dl className="insights__summary">
-              {methodEntries.map((entry) => {
-                const descriptor = resolveMethodDescriptor(entry.method);
-                const toneClass = `insights__summary-item--${descriptor.tone}`;
-                return (
-                  <div key={entry.method} className={`insights__summary-item ${toneClass}`}>
-                    <dt className="insights__summary-count">{entry.listingCount.toLocaleString()}</dt>
-                    <dd className="insights__summary-label">{descriptor.label}</dd>
-                    <dd className="insights__summary-description">{descriptor.description}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          )}
-        </section>
-
-        <section className="insights__panel" aria-labelledby="insights-renewal-timeline">
-          <div className="insights__panel-header">
-            <h3 id="insights-renewal-timeline">Renewal timeline</h3>
-            <span className="insights__panel-subtitle">Monthly estimated renewal volume</span>
+        <article className="insight-card insight-card--timeline" aria-labelledby="insights-renewal-timeline">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-renewal-timeline">Renewal timeline</h3>
+              <p className="insight-card__description">
+                Visualise the next twelve months of estimated renewals. Select a bar to drill into that renewal cohort.
+              </p>
+            </div>
           </div>
           {timelinePoints.length === 0 ? (
-            <p className="insights__empty">No estimated renewal timeline data yet.</p>
+            <p className="insight-card__empty">No estimated renewal timeline data yet.</p>
           ) : (
-            <ol className="insights__timeline">
+            <ul className="insights__timeline-grid" role="list">
               {timelinePoints.map((point) => {
                 const percentage = maxRenewalListings
-                  ? Math.max(10, Math.round((point.listingCount / maxRenewalListings) * 100))
+                  ? Math.max(12, Math.round((point.listingCount / maxRenewalListings) * 100))
                   : 0;
+                const monthKey = computeRenewalMonthKey(point.renewalMonth);
+                const active = monthKey ? isStringActive(filters.renewalMonths, monthKey) : false;
                 return (
-                  <li key={point.renewalMonth.toISOString()} className="insights__timeline-item">
-                    <div className="insights__timeline-label">
-                      <span>{formatMonth(point.renewalMonth)}</span>
-                      <span>{point.listingCount.toLocaleString()}</span>
-                    </div>
-                    <div className="insights__timeline-track">
-                      <div className="insights__timeline-fill" style={{ width: `${percentage}%` }} />
-                    </div>
-                    <div className="insights__timeline-meta">
-                      {point.earliestRenewal && point.latestRenewal ? (
-                        <span>
-                          Estimated {DAY_FORMATTER.format(point.earliestRenewal)} – {DAY_FORMATTER.format(point.latestRenewal)}
-                        </span>
-                      ) : point.earliestRenewal ? (
-                        <span>First estimated renewal {DAY_FORMATTER.format(point.earliestRenewal)}</span>
-                      ) : (
-                        <span>Unable to infer exact renewal dates from source data.</span>
-                      )}
-                    </div>
+                  <li key={point.renewalMonth.toISOString()} role="listitem">
+                    <button
+                      type="button"
+                      className={`insights__timeline-button${active ? ' insights__timeline-button--active' : ''}`}
+                      onClick={() => {
+                        if (monthKey) {
+                          handleMonthToggle(monthKey);
+                        }
+                      }}
+                      disabled={!monthKey}
+                      aria-pressed={active}
+                    >
+                      <div className="insights__timeline-header">
+                        <span className="insights__timeline-month">{formatMonth(point.renewalMonth)}</span>
+                        <span className="insights__timeline-count">{point.listingCount.toLocaleString()}</span>
+                      </div>
+                      <div className="insights__timeline-track" aria-hidden="true">
+                        <span className="insights__timeline-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insights__timeline-meta">
+                        {point.earliestRenewal && point.latestRenewal ? (
+                          <span>
+                            Estimated {DAY_FORMATTER.format(point.earliestRenewal)} – {DAY_FORMATTER.format(point.latestRenewal)}
+                          </span>
+                        ) : point.earliestRenewal ? (
+                          <span>First estimated renewal {DAY_FORMATTER.format(point.earliestRenewal)}</span>
+                        ) : (
+                          <span>Unable to infer exact renewal dates from source data.</span>
+                        )}
+                      </div>
+                    </button>
                   </li>
                 );
               })}
-            </ol>
+            </ul>
           )}
-        </section>
+          <p className="insight-card__hint">Selecting a month also updates the urgency summary above.</p>
+        </article>
       </div>
     </section>
   );
