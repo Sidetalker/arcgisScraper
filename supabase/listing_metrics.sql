@@ -10,6 +10,14 @@ create table if not exists public.listing_subdivision_metrics (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.listing_zone_metrics (
+  zone text primary key,
+  total_listings integer not null,
+  business_owner_count integer not null,
+  individual_owner_count integer not null,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 -- Renewal metrics capture the number of inferred license renewals in a given month.
 create table if not exists public.listing_renewal_metrics (
   renewal_month date primary key,
@@ -48,6 +56,7 @@ create table if not exists public.land_baron_leaderboard (
 -- Disable row-level security so anonymous clients can read the precomputed
 -- aggregates (writes still require the service role key).
 alter table public.listing_subdivision_metrics disable row level security;
+alter table public.listing_zone_metrics disable row level security;
 alter table public.listing_renewal_metrics disable row level security;
 alter table public.listing_renewal_summary disable row level security;
 alter table public.listing_renewal_method_summary disable row level security;
@@ -55,6 +64,7 @@ alter table public.land_baron_leaderboard disable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant select on public.listing_subdivision_metrics to anon, authenticated;
+grant select on public.listing_zone_metrics to anon, authenticated;
 grant select on public.listing_renewal_metrics to anon, authenticated;
 grant select on public.listing_renewal_summary to anon, authenticated;
 grant select on public.listing_renewal_method_summary to anon, authenticated;
@@ -72,6 +82,12 @@ $$ language plpgsql;
 drop trigger if exists set_listing_subdivision_metrics_updated_at on public.listing_subdivision_metrics;
 create trigger set_listing_subdivision_metrics_updated_at
 before update on public.listing_subdivision_metrics
+for each row
+execute procedure public.touch_updated_at();
+
+drop trigger if exists set_listing_zone_metrics_updated_at on public.listing_zone_metrics;
+create trigger set_listing_zone_metrics_updated_at
+before update on public.listing_zone_metrics
 for each row
 execute procedure public.touch_updated_at();
 
@@ -111,6 +127,18 @@ from public.listing_subdivision_metrics
 order by total_listings desc, subdivision asc;
 
 grant select on public.listing_subdivision_overview to anon, authenticated;
+
+create or replace view public.listing_zone_overview as
+select
+  zone,
+  total_listings,
+  business_owner_count,
+  individual_owner_count,
+  updated_at
+from public.listing_zone_metrics
+order by total_listings desc, zone asc;
+
+grant select on public.listing_zone_overview to anon, authenticated;
 
 create or replace view public.listing_renewal_timeline as
 select

@@ -83,6 +83,7 @@ const SUMMARY_DESCRIPTORS: Record<
 
 const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
 const LAND_BARON_LIMIT = 10;
+const ZONE_LIMIT = 10;
 
 function resolveSummaryDescriptor(category: RenewalSummaryMetric['category']) {
   if (SUMMARY_ORDER.includes(category as SummaryCategory)) {
@@ -248,12 +249,13 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       setLastSupabaseRunAt(safeRefreshedAt);
       const ownersWritten =
         typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
+      const zonesWritten = typeof result.zonesWritten === 'number' ? result.zonesWritten : 0;
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, then tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
       );
       await loadMetrics();
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, then tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
       );
     } catch (refreshError) {
       console.error('Failed to trigger listing metrics refresh.', refreshError);
@@ -286,6 +288,13 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     }
     return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
   }, [metrics, subdivisionLimit]);
+
+  const zoneRows = useMemo(() => {
+    if (!metrics) {
+      return [] as ListingMetrics['zones'];
+    }
+    return metrics.zones.slice(0, ZONE_LIMIT);
+  }, [metrics]);
 
   const landBaronEntries = useMemo(() => {
     if (!metrics) {
@@ -326,6 +335,10 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
   const maxSubdivisionListings = useMemo(() => {
     return subdivisionRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
   }, [subdivisionRows]);
+
+  const maxZoneListings = useMemo(() => {
+    return zoneRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+  }, [zoneRows]);
 
   const maxLandBaronProperties = useMemo(() => {
     return landBaronEntries.reduce((max, item) => Math.max(max, item.propertyCount), 0);
@@ -503,6 +516,53 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
             </ul>
           )}
           <p className="insight-card__hint">Subdivision filters sync with the search inputs and drawn map regions.</p>
+        </article>
+
+        <article className="insight-card insight-card--zones" aria-labelledby="insights-top-zones">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-top-zones">Zoning hotspots</h3>
+              <p className="insight-card__description">
+                Most common zoning designations among cached Summit County listings.
+              </p>
+            </div>
+          </div>
+          {zoneRows.length === 0 ? (
+            <p className="insight-card__empty">No zoning data available.</p>
+          ) : (
+            <ul className="insight-card__list" role="list">
+              {zoneRows.map((item) => {
+                const percentage = maxZoneListings
+                  ? Math.max(12, Math.round((item.totalListings / maxZoneListings) * 100))
+                  : 0;
+                const businessShare = item.totalListings
+                  ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
+                  : 0;
+                return (
+                  <li key={item.zone} role="listitem">
+                    <div className="insight-card__list-item insight-card__list-item--static">
+                      <div className="insight-card__list-line">
+                        <span className="insight-card__list-label">{item.zone}</span>
+                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
+                      </div>
+                      <div className="insight-card__bar" aria-hidden="true">
+                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge">{businessShare}% business-owned</span>
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {item.individualOwnerCount.toLocaleString()} individual owners
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="insight-card__hint">
+            Zoning counts highlight where Summit County permits cluster by land use.
+          </p>
         </article>
 
         <article className="insight-card insight-card--land-barons" aria-labelledby="insights-land-barons">

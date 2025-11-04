@@ -72,6 +72,7 @@ export interface ListingRow {
   mailing_zip5: Nullable<string>;
   mailing_zip9: Nullable<string>;
   subdivision: Nullable<string>;
+  zone: Nullable<string>;
   schedule_number: Nullable<string>;
   public_detail_url: Nullable<string>;
   physical_address: Nullable<string>;
@@ -107,6 +108,7 @@ function toListingRow(record: ListingRecord): ListingRow {
     mailing_zip5: record.mailingZip5 || null,
     mailing_zip9: record.mailingZip9 || null,
     subdivision: record.subdivision || null,
+    zone: record.zone || null,
     schedule_number: record.scheduleNumber || null,
     public_detail_url: record.publicDetailUrl || null,
     physical_address: record.physicalAddress || null,
@@ -156,6 +158,8 @@ function fromListingRow(row: ListingRow): ListingRecord {
   const safeCategory = estimatedRenewalCategory ?? 'missing';
   const safeMonthKey = normaliseMonthKey(estimatedRenewalMonthKey) ?? null;
 
+  const zone = typeof row.zone === 'string' ? row.zone.trim() : '';
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -170,6 +174,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     mailingZip5: row.mailing_zip5 ?? '',
     mailingZip9: row.mailing_zip9 ?? '',
     subdivision: row.subdivision ?? '',
+    zone,
     scheduleNumber: row.schedule_number ?? '',
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
@@ -199,6 +204,7 @@ const LISTING_COLUMNS = [
   'mailing_zip5',
   'mailing_zip9',
   'subdivision',
+  'zone',
   'schedule_number',
   'public_detail_url',
   'physical_address',

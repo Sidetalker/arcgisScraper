@@ -13,6 +13,14 @@ export interface SubdivisionMetric {
   updatedAt: Date | null;
 }
 
+export interface ZoneMetric {
+  zone: string;
+  totalListings: number;
+  businessOwnerCount: number;
+  individualOwnerCount: number;
+  updatedAt: Date | null;
+}
+
 export interface RenewalMetric {
   renewalMonth: Date;
   listingCount: number;
@@ -45,6 +53,7 @@ export interface LandBaronMetric {
 
 export interface ListingMetrics {
   subdivisions: SubdivisionMetric[];
+  zones: ZoneMetric[];
   renewalTimeline: RenewalMetric[];
   renewalSummary: RenewalSummaryMetric[];
   renewalMethods: RenewalMethodMetric[];
@@ -55,6 +64,7 @@ export interface ListingMetricsRefreshResult {
   refreshedAt: string;
   listingsProcessed: number;
   subdivisionsWritten: number;
+  zonesWritten: number;
   renewalTimelineBuckets: number;
   renewalSummaryBuckets: number;
   renewalMethodBuckets: number;
@@ -65,6 +75,14 @@ export interface ListingMetricsRefreshResult {
 
 interface RawSubdivisionMetric {
   subdivision: string | null;
+  total_listings: number | null;
+  business_owner_count: number | null;
+  individual_owner_count: number | null;
+  updated_at: string | null;
+}
+
+interface RawZoneMetric {
+  zone: string | null;
   total_listings: number | null;
   business_owner_count: number | null;
   individual_owner_count: number | null;
@@ -110,6 +128,7 @@ function parseDate(value: string | null | undefined): Date | null {
 }
 
 const SUBDIVISION_VIEW = 'listing_subdivision_overview';
+const ZONE_VIEW = 'listing_zone_overview';
 const RENEWAL_TIMELINE_VIEW = 'listing_renewal_timeline';
 const RENEWAL_SUMMARY_VIEW = 'listing_renewal_summary_view';
 const RENEWAL_METHOD_VIEW = 'listing_renewal_method_breakdown';
@@ -120,12 +139,14 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
 
   const [
     subdivisionsResult,
+    zonesResult,
     renewalTimelineResult,
     renewalSummaryResult,
     renewalMethodResult,
     landBaronResult,
   ] = await Promise.all([
     client.from(SUBDIVISION_VIEW).select('*'),
+    client.from(ZONE_VIEW).select('*'),
     client.from(RENEWAL_TIMELINE_VIEW).select('*'),
     client.from(RENEWAL_SUMMARY_VIEW).select('*'),
     client.from(RENEWAL_METHOD_VIEW).select('*'),
@@ -134,6 +155,9 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
 
   if (subdivisionsResult.error) {
     throw subdivisionsResult.error;
+  }
+  if (zonesResult.error) {
+    throw zonesResult.error;
   }
   if (renewalTimelineResult.error) {
     throw renewalTimelineResult.error;
@@ -157,6 +181,14 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
       updatedAt: parseDate(row.updated_at),
     }),
   ) ?? [];
+
+  const zones: ZoneMetric[] = (zonesResult.data as RawZoneMetric[] | null | undefined)?.map((row) => ({
+    zone: row.zone && row.zone.trim().length > 0 ? row.zone : 'Unknown zone',
+    totalListings: typeof row.total_listings === 'number' ? row.total_listings : 0,
+    businessOwnerCount: typeof row.business_owner_count === 'number' ? row.business_owner_count : 0,
+    individualOwnerCount: typeof row.individual_owner_count === 'number' ? row.individual_owner_count : 0,
+    updatedAt: parseDate(row.updated_at),
+  })) ?? [];
 
   const renewalTimeline: RenewalMetric[] = (renewalTimelineResult.data as RawRenewalMetric[] | null | undefined)?.map(
     (row) => {
@@ -202,12 +234,14 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
   })) ?? [];
 
   subdivisions.sort((a, b) => b.totalListings - a.totalListings || a.subdivision.localeCompare(b.subdivision));
+  zones.sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
   renewalTimeline.sort((a, b) => a.renewalMonth.getTime() - b.renewalMonth.getTime());
   renewalMethods.sort((a, b) => b.listingCount - a.listingCount || a.method.localeCompare(b.method));
   landBarons.sort((a, b) => b.propertyCount - a.propertyCount || a.ownerName.localeCompare(b.ownerName));
 
   return {
     subdivisions,
+    zones,
     renewalTimeline,
     renewalSummary,
     renewalMethods,
@@ -218,6 +252,7 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
 export function deriveLatestMetricsTimestamp(metrics: ListingMetrics): Date | null {
   const timestamps: (Date | null)[] = [
     ...metrics.subdivisions.map((item) => item.updatedAt),
+    ...metrics.zones.map((item) => item.updatedAt),
     ...metrics.renewalTimeline.map((item) => item.updatedAt),
     ...metrics.renewalSummary.map((item) => item.updatedAt),
     ...metrics.renewalMethods.map((item) => item.updatedAt),
