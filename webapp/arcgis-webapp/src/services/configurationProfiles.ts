@@ -2,6 +2,10 @@ import { normaliseTableState, type ListingTableState } from '@/constants/listing
 import { assertSupabaseClient } from '@/services/supabaseClient';
 import { cloneRegionShape, normaliseRegionList } from '@/services/regionShapes';
 import {
+  normaliseExportColumns,
+  type ExportColumnKey,
+} from '@/services/mailingListExport';
+import {
   type ConfigurationProfile,
   type ListingFilters,
   type RegionShape,
@@ -13,6 +17,7 @@ interface ConfigurationProfileRow {
   filters: ListingFilters | null;
   regions: RegionShape[] | null;
   table_state: ListingTableState | null;
+  export_columns: ExportColumnKey[] | null;
   updated_at?: string | null;
 }
 
@@ -22,6 +27,7 @@ export interface SaveConfigurationProfileInput {
   filters: ListingFilters;
   regions: RegionShape[];
   table: ListingTableState;
+  exportColumns: ExportColumnKey[];
 }
 
 function normaliseStringArray(value: unknown): string[] {
@@ -86,6 +92,7 @@ function fromRow(row: ConfigurationProfileRow): ConfigurationProfile {
     filters: normaliseFilters(row.filters),
     regions: normaliseRegionList(row.regions).map((region) => cloneRegionShape(region)),
     table: normaliseTableState(row.table_state),
+    exportColumns: normaliseExportColumns(row.export_columns),
     updatedAt: normalisedUpdatedAt,
   };
 }
@@ -97,6 +104,7 @@ function prepareRow(input: SaveConfigurationProfileInput): Partial<Configuration
     filters: input.filters,
     regions: input.regions.map((region) => cloneRegionShape(region)),
     table_state: input.table,
+    export_columns: input.exportColumns,
     updated_at: new Date().toISOString(),
   };
 }
@@ -106,7 +114,7 @@ export async function fetchConfigurationProfiles(): Promise<ConfigurationProfile
 
   const { data, error } = await client
     .from('configuration_profiles')
-    .select('id, name, filters, regions, table_state, updated_at')
+    .select('id, name, filters, regions, table_state, export_columns, updated_at')
     .order('name', { ascending: true });
 
   if (error) {
@@ -126,7 +134,7 @@ export async function saveConfigurationProfile(
   const { data, error } = await client
     .from('configuration_profiles')
     .upsert(payload, { onConflict: 'id' })
-    .select('id, name, filters, regions, table_state, updated_at')
+    .select('id, name, filters, regions, table_state, export_columns, updated_at')
     .single();
 
   if (error) {

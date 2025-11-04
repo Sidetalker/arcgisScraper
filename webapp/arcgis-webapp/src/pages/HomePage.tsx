@@ -26,6 +26,11 @@ import {
   normaliseRegionList,
   regionsAreEqual,
 } from '@/services/regionShapes';
+import {
+  createDefaultExportColumns,
+  normaliseExportColumns,
+  type ExportColumnKey,
+} from '@/services/mailingListExport';
 import { supabase } from '@/services/supabaseClient';
 import type {
   ConfigurationProfile,
@@ -42,6 +47,7 @@ interface StoredLocalProfile {
   filters?: Partial<ListingFilters> | null;
   regions?: RegionShape[] | null;
   table?: Partial<ListingTableState> | null;
+  exportColumns?: ExportColumnKey[] | null;
 }
 
 function normaliseStringList(value: unknown): string[] {
@@ -115,6 +121,10 @@ function HomePage(): JSX.Element {
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
   const [tableState, setTableState] = useState<ListingTableState>(() => createDefaultTableState());
   const defaultTableState = useMemo(() => createDefaultTableState(), []);
+  const [exportColumns, setExportColumns] = useState<ExportColumnKey[]>(() =>
+    createDefaultExportColumns(),
+  );
+  const defaultExportColumns = useMemo(() => createDefaultExportColumns(), []);
   const [currentPage, setCurrentPage] = useState(1);
   const [highlightedListingId, setHighlightedListingId] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<ConfigurationProfile[]>([]);

@@ -1,4 +1,5 @@
 import type { ListingTableState } from '@/constants/listingTable';
+import type { ExportColumnKey } from '@/services/mailingListExport';
 
 export interface SpatialReference {
   wkid?: number;
@@ -111,6 +112,7 @@ export interface ConfigurationProfile {
   filters: ListingFilters;
   regions: RegionShape[];
   table: ListingTableState;
+  exportColumns: ExportColumnKey[];
   updatedAt: Date | null;
 }
 

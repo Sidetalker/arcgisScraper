@@ -17,6 +17,12 @@ import {
   type ListingTableColumnKey,
 } from '@/constants/listingTable';
 import type { ListingRecord } from '@/types';
+import {
+  createCsvBlob,
+  createFileBasename,
+  type ExportColumnKey,
+} from '@/services/mailingListExport';
+import ExportColumnSelector from '@/components/ExportColumnSelector';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -32,6 +38,8 @@ interface ListingTableProps {
   onColumnOrderChange: (order: ListingTableColumnKey[]) => void;
   onHiddenColumnsChange: (hidden: ListingTableColumnKey[]) => void;
   onColumnFiltersChange: (filters: ListingTableColumnFilters) => void;
+  exportColumns: ExportColumnKey[];
+  onExportColumnsChange: (columns: ExportColumnKey[]) => void;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -207,12 +215,15 @@ export function ListingTable({
   onColumnOrderChange,
   onHiddenColumnsChange,
   onColumnFiltersChange,
+  exportColumns,
+  onExportColumnsChange,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -503,6 +514,33 @@ export function ListingTable({
     }
   }, [highlightedListingId, pageListings]);
 
+  const handleExportCsv = useCallback(() => {
+    const blob = createCsvBlob(filteredListings, exportColumns);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${createFileBasename()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [filteredListings, exportColumns]);
+
+  const handleConfigureColumns = useCallback(() => {
+    setShowColumnSelector(true);
+  }, []);
+
+  const handleCloseColumnSelector = useCallback(() => {
+    setShowColumnSelector(false);
+  }, []);
+
+  const handleExportColumnsChange = useCallback(
+    (columns: ExportColumnKey[]) => {
+      onExportColumnsChange(columns);
+    },
+    [onExportColumnsChange],
+  );
+
   const visibleColumnDefinitions = visibleColumns
     .map((columnKey) => columnDefinitionMap.get(columnKey))
     .filter((definition): definition is ColumnDefinition => Boolean(definition));
@@ -573,6 +611,27 @@ export function ListingTable({
         title="Tabular summary of listings that match the current filters and map region"
       >
         <div className="listing-table__scroll-indicator-container">
+          <div className="listing-table__export-controls">
+            <button
+              type="button"
+              className="listing-table__export-button"
+              onClick={handleExportCsv}
+              disabled={isLoading || filteredListings.length === 0}
+              title="Export filtered listings to CSV"
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              className="listing-table__configure-button"
+              onClick={handleConfigureColumns}
+              disabled={isLoading}
+              title="Configure export columns"
+              aria-label="Configure export columns"
+            >
+              ⚙
+            </button>
+          </div>
           <div
             className={`listing-table__scroll-indicator${
               canScrollRight ? ' listing-table__scroll-indicator--active' : ''
@@ -751,6 +810,14 @@ export function ListingTable({
           Last »
         </button>
       </nav>
+
+      {showColumnSelector ? (
+        <ExportColumnSelector
+          selectedColumns={exportColumns}
+          onColumnsChange={handleExportColumnsChange}
+          onClose={handleCloseColumnSelector}
+        />
+      ) : null}
     </section>
   );
 }
