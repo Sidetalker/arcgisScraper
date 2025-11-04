@@ -64,7 +64,13 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
     <aside className="filters" aria-label="Filters">
       <div className="filters__header">
         <h2>Filter Listings</h2>
-        <button type="button" onClick={handleReset} className="filters__reset" disabled={disabled}>
+        <button
+          type="button"
+          onClick={handleReset}
+          className="filters__reset"
+          disabled={disabled}
+          title="Reset every filter to its default value"
+        >
           Clear all
         </button>
       </div>
@@ -79,11 +85,12 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
           onChange={handleTextChange}
           placeholder="e.g. Main St"
           disabled={disabled}
+          title="Type an address or street name to filter the results instantly"
         />
       </div>
 
       <fieldset className="filters__group filters__group--grid" disabled={disabled}>
-        <legend>Nightly rate ($)</legend>
+        <legend title="Only show listings whose nightly rate falls within this range">Nightly rate ($)</legend>
         <label htmlFor="minPrice" className="filters__field">
           Min
           <input
@@ -109,12 +116,13 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
             value={filters.maxPrice ?? ''}
             onChange={handleNumberChange}
             inputMode="numeric"
+            title="Drop listings above this nightly rate"
           />
         </label>
       </fieldset>
 
       <fieldset className="filters__group filters__group--grid" disabled={disabled}>
-        <legend>Minimum rooms</legend>
+        <legend title="Enforce a minimum number of bedrooms and bathrooms">Minimum rooms</legend>
         <label htmlFor="minBeds" className="filters__field">
           Beds
           <input
@@ -126,6 +134,7 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
             value={filters.minBeds ?? ''}
             onChange={handleNumberChange}
             inputMode="numeric"
+            title="Require at least this many bedrooms"
           />
         </label>
 
@@ -140,6 +149,7 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
             value={filters.minBaths ?? ''}
             onChange={handleNumberChange}
             inputMode="decimal"
+            title="Require at least this many bathrooms"
           />
         </label>
       </fieldset>
@@ -152,6 +162,7 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
           value={filters.status ?? ''}
           onChange={handleStatusChange}
           disabled={disabled || sortedStatuses.length === 0}
+          title="Filter by the exact license status reported by ArcGIS"
         >
           <option value="">All statuses</option>
           {sortedStatuses.map((status) => (
