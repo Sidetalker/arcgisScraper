@@ -44,6 +44,27 @@ export type ListingAttributes = Record<string, string | number | boolean | null>
 
 export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
+export interface ListingRecord {
+  id: string;
+  address: string;
+  city: string;
+  nightlyRate: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  status: string | null;
+  occupancy: number | null;
+  raw: ListingAttributes;
+}
+
+export interface ListingFilters {
+  searchTerm: string;
+  minPrice: number | null;
+  maxPrice: number | null;
+  minBeds: number | null;
+  minBaths: number | null;
+  status: string | null;
+}
+
 export interface ArcgisLayerInfo {
   id?: number;
   name?: string;

@@ -8,4 +8,10 @@ describe('App', () => {
       screen.getByRole('heading', { name: /arcgis web app/i })
     ).toBeInTheDocument();
   });
+
+  it('renders the filter sidebar', () => {
+    render(<App />);
+    expect(screen.getByLabelText(/filters/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/search by address/i)).toBeInTheDocument();
+  });
 });
