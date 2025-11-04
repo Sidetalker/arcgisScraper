@@ -1034,6 +1034,8 @@ type DrawManagerProps = {
   onRegionsChange: (regions: RegionShape[]) => void;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  showZoneOverlay: boolean;
+  onToggleZoneOverlay: () => void;
   currentLayer: MapLayerType;
   onLayerChange: (layer: MapLayerType) => void;
 };
@@ -1047,6 +1049,8 @@ type MapToolbarProps = {
   activeTool: 'polygon' | 'circle' | null;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  showZoneOverlay: boolean;
+  onToggleZoneOverlay: () => void;
   currentLayer: MapLayerType;
   onLayerChange: (layer: MapLayerType) => void;
 };
@@ -1060,6 +1064,8 @@ function MapToolbar({
   activeTool,
   showAllProperties,
   onToggleShowAll,
+  showZoneOverlay,
+  onToggleZoneOverlay,
   currentLayer,
   onLayerChange,
 }: MapToolbarProps): null {
@@ -1071,6 +1077,7 @@ function MapToolbar({
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
         toggleAllButton?: HTMLButtonElement;
+        toggleZoneButton?: HTMLButtonElement;
         layerButtons?: Record<MapLayerType, HTMLButtonElement>;
       }
     | null
@@ -1158,6 +1165,21 @@ function MapToolbar({
         onToggleShowAll();
       });
 
+      const toggleZoneButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      toggleZoneButton.type = 'button';
+      toggleZoneButton.title = 'Toggle zone overlay';
+      toggleZoneButton.textContent = 'Zone overlay';
+      toggleZoneButton.dataset.action = 'toggle-zone';
+      toggleZoneButton.setAttribute('aria-pressed', 'true');
+      toggleZoneButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggleZoneOverlay();
+      });
+
       const layerToggleGroup = L.DomUtil.create(
         'div',
         'region-map__layer-toggle',
@@ -1214,6 +1236,7 @@ function MapToolbar({
         polygonButton,
         circleButton,
         toggleAllButton,
+        toggleZoneButton,
         layerButtons,
       };
 
@@ -1226,7 +1249,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, onLayerChange]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, onToggleZoneOverlay, onLayerChange]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -1255,6 +1278,16 @@ function MapToolbar({
     refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
     refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
   }, [showAllProperties]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs || !refs.toggleZoneButton) {
+      return;
+    }
+
+    refs.toggleZoneButton.classList.toggle('region-map__toolbar-button--active', showZoneOverlay);
+    refs.toggleZoneButton.setAttribute('aria-pressed', showZoneOverlay ? 'true' : 'false');
+  }, [showZoneOverlay]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -1300,6 +1333,8 @@ function DrawManager({
   onRegionsChange,
   showAllProperties,
   onToggleShowAll,
+  showZoneOverlay,
+  onToggleZoneOverlay,
   currentLayer,
   onLayerChange,
 }: DrawManagerProps): JSX.Element {
@@ -1518,6 +1553,8 @@ function DrawManager({
       activeTool={activeTool}
       showAllProperties={showAllProperties}
       onToggleShowAll={onToggleShowAll}
+      showZoneOverlay={showZoneOverlay}
+      onToggleZoneOverlay={onToggleZoneOverlay}
       currentLayer={currentLayer}
       onLayerChange={onLayerChange}
     />
@@ -1624,6 +1661,7 @@ type ZoningDistrictHighlightsProps = {
   listings: ListingRecord[];
   zoneSummaries: ZoningDistrictSummary[];
   onZoneHover?: (zone: ZoningDistrictSummary | null) => void;
+  enabled: boolean;
 };
 
 type ZoneBlurLayer = {
@@ -1632,13 +1670,29 @@ type ZoneBlurLayer = {
   markers: L.CircleMarker[];
 };
 
-function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: ZoningDistrictHighlightsProps): null {
+function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover, enabled }: ZoningDistrictHighlightsProps): null {
   const map = useMap();
   const glowGroupRef = useRef<L.LayerGroup | null>(null);
+  const preparationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentZoomRef = useRef<number>(map.getZoom());
 
   useEffect(() => {
-    if (IS_TEST_ENV) {
+    if (IS_TEST_ENV || !enabled) {
       onZoneHover?.(null);
+      // Clear any pending timeouts
+      if (preparationTimeoutRef.current) {
+        clearTimeout(preparationTimeoutRef.current);
+        preparationTimeoutRef.current = null;
+      }
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+      // Clear existing layers
+      if (glowGroupRef.current) {
+        glowGroupRef.current.clearLayers();
+      }
       return () => {
         onZoneHover?.(null);
       };
@@ -1675,6 +1729,16 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
       };
     }
 
+    // Cancel any in-flight preparations
+    if (preparationTimeoutRef.current) {
+      clearTimeout(preparationTimeoutRef.current);
+      preparationTimeoutRef.current = null;
+    }
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+
     glowGroup.clearLayers();
 
     if (!zoneSummaries.length) {
@@ -1687,6 +1751,7 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
     const zoneLookup = new Map(zoneSummaries.map((summary) => [summary.key, summary]));
     const zoneLayers = new Map<string, ZoneBlurLayer>();
 
+    // Step 1: Create all markers as clear/transparent
     listings.forEach((listing) => {
       if (listing.latitude === null || listing.longitude === null) {
         return;
@@ -1712,13 +1777,14 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
         zoneLayers.set(zoneKey, zoneLayer);
       }
 
+      // Initially create markers as transparent/clear
       const blurMarker = L.circleMarker([listing.latitude, listing.longitude], {
         pane: 'zoneGlowPane',
         radius: 18,
-        color: summary.glowColor,
+        color: 'transparent',
         weight: 0,
-        fillColor: summary.glowColor,
-        fillOpacity: 0.45,
+        fillColor: 'transparent',
+        fillOpacity: 0,
         bubblingMouseEvents: false,
         className: 'region-map__zone-glow-marker',
       });
@@ -1733,68 +1799,84 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
       cancel: () => void;
     }> = [];
 
-    zoneLayers.forEach((layer, key) => {
-      const { summary, markers, group } = layer;
-      if (!markers.length) {
-        return;
-      }
+    // Step 2: After debounce, transition all markers to their target colors simultaneously
+    preparationTimeoutRef.current = setTimeout(() => {
+      preparationTimeoutRef.current = null;
 
-      const applyState = (hovered: boolean) => {
-        markers.forEach((marker) => {
-          marker.setStyle({
-            color: hovered ? summary.glowHoverColor : summary.glowColor,
-            fillColor: hovered ? summary.glowHoverColor : summary.glowColor,
-            fillOpacity: hovered ? 0.7 : 0.45,
+      zoneLayers.forEach((layer, key) => {
+        const { summary, markers, group } = layer;
+        if (!markers.length) {
+          return;
+        }
+
+        const applyState = (hovered: boolean) => {
+          markers.forEach((marker) => {
+            marker.setStyle({
+              color: hovered ? summary.glowHoverColor : summary.glowColor,
+              fillColor: hovered ? summary.glowHoverColor : summary.glowColor,
+              fillOpacity: hovered ? 0.7 : 0.45,
+            });
+            marker.setRadius(hovered ? 24 : 18);
+            if (hovered) {
+              marker.bringToFront();
+            }
           });
-          marker.setRadius(hovered ? 24 : 18);
-          if (hovered) {
-            marker.bringToFront();
-          }
-        });
-      };
+        };
 
-      applyState(false);
+        // Transition to colored state
+        applyState(false);
 
-      let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+        let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
-      const handleMouseOver = () => {
-        if (hoverTimeout) {
-          clearTimeout(hoverTimeout);
-          hoverTimeout = null;
-        }
-        applyState(true);
-        onZoneHover?.(summary);
-      };
-
-      const handleMouseOut = () => {
-        if (hoverTimeout) {
-          clearTimeout(hoverTimeout);
-        }
-        hoverTimeout = setTimeout(() => {
-          applyState(false);
-          onZoneHover?.(null);
-        }, 30);
-      };
-
-      group.on('mouseover', handleMouseOver);
-      group.on('mouseout', handleMouseOut);
-
-      subscriptions.push({
-        key,
-        handlers: {
-          mouseover: handleMouseOver,
-          mouseout: handleMouseOut,
-        },
-        cancel: () => {
+        const handleMouseOver = () => {
           if (hoverTimeout) {
             clearTimeout(hoverTimeout);
             hoverTimeout = null;
           }
-        },
+          applyState(true);
+          onZoneHover?.(summary);
+        };
+
+        const handleMouseOut = () => {
+          if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+          }
+          hoverTimeout = setTimeout(() => {
+            applyState(false);
+            onZoneHover?.(null);
+          }, 30);
+        };
+
+        group.on('mouseover', handleMouseOver);
+        group.on('mouseout', handleMouseOut);
+
+        subscriptions.push({
+          key,
+          handlers: {
+            mouseover: handleMouseOver,
+            mouseout: handleMouseOut,
+          },
+          cancel: () => {
+            if (hoverTimeout) {
+              clearTimeout(hoverTimeout);
+              hoverTimeout = null;
+            }
+          },
+        });
       });
-    });
+    }, 300); // Debounce for 300ms
 
     return () => {
+      // Cancel any pending timeouts
+      if (preparationTimeoutRef.current) {
+        clearTimeout(preparationTimeoutRef.current);
+        preparationTimeoutRef.current = null;
+      }
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+
       subscriptions.forEach(({ key, handlers, cancel }) => {
         const layer = zoneLayers.get(key);
         if (layer) {
@@ -1805,7 +1887,28 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
       });
       onZoneHover?.(null);
     };
-  }, [listings, map, onZoneHover, zoneSummaries]);
+  }, [listings, map, onZoneHover, zoneSummaries, enabled]);
+
+  // Listen for zoom changes and cancel in-flight preparations
+  useEffect(() => {
+    const handleZoomChange = () => {
+      const newZoom = map.getZoom();
+      if (newZoom !== currentZoomRef.current) {
+        currentZoomRef.current = newZoom;
+        // Cancel any pending preparations
+        if (preparationTimeoutRef.current) {
+          clearTimeout(preparationTimeoutRef.current);
+          preparationTimeoutRef.current = null;
+        }
+      }
+    };
+
+    map.on('zoomend', handleZoomChange);
+
+    return () => {
+      map.off('zoomend', handleZoomChange);
+    };
+  }, [map]);
 
   useEffect(() => {
     return () => {
@@ -1832,6 +1935,7 @@ function RegionMap({
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [showZoneOverlay, setShowZoneOverlay] = useState(true);
   const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
 
@@ -1957,6 +2061,10 @@ function RegionMap({
     setShowAllProperties((prev) => !prev);
   }, []);
 
+  const handleToggleZoneOverlay = useCallback(() => {
+    setShowZoneOverlay((prev) => !prev);
+  }, []);
+
   const handleLayerChange = useCallback((layer: MapLayerType) => {
     setCurrentLayer(layer);
   }, []);
@@ -2009,6 +2117,8 @@ function RegionMap({
           onRegionsChange={onRegionsChange}
           showAllProperties={showAllProperties}
           onToggleShowAll={handleToggleShowAll}
+          showZoneOverlay={showZoneOverlay}
+          onToggleZoneOverlay={handleToggleZoneOverlay}
           currentLayer={currentLayer}
           onLayerChange={handleLayerChange}
         />
@@ -2027,6 +2137,7 @@ function RegionMap({
           listings={displayedListings}
           zoneSummaries={zoningDistrictSummaries}
           onZoneHover={handleZoneHover}
+          enabled={showZoneOverlay}
         />
       </MapContainer>
     </section>
