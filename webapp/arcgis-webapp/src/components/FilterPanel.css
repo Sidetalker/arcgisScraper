@@ -60,6 +60,68 @@
   background-color: rgba(248, 250, 252, 0.85);
 }
 
+.filters__geocircle {
+  gap: 0.9rem;
+}
+
+.filters__pin-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.filters__pin-button {
+  border: none;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.filters__pin-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.filters__pin-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.filters__pin-hint {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.filters__pin-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.85rem;
+  background-color: rgba(37, 99, 235, 0.08);
+  color: #1e293b;
+  font-size: 0.9rem;
+}
+
+.filters__pin-clear {
+  border: none;
+  background: none;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  align-self: flex-start;
+}
+
+.filters__pin-clear:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .filters__group input:focus,
 .filters__group select:focus {
   outline: none;

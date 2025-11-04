@@ -16,6 +16,9 @@ import type {
 
 const DEFAULT_FILTERS: ListingFilters = {
   searchTerm: '',
+  mailingAddress: '',
+  complex: '',
+  owner: '',
   scheduleNumber: '',
   mailingCity: '',
   mailingState: '',
@@ -68,8 +71,59 @@ const SUFFIX_TOKENS = new Set(['JR', 'SR', 'II', 'III', 'IV', 'V']);
 const UNIT_RE = /UNIT\s+([A-Za-z0-9\-]+)/i;
 const BLDG_RE = /\bBLDG\s+([A-Za-z0-9\-]+)/i;
 const BREAK_PLACEHOLDER = '|||BREAK|||';
-const REGION_STORAGE_KEY = 'arcgis-regions:v1';
-const LISTINGS_CACHE_KEY = 'arcgis:listings';
+const REGION_STORAGE_KEY = 'arcgis-regions:v2';
+const LISTINGS_CACHE_KEY = 'arcgis:listings:v2';
+const DEFAULT_PIN_RADIUS_METERS = 750;
+const EARTH_RADIUS_METERS = 6_371_000;
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function distanceBetweenCoordinates(
+  originLat: number,
+  originLng: number,
+  targetLat: number,
+  targetLng: number,
+): number {
+  const latDelta = toRadians(targetLat - originLat);
+  const lngDelta = toRadians(targetLng - originLng);
+  const originLatRad = toRadians(originLat);
+  const targetLatRad = toRadians(targetLat);
+
+  const haversine =
+    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
+    Math.cos(originLatRad) * Math.cos(targetLatRad) * Math.sin(lngDelta / 2) * Math.sin(lngDelta / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return EARTH_RADIUS_METERS * c;
+}
+
+function normaliseRegion(region: unknown): RegionCircle | null {
+  if (!region || typeof region !== 'object') {
+    return null;
+  }
+
+  const { lat, lng, radius } = region as {
+    lat?: unknown;
+    lng?: unknown;
+    radius?: unknown;
+  };
+
+  if (
+    typeof lat === 'number' &&
+    Number.isFinite(lat) &&
+    typeof lng === 'number' &&
+    Number.isFinite(lng) &&
+    typeof radius === 'number' &&
+    Number.isFinite(radius) &&
+    radius > 0
+  ) {
+    return { lat, lng, radius };
+  }
+
+  return null;
+}
 
 function decodeHtml(value: unknown): string {
   if (typeof value !== 'string') {
@@ -431,6 +485,45 @@ function toListingRecord(feature: ArcgisFeature<ListingAttributes>, index: numbe
     (typeof attributes.BriefPropertyDescription === 'string' && attributes.BriefPropertyDescription.trim()) ||
     '';
 
+  let latitude: number | null = null;
+  let longitude: number | null = null;
+  const geometry = feature.geometry as
+    | {
+        x?: unknown;
+        y?: unknown;
+        latitude?: unknown;
+        longitude?: unknown;
+        lat?: unknown;
+        lng?: unknown;
+      }
+    | undefined;
+
+  if (geometry && typeof geometry === 'object') {
+    const candidates: Array<[unknown, unknown]> = [];
+    if ('y' in geometry && 'x' in geometry) {
+      candidates.push([geometry.y, geometry.x]);
+    }
+    if ('latitude' in geometry && 'longitude' in geometry) {
+      candidates.push([geometry.latitude, geometry.longitude]);
+    }
+    if ('lat' in geometry && 'lng' in geometry) {
+      candidates.push([geometry.lat, geometry.lng]);
+    }
+
+    for (const [candidateLat, candidateLng] of candidates) {
+      if (
+        typeof candidateLat === 'number' &&
+        Number.isFinite(candidateLat) &&
+        typeof candidateLng === 'number' &&
+        Number.isFinite(candidateLng)
+      ) {
+        latitude = candidateLat;
+        longitude = candidateLng;
+        break;
+      }
+    }
+  }
+
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -449,11 +542,17 @@ function toListingRecord(feature: ArcgisFeature<ListingAttributes>, index: numbe
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
     isBusinessOwner,
+    latitude,
+    longitude,
     raw: attributes,
   };
 }
 
-function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean {
+function applyFilters(
+  listing: ListingRecord,
+  filters: ListingFilters,
+  pinRegion: RegionCircle | null,
+): boolean {
   const search = filters.searchTerm.trim().toLowerCase();
   if (search) {
     const haystack = [
@@ -468,6 +567,29 @@ function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean 
       .join(' ')
       .toLowerCase();
     if (!haystack.includes(search)) {
+      return false;
+    }
+  }
+
+  if (filters.mailingAddress.trim()) {
+    const addressQuery = filters.mailingAddress.trim().toLowerCase();
+    const mailingHaystack = listing.mailingAddress.toLowerCase();
+    if (!mailingHaystack.includes(addressQuery)) {
+      return false;
+    }
+  }
+
+  if (filters.complex.trim()) {
+    const complexQuery = filters.complex.trim().toLowerCase();
+    if (!listing.complex.toLowerCase().includes(complexQuery)) {
+      return false;
+    }
+  }
+
+  if (filters.owner.trim()) {
+    const ownerQuery = filters.owner.trim().toLowerCase();
+    const ownerHaystack = `${listing.ownerName}; ${listing.ownerNames.join('; ')}`.toLowerCase();
+    if (!ownerHaystack.includes(ownerQuery)) {
       return false;
     }
   }
@@ -516,6 +638,26 @@ function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean 
     }
   }
 
+  if (pinRegion) {
+    const { lat, lng, radius } = pinRegion;
+    if (radius > 0) {
+      const { latitude, longitude } = listing;
+      if (
+        typeof latitude !== 'number' ||
+        !Number.isFinite(latitude) ||
+        typeof longitude !== 'number' ||
+        !Number.isFinite(longitude)
+      ) {
+        return false;
+      }
+
+      const distance = distanceBetweenCoordinates(latitude, longitude, lat, lng);
+      if (distance > radius) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
@@ -526,6 +668,9 @@ function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [regions, setRegions] = useState<RegionCircle[]>([]);
+  const [pinRegion, setPinRegion] = useState<RegionCircle | null>(null);
+  const [pinDropRequestId, setPinDropRequestId] = useState(0);
+  const [pinDropActive, setPinDropActive] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
   const { entries, get: getCache, set: setCache, clear: clearPersistentCache } = useCache();
 
@@ -540,30 +685,38 @@ function App(): JSX.Element {
         return;
       }
 
-      const parsed = JSON.parse(stored) as RegionCircle[];
-      if (!Array.isArray(parsed)) {
+      const parsed = JSON.parse(stored) as
+        | {
+            drawnRegions?: unknown;
+            pinRegion?: unknown;
+          }
+        | RegionCircle[];
+
+      if (Array.isArray(parsed)) {
+        const normalised = parsed
+          .map((region) => normaliseRegion(region))
+          .filter((region): region is RegionCircle => region !== null);
+        if (normalised.length) {
+          setRegions(normalised);
+        }
         return;
       }
 
-      const normalised = parsed
-        .filter((region) =>
-          region &&
-          typeof region.lat === 'number' &&
-          typeof region.lng === 'number' &&
-          typeof region.radius === 'number' &&
-          Number.isFinite(region.lat) &&
-          Number.isFinite(region.lng) &&
-          Number.isFinite(region.radius) &&
-          region.radius > 0,
-        )
-        .map((region) => ({
-          lat: region.lat,
-          lng: region.lng,
-          radius: region.radius,
-        }));
+      if (parsed && typeof parsed === 'object') {
+        const drawnRegionsRaw = Array.isArray(parsed.drawnRegions) ? parsed.drawnRegions : [];
+        const normalisedDrawn = drawnRegionsRaw
+          .map((region) => normaliseRegion(region))
+          .filter((region): region is RegionCircle => region !== null);
 
-      if (normalised.length) {
-        setRegions(normalised);
+        const storedPin = normaliseRegion(parsed.pinRegion);
+
+        if (normalisedDrawn.length) {
+          setRegions(normalisedDrawn);
+        }
+
+        if (storedPin) {
+          setPinRegion(storedPin);
+        }
       }
     } catch (storageError) {
       console.warn('Unable to restore saved regions from localStorage.', storageError);
@@ -576,15 +729,27 @@ function App(): JSX.Element {
     }
 
     try {
-      if (regions.length === 0) {
+      if (regions.length === 0 && !pinRegion) {
         window.localStorage.removeItem(REGION_STORAGE_KEY);
         return;
       }
-      window.localStorage.setItem(REGION_STORAGE_KEY, JSON.stringify(regions));
+
+      const payload = {
+        drawnRegions: regions.map((region) => ({
+          lat: region.lat,
+          lng: region.lng,
+          radius: region.radius,
+        })),
+        pinRegion: pinRegion
+          ? { lat: pinRegion.lat, lng: pinRegion.lng, radius: pinRegion.radius }
+          : null,
+      };
+
+      window.localStorage.setItem(REGION_STORAGE_KEY, JSON.stringify(payload));
     } catch (storageError) {
       console.warn('Unable to persist regions to localStorage.', storageError);
     }
-  }, [regions]);
+  }, [pinRegion, regions]);
 
   const handleRegionsChange = useCallback((nextRegions: RegionCircle[]) => {
     setRegions((current) => {
@@ -607,15 +772,77 @@ function App(): JSX.Element {
     });
   }, []);
 
+  const handlePinRegionChange = useCallback((nextRegion: RegionCircle | null) => {
+    setPinRegion((current) => {
+      if (!nextRegion) {
+        return current ? null : current;
+      }
+
+      if (
+        current &&
+        current.lat === nextRegion.lat &&
+        current.lng === nextRegion.lng &&
+        current.radius === nextRegion.radius
+      ) {
+        return current;
+      }
+
+      return { ...nextRegion };
+    });
+  }, []);
+
+  const handlePinRadiusChange = useCallback((radius: number) => {
+    const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : DEFAULT_PIN_RADIUS_METERS;
+    setPinRegion((current) => {
+      if (!current) {
+        return current;
+      }
+      if (current.radius === safeRadius) {
+        return current;
+      }
+      return { ...current, radius: safeRadius };
+    });
+  }, []);
+
+  const handleRequestPinDrop = useCallback(() => {
+    setPinDropActive(true);
+    setPinDropRequestId((current) => current + 1);
+  }, []);
+
+  const handleCancelPinDrop = useCallback(() => {
+    setPinDropActive(false);
+  }, []);
+
+  const handlePinDropComplete = useCallback(() => {
+    setPinDropActive(false);
+  }, []);
+
+  const handleClearPinRegion = useCallback(() => {
+    setPinRegion(null);
+  }, []);
+
+  const searchRegions = useMemo(() => {
+    const drawn = regions.map((region) => ({
+      lat: region.lat,
+      lng: region.lng,
+      radius: region.radius,
+    }));
+    if (pinRegion) {
+      drawn.push({ lat: pinRegion.lat, lng: pinRegion.lng, radius: pinRegion.radius });
+    }
+    return drawn;
+  }, [pinRegion, regions]);
+
   const regionSignature = useMemo(() => {
-    return JSON.stringify(
-      regions.map((region) => ({
+    return JSON.stringify({
+      drawn: regions.map((region) => ({
         lat: region.lat,
         lng: region.lng,
         radius: region.radius,
       })),
-    );
-  }, [regions]);
+      pin: pinRegion ? { lat: pinRegion.lat, lng: pinRegion.lng, radius: pinRegion.radius } : null,
+    });
+  }, [pinRegion, regions]);
   const listingCacheEntry = useMemo(() => {
     return entries.find((entry) => entry.key === LISTINGS_CACHE_KEY && entry.dependencies?.[0] === regionSignature);
   }, [entries, regionSignature]);
@@ -629,7 +856,8 @@ function App(): JSX.Element {
   useEffect(() => {
     console.groupCollapsed('ArcGIS listing fetch request');
     console.debug('Region signature', regionSignature);
-    console.debug('Regions', regions);
+    console.debug('Drawn regions', regions);
+    console.debug('Pin region', pinRegion);
 
     let groupClosed = false;
     const endGroup = () => {
@@ -654,7 +882,7 @@ function App(): JSX.Element {
     setLoading(true);
     setError(null);
 
-    const regionGeometries = regions.map((region) =>
+    const regionGeometries = searchRegions.map((region) =>
       buildSearchEnvelope({
         latitude: region.lat,
         longitude: region.lng,
@@ -664,7 +892,7 @@ function App(): JSX.Element {
 
     console.info('Requesting listings from ArcGIS.', {
       dependencies,
-      regionCount: regions.length,
+      regionCount: searchRegions.length,
       requestCount: regionGeometries.length || 1,
     });
 
@@ -672,14 +900,14 @@ function App(): JSX.Element {
       regionGeometries.length > 0
         ? regionGeometries.map((geometry) =>
             fetchListings({
-              filters: { returnGeometry: false },
+              filters: { returnGeometry: true },
               geometry,
               signal: controller.signal,
             }).then((featureSet) => featureSet.features ?? []),
           )
         : [
             fetchListings({
-              filters: { returnGeometry: false },
+              filters: { returnGeometry: true },
               signal: controller.signal,
             }).then((featureSet) => featureSet.features ?? []),
           ];
@@ -737,7 +965,7 @@ function App(): JSX.Element {
       controller.abort();
       endGroup();
     };
-  }, [getCache, refreshCounter, regionSignature, regions, setCache]);
+  }, [getCache, pinRegion, refreshCounter, regionSignature, searchRegions, setCache]);
 
   useEffect(() => {
     console.debug('Filters updated', filters);
@@ -748,6 +976,10 @@ function App(): JSX.Element {
   }, [regions]);
 
   useEffect(() => {
+    console.debug('Pin region updated', pinRegion);
+  }, [pinRegion]);
+
+  useEffect(() => {
     if (listings.length) {
       console.info(`Applying filters to ${listings.length.toLocaleString()} listings.`);
     }
@@ -755,11 +987,11 @@ function App(): JSX.Element {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, regions]);
+  }, [filters, pinRegion, regions]);
 
   const filteredListings = useMemo(() => {
-    return listings.filter((listing) => applyFilters(listing, filters));
-  }, [listings, filters]);
+    return listings.filter((listing) => applyFilters(listing, filters, pinRegion));
+  }, [filters, listings, pinRegion]);
 
   useEffect(() => {
     if (!listings.length) {
@@ -862,9 +1094,25 @@ function App(): JSX.Element {
           subdivisionOptions={subdivisionOptions}
           stateOptions={stateOptions}
           disabled={loading}
+          pinRegion={pinRegion}
+          onRequestPinDrop={handleRequestPinDrop}
+          onCancelPinDrop={handleCancelPinDrop}
+          onPinRadiusChange={handlePinRadiusChange}
+          onClearPinRegion={handleClearPinRegion}
+          pinDropActive={pinDropActive}
+          defaultPinRadius={DEFAULT_PIN_RADIUS_METERS}
         />
         <div className="app__main">
-          <RegionMap regions={regions} onRegionsChange={handleRegionsChange} />
+          <RegionMap
+            regions={regions}
+            onRegionsChange={handleRegionsChange}
+            pinRegion={pinRegion}
+            onPinRegionChange={handlePinRegionChange}
+            pinDropActive={pinDropActive}
+            pinDropRequestId={pinDropRequestId}
+            onPinDropComplete={handlePinDropComplete}
+            defaultPinRadius={DEFAULT_PIN_RADIUS_METERS}
+          />
           <ListingTable
             listings={filteredListings}
             pageSize={PAGE_SIZE}

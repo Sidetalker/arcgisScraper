@@ -28,6 +28,11 @@
   overflow: hidden;
 }
 
+.region-map__map--pin-drop,
+.region-map__container--pin-drop {
+  cursor: crosshair !important;
+}
+
 @media (max-width: 720px) {
   .region-map {
     padding: 1.5rem;

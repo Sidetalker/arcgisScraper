@@ -2,7 +2,7 @@ import './FilterPanel.css';
 
 import { ChangeEvent, useMemo } from 'react';
 
-import type { ListingFilters } from '@/types';
+import type { ListingFilters, RegionCircle } from '@/types';
 
 interface FilterPanelProps {
   filters: ListingFilters;
@@ -10,6 +10,13 @@ interface FilterPanelProps {
   subdivisionOptions: string[];
   stateOptions: string[];
   disabled?: boolean;
+  pinRegion?: RegionCircle | null;
+  pinDropActive?: boolean;
+  onRequestPinDrop?: () => void;
+  onCancelPinDrop?: () => void;
+  onPinRadiusChange?: (radius: number) => void;
+  onClearPinRegion?: () => void;
+  defaultPinRadius?: number;
 }
 
 export function FilterPanel({
@@ -18,6 +25,13 @@ export function FilterPanel({
   subdivisionOptions,
   stateOptions,
   disabled = false,
+  pinRegion = null,
+  pinDropActive = false,
+  onRequestPinDrop,
+  onCancelPinDrop,
+  onPinRadiusChange,
+  onClearPinRegion,
+  defaultPinRadius,
 }: FilterPanelProps) {
   const sortedSubdivisions = useMemo(() => {
     return [...subdivisionOptions].sort((a, b) => a.localeCompare(b));
@@ -31,12 +45,33 @@ export function FilterPanel({
     const { name, value } = event.target;
     if (name === 'searchTerm') {
       onChange({ ...filters, searchTerm: value });
+    } else if (name === 'mailingAddress') {
+      onChange({ ...filters, mailingAddress: value });
+    } else if (name === 'complex') {
+      onChange({ ...filters, complex: value });
+    } else if (name === 'owner') {
+      onChange({ ...filters, owner: value });
     } else if (name === 'scheduleNumber') {
       onChange({ ...filters, scheduleNumber: value });
     } else if (name === 'mailingCity') {
       onChange({ ...filters, mailingCity: value });
     } else if (name === 'mailingZip') {
       onChange({ ...filters, mailingZip: value });
+    }
+  };
+
+  const handlePinRadiusInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const numeric = Number.parseFloat(event.target.value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      onPinRadiusChange?.(numeric);
+    }
+  };
+
+  const handlePinDropClick = () => {
+    if (pinDropActive) {
+      onCancelPinDrop?.();
+    } else {
+      onRequestPinDrop?.();
     }
   };
 
@@ -65,8 +100,17 @@ export function FilterPanel({
       mailingZip: '',
       subdivision: null,
       businessOwner: null,
+      mailingAddress: '',
+      complex: '',
+      owner: '',
     });
+    onClearPinRegion?.();
+    onCancelPinDrop?.();
   };
+
+  const radiusPlaceholder = defaultPinRadius
+    ? `${Math.round(defaultPinRadius).toLocaleString()} meters`
+    : undefined;
 
   return (
     <aside className="filters" aria-label="Filters">
@@ -94,6 +138,48 @@ export function FilterPanel({
           placeholder="Complex, owner, address or subdivision"
           disabled={disabled}
           title="Type a complex, owner, schedule number or address to filter the results instantly"
+        />
+      </div>
+
+      <div className="filters__group">
+        <label htmlFor="mailingAddress">Mailing address</label>
+        <input
+          id="mailingAddress"
+          name="mailingAddress"
+          type="search"
+          value={filters.mailingAddress}
+          onChange={handleInputChange}
+          placeholder="Street, unit or PO box"
+          disabled={disabled}
+          title="Filter listings by the owner mailing address"
+        />
+      </div>
+
+      <div className="filters__group">
+        <label htmlFor="complex">Complex</label>
+        <input
+          id="complex"
+          name="complex"
+          type="search"
+          value={filters.complex}
+          onChange={handleInputChange}
+          placeholder="e.g. Gold Camp"
+          disabled={disabled}
+          title="Filter by the reported complex name"
+        />
+      </div>
+
+      <div className="filters__group">
+        <label htmlFor="owner">Owner</label>
+        <input
+          id="owner"
+          name="owner"
+          type="search"
+          value={filters.owner}
+          onChange={handleInputChange}
+          placeholder="Primary owner or business name"
+          disabled={disabled}
+          title="Filter by an owner's name"
         />
       </div>
 
@@ -195,6 +281,64 @@ export function FilterPanel({
           ))}
         </select>
       </div>
+
+      <fieldset className="filters__group filters__geocircle" disabled={disabled}>
+        <legend>Map radius filter</legend>
+        <div className="filters__pin-actions">
+          <button
+            type="button"
+            className="filters__pin-button"
+            onClick={handlePinDropClick}
+            disabled={disabled}
+          >
+            {pinDropActive ? 'Cancel pin drop' : 'Drop a pin on the map'}
+          </button>
+          <span className="filters__pin-hint" role="status" aria-live="polite">
+            {pinDropActive
+              ? 'Click anywhere on the map to place your pin.'
+              : pinRegion
+              ? 'Pin placed on the map.'
+              : 'Place a pin to filter by distance.'}
+          </span>
+        </div>
+
+        <label htmlFor="pinRadius" className="filters__field">
+          Radius (meters)
+          <input
+            id="pinRadius"
+            name="pinRadius"
+            type="number"
+            min="10"
+            step="10"
+            value={pinRegion ? Math.round(pinRegion.radius) : ''}
+            placeholder={radiusPlaceholder}
+            onChange={handlePinRadiusInputChange}
+            disabled={disabled || !pinRegion}
+            title="Limit results to listings within this many meters of the map pin"
+          />
+        </label>
+
+        <div className="filters__pin-summary" role="status" aria-live="polite">
+          {pinRegion ? (
+            <>
+              <span>
+                Pin at {pinRegion.lat.toFixed(5)}, {pinRegion.lng.toFixed(5)} · Radius {Math.round(pinRegion.radius).toLocaleString()}{' '}
+                meters
+              </span>
+              <button
+                type="button"
+                className="filters__pin-clear"
+                onClick={onClearPinRegion}
+                disabled={disabled}
+              >
+                Clear pin filter
+              </button>
+            </>
+          ) : (
+            <span>No pin radius filter is active.</span>
+          )}
+        </div>
+      </fieldset>
     </aside>
   );
 }

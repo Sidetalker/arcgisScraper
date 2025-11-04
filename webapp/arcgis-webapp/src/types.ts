@@ -62,11 +62,16 @@ export interface ListingRecord {
   publicDetailUrl: string;
   physicalAddress: string;
   isBusinessOwner: boolean;
+  latitude: number | null;
+  longitude: number | null;
   raw: ListingAttributes;
 }
 
 export interface ListingFilters {
   searchTerm: string;
+  mailingAddress: string;
+  complex: string;
+  owner: string;
   scheduleNumber: string;
   mailingCity: string;
   mailingState: string;
