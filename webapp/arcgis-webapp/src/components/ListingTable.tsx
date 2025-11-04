@@ -228,8 +228,12 @@ export function ListingTable({
   const autoScrollIntervalRef = useRef<number | null>(null);
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
   const columnPanelRef = useRef<HTMLDivElement | null>(null);
+  const columnPanelListRef = useRef<HTMLUListElement | null>(null);
   const columnPanelDragSource = useRef<ColumnKey | null>(null);
   const [columnPanelDragTarget, setColumnPanelDragTarget] = useState<ColumnKey | null>(null);
+  const [columnPanelActiveDragSource, setColumnPanelActiveDragSource] = useState<ColumnKey | null>(
+    null,
+  );
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -254,16 +258,28 @@ export function ListingTable({
   }, []);
 
   const startAutoScroll = useCallback(
-    (direction: 'left' | 'right') => {
-      const element = scrollContainerRef.current;
+    (element: HTMLElement | null, direction: 'left' | 'right' | 'up' | 'down') => {
       if (!element) {
         return;
       }
 
       stopAutoScroll();
       autoScrollIntervalRef.current = window.setInterval(() => {
-        const delta = direction === 'left' ? -20 : 20;
-        element.scrollLeft += delta;
+        const delta = 20;
+        switch (direction) {
+          case 'left':
+            element.scrollLeft -= delta;
+            break;
+          case 'right':
+            element.scrollLeft += delta;
+            break;
+          case 'up':
+            element.scrollTop -= delta;
+            break;
+          case 'down':
+            element.scrollTop += delta;
+            break;
+        }
       }, 16);
     },
     [stopAutoScroll],
@@ -429,10 +445,32 @@ export function ListingTable({
     (columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
       columnPanelDragSource.current = columnKey;
       setColumnPanelDragTarget(columnKey);
+      setColumnPanelActiveDragSource(columnKey);
+      stopAutoScroll();
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', columnKey);
+      if (typeof document !== 'undefined') {
+        const sourceItem = event.currentTarget.closest('li');
+        if (sourceItem) {
+          const sourceRect = sourceItem.getBoundingClientRect();
+          const dragImage = sourceItem.cloneNode(true) as HTMLElement;
+          dragImage.style.position = 'absolute';
+          dragImage.style.top = '-9999px';
+          dragImage.style.left = '-9999px';
+          dragImage.style.width = `${sourceRect.width}px`;
+          dragImage.classList.add('listing-table__column-panel-drag-image');
+          document.body.appendChild(dragImage);
+          event.dataTransfer.setDragImage(dragImage, sourceRect.width / 2, sourceRect.height / 2);
+          const removeDragImage = () => {
+            if (dragImage.parentNode) {
+              dragImage.parentNode.removeChild(dragImage);
+            }
+          };
+          setTimeout(removeDragImage, 0);
+        }
+      }
     },
-    [],
+    [stopAutoScroll],
   );
 
   const handleColumnPanelDragOver = useCallback(
@@ -442,8 +480,29 @@ export function ListingTable({
       if (columnPanelDragTarget !== columnKey) {
         setColumnPanelDragTarget(columnKey);
       }
+      const listElement = columnPanelListRef.current;
+      if (!listElement) {
+        stopAutoScroll();
+        return;
+      }
+
+      const rect = listElement.getBoundingClientRect();
+      const edgeThreshold = 48;
+      const offsetTop = event.clientY - rect.top;
+      const offsetBottom = rect.bottom - event.clientY;
+      const canScrollUp = listElement.scrollTop > 0;
+      const canScrollDown =
+        listElement.scrollTop + listElement.clientHeight < listElement.scrollHeight;
+
+      if (offsetTop < edgeThreshold && canScrollUp) {
+        startAutoScroll(listElement, 'up');
+      } else if (offsetBottom < edgeThreshold && canScrollDown) {
+        startAutoScroll(listElement, 'down');
+      } else {
+        stopAutoScroll();
+      }
     },
-    [columnPanelDragTarget],
+    [columnPanelDragTarget, startAutoScroll, stopAutoScroll],
   );
 
   const handleColumnPanelDragLeave = useCallback(
@@ -455,8 +514,9 @@ export function ListingTable({
       if (columnPanelDragTarget === columnKey) {
         setColumnPanelDragTarget(null);
       }
+      stopAutoScroll();
     },
-    [columnPanelDragTarget],
+    [columnPanelDragTarget, stopAutoScroll],
   );
 
   const handleColumnPanelDrop = useCallback(
@@ -465,6 +525,8 @@ export function ListingTable({
       const sourceColumn = columnPanelDragSource.current;
       setColumnPanelDragTarget(null);
       columnPanelDragSource.current = null;
+      setColumnPanelActiveDragSource(null);
+      stopAutoScroll();
       if (!sourceColumn || sourceColumn === columnKey) {
         return;
       }
@@ -480,13 +542,15 @@ export function ListingTable({
       onColumnOrderChange([...nextOrder]);
       scheduleScrollIndicatorUpdate();
     },
-    [columnOrder, onColumnOrderChange, scheduleScrollIndicatorUpdate],
+    [columnOrder, onColumnOrderChange, scheduleScrollIndicatorUpdate, stopAutoScroll],
   );
 
   const handleColumnPanelDragEnd = useCallback(() => {
     columnPanelDragSource.current = null;
     setColumnPanelDragTarget(null);
-  }, []);
+    setColumnPanelActiveDragSource(null);
+    stopAutoScroll();
+  }, [stopAutoScroll]);
 
   useEffect(() => {
     if (!isColumnPanelOpen) {
@@ -536,6 +600,14 @@ export function ListingTable({
     };
   }, [isColumnPanelOpen]);
 
+  useEffect(() => {
+    if (!isColumnPanelOpen) {
+      setColumnPanelDragTarget(null);
+      setColumnPanelActiveDragSource(null);
+      stopAutoScroll();
+    }
+  }, [isColumnPanelOpen, stopAutoScroll]);
+
   const handleDragStart = useCallback(
     (columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
       stopAutoScroll();
@@ -570,9 +642,9 @@ export function ListingTable({
         scrollElement.scrollLeft + scrollElement.clientWidth < scrollElement.scrollWidth;
 
       if (offsetLeft < edgeThreshold && canScrollLeft) {
-        startAutoScroll('left');
+        startAutoScroll(scrollElement, 'left');
       } else if (offsetRight < edgeThreshold && canScrollRightNow) {
-        startAutoScroll('right');
+        startAutoScroll(scrollElement, 'right');
       } else {
         stopAutoScroll();
       }
@@ -809,7 +881,7 @@ export function ListingTable({
                 <p className="listing-table__column-panel-description">
                   Drag to reorder columns. Uncheck to hide and move a column to the bottom of the list.
                 </p>
-                <ul className="listing-table__column-panel-list">
+                <ul ref={columnPanelListRef} className="listing-table__column-panel-list">
                   {panelColumnDefinitions.map((definition) => {
                     const isHidden = hiddenColumns.includes(definition.key);
                     const isDropTarget = columnPanelDragTarget === definition.key;
@@ -820,6 +892,7 @@ export function ListingTable({
                         className="listing-table__column-panel-item"
                         data-hidden={isHidden}
                         data-drop-target={isDropTarget}
+                        data-dragging={columnPanelActiveDragSource === definition.key}
                         onDragOver={handleColumnPanelDragOver(definition.key)}
                         onDrop={handleColumnPanelDrop(definition.key)}
                         onDragLeave={handleColumnPanelDragLeave(definition.key)}
