@@ -193,7 +193,10 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
   const client = assertSupabaseClient();
   const rows = records.map((record) => toListingRow(record));
 
-  const { error: deleteError } = await client.from('listings').delete().neq('id', '');
+  const { error: deleteError } = await client
+    .from('listings')
+    .delete({ returning: 'minimal' })
+    .neq('id', '');
   if (deleteError) {
     throw deleteError;
   }
@@ -204,7 +207,9 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
     if (chunk.length === 0) {
       continue;
     }
-    const { error: insertError } = await client.from('listings').insert(chunk);
+    const { error: insertError } = await client
+      .from('listings')
+      .insert(chunk, { returning: 'minimal' });
     if (insertError) {
       throw insertError;
     }
