@@ -186,14 +186,14 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       regionGeometries.length > 0
         ? regionGeometries.map((geometry) =>
             fetchListings({
-              filters: { returnGeometry: false },
+              filters: { returnGeometry: true },
               geometry,
               signal: controller.signal,
             }).then((featureSet) => featureSet.features ?? []),
           )
         : [
             fetchListings({
-              filters: { returnGeometry: false },
+              filters: { returnGeometry: true },
               signal: controller.signal,
             }).then((featureSet) => featureSet.features ?? []),
           ];

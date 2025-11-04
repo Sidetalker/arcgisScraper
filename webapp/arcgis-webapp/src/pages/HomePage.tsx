@@ -18,6 +18,7 @@ function HomePage(): JSX.Element {
   const [currentPage, setCurrentPage] = useState(1);
   const [pinDropMode, setPinDropMode] = useState(false);
   const [pinLocation, setPinLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [highlightedListingId, setHighlightedListingId] = useState<string | null>(null);
 
   const clampRadius = useCallback((value: number): number => {
     if (!Number.isFinite(value) || value <= 0) {
@@ -77,6 +78,7 @@ function HomePage(): JSX.Element {
       }
 
       setFilters(adjustedFilters);
+      setHighlightedListingId(null);
 
       if (
         pinLocation &&
@@ -129,6 +131,7 @@ function HomePage(): JSX.Element {
     setPinDropMode(false);
     setPinLocation(null);
     handleRegionsChange([]);
+    setHighlightedListingId(null);
   }, [handleRegionsChange]);
 
   useEffect(() => {
@@ -138,6 +141,20 @@ function HomePage(): JSX.Element {
   const filteredListings = useMemo(() => {
     return listings.filter((listing) => applyFilters(listing, filters));
   }, [listings, filters]);
+
+  const circleListings = useMemo(() => {
+    return regions.length > 0 ? filteredListings : [];
+  }, [filteredListings, regions.length]);
+
+  useEffect(() => {
+    if (!highlightedListingId) {
+      return;
+    }
+    const exists = filteredListings.some((listing) => listing.id === highlightedListingId);
+    if (!exists) {
+      setHighlightedListingId(null);
+    }
+  }, [filteredListings, highlightedListingId]);
 
   const subdivisionOptions = useMemo(() => {
     const values = new Set<string>();
@@ -184,6 +201,19 @@ function HomePage(): JSX.Element {
     setStatusMessage(statusMessage);
   }, [pinDropMode, setStatusMessage, statusMessage]);
 
+  const handleListingFocus = useCallback(
+    (listingId: string) => {
+      const index = filteredListings.findIndex((listing) => listing.id === listingId);
+      if (index === -1) {
+        return;
+      }
+      const targetPage = Math.floor(index / DEFAULT_PAGE_SIZE) + 1;
+      setCurrentPage(targetPage);
+      setHighlightedListingId(listingId);
+    },
+    [filteredListings],
+  );
+
   return (
     <>
       <FilterPanel
@@ -204,6 +234,8 @@ function HomePage(): JSX.Element {
           onRegionsChange={handleRegionsChange}
           pinDropMode={pinDropMode}
           onPinLocationSelect={handlePinLocationSelected}
+          listings={circleListings}
+          onListingSelect={handleListingFocus}
         />
         <ListingTable
           listings={filteredListings}
@@ -212,6 +244,7 @@ function HomePage(): JSX.Element {
           onPageChange={setCurrentPage}
           isLoading={loading}
           error={error}
+          highlightedListingId={highlightedListingId ?? undefined}
         />
       </div>
     </>

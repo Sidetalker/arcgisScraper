@@ -62,6 +62,8 @@ export interface ListingRecord {
   publicDetailUrl: string;
   physicalAddress: string;
   isBusinessOwner: boolean;
+  latitude: number | null;
+  longitude: number | null;
   raw: ListingAttributes;
 }
 

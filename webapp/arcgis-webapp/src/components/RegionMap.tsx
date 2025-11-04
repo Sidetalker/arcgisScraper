@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
 
-import type { RegionCircle } from '@/types';
+import type { ListingRecord, RegionCircle } from '@/types';
 
 import './RegionMap.css';
 
@@ -14,6 +14,8 @@ type RegionMapProps = {
   onRegionsChange: (regions: RegionCircle[]) => void;
   pinDropMode?: boolean;
   onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
+  listings?: ListingRecord[];
+  onListingSelect?: (listingId: string) => void;
 };
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
@@ -38,12 +40,19 @@ function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
   return results;
 }
 
+type DrawManagerProps = {
+  regions: RegionCircle[];
+  onRegionsChange: (regions: RegionCircle[]) => void;
+  pinDropMode?: boolean;
+  onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
+};
+
 function DrawManager({
   regions,
   onRegionsChange,
   pinDropMode = false,
   onPinLocationSelect,
-}: RegionMapProps): null {
+}: DrawManagerProps): null {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
   const drawControlRef = useRef<L.Control.Draw | null>(null);
@@ -201,11 +210,77 @@ function DrawManager({
   return null;
 }
 
+type ListingMarkersProps = {
+  listings: ListingRecord[];
+  onListingSelect?: (listingId: string) => void;
+};
+
+function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): null {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+
+  useEffect(() => {
+    if (!layerRef.current) {
+      layerRef.current = L.layerGroup().addTo(map);
+    }
+    const layerGroup = layerRef.current;
+    layerGroup.clearLayers();
+
+    listings.forEach((listing) => {
+      if (listing.latitude === null || listing.longitude === null) {
+        return;
+      }
+
+      const marker = L.circleMarker([listing.latitude, listing.longitude], {
+        radius: 5,
+        color: '#991b1b',
+        weight: 1,
+        fillColor: '#ef4444',
+        fillOpacity: 0.85,
+        pane: 'markerPane',
+      });
+
+      const tooltipLabel =
+        listing.complex ||
+        listing.physicalAddress ||
+        listing.ownerName ||
+        listing.scheduleNumber ||
+        'Listing';
+
+      marker.bindTooltip(tooltipLabel, {
+        direction: 'top',
+        offset: L.point(0, -6),
+      });
+
+      marker.on('click', (event: L.LeafletMouseEvent) => {
+        event.originalEvent?.preventDefault?.();
+        event.originalEvent?.stopPropagation?.();
+        onListingSelect?.(listing.id);
+      });
+
+      marker.addTo(layerGroup);
+    });
+  }, [listings, map, onListingSelect]);
+
+  useEffect(() => {
+    return () => {
+      if (layerRef.current) {
+        layerRef.current.removeFrom(map);
+        layerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  return null;
+}
+
 function RegionMap({
   regions,
   onRegionsChange,
   pinDropMode = false,
   onPinLocationSelect,
+  listings = [],
+  onListingSelect,
 }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
   const subtitle = pinDropMode
@@ -237,6 +312,9 @@ function RegionMap({
           pinDropMode={pinDropMode}
           onPinLocationSelect={onPinLocationSelect}
         />
+        {listings.length ? (
+          <ListingMarkers listings={listings} onListingSelect={onListingSelect} />
+        ) : null}
       </MapContainer>
     </section>
   );

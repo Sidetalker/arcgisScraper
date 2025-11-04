@@ -347,11 +347,60 @@ function buildDetailUrl(detailId: string): string {
   return `https://gis.summitcountyco.gov/map/DetailData.aspx?Schno=${encoded}`;
 }
 
+function normaliseCoordinate(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return value;
+}
+
+function fromWebMercator(x: number, y: number): { lat: number; lng: number } {
+  const RADIUS = 6378137;
+  const lng = (x / RADIUS) * (180 / Math.PI);
+  const lat = (2 * Math.atan(Math.exp(y / RADIUS)) - Math.PI / 2) * (180 / Math.PI);
+  return { lat, lng };
+}
+
 export function toListingRecord(
   feature: ArcgisFeature<ListingAttributes>,
   index: number,
 ): ListingRecord {
   const attributes = feature.attributes ?? {};
+  let latitude: number | null = null;
+  let longitude: number | null = null;
+
+  const geometry = feature.geometry as
+    | {
+        x?: number;
+        y?: number;
+        latitude?: number;
+        longitude?: number;
+        lat?: number;
+        lng?: number;
+      }
+    | undefined;
+
+  if (geometry && typeof geometry === 'object') {
+    const rawLat =
+      normaliseCoordinate(geometry.y) ??
+      normaliseCoordinate(geometry.latitude) ??
+      normaliseCoordinate(geometry.lat);
+    const rawLng =
+      normaliseCoordinate(geometry.x) ??
+      normaliseCoordinate(geometry.longitude) ??
+      normaliseCoordinate(geometry.lng);
+
+    if (rawLat !== null && rawLng !== null) {
+      if (Math.abs(rawLat) <= 90 && Math.abs(rawLng) <= 180) {
+        latitude = rawLat;
+        longitude = rawLng;
+      } else {
+        const converted = fromWebMercator(rawLng, rawLat);
+        latitude = converted.lat;
+        longitude = converted.lng;
+      }
+    }
+  }
 
   const scheduleNumberRaw = attributes.PropertyScheduleText;
   const scheduleNumber = typeof scheduleNumberRaw === 'string' ? scheduleNumberRaw.trim() : '';
@@ -426,6 +475,8 @@ export function toListingRecord(
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
     isBusinessOwner,
+    latitude,
+    longitude,
     raw: attributes,
   };
 }

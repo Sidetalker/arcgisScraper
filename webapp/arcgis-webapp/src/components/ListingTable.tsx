@@ -1,5 +1,6 @@
 import './ListingTable.css';
 
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ListingRecord } from '@/types';
@@ -11,6 +12,7 @@ interface ListingTableProps {
   onPageChange: (page: number) => void;
   isLoading: boolean;
   error?: string | null;
+  highlightedListingId?: string;
 }
 
 export function ListingTable({
@@ -20,6 +22,7 @@ export function ListingTable({
   onPageChange,
   isLoading,
   error,
+  highlightedListingId,
 }: ListingTableProps) {
   const effectivePageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Math.max(listings.length, 1);
@@ -34,6 +37,25 @@ export function ListingTable({
     const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
     onPageChange(clampPage(sanitisedPage));
   };
+
+  const rowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
+  const registerRow = (id: string) => (element: HTMLTableRowElement | null) => {
+    if (element) {
+      rowRefs.current.set(id, element);
+    } else {
+      rowRefs.current.delete(id);
+    }
+  };
+
+  useEffect(() => {
+    if (!highlightedListingId) {
+      return;
+    }
+    const targetRow = rowRefs.current.get(highlightedListingId);
+    if (targetRow && typeof targetRow.scrollIntoView === 'function') {
+      targetRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [highlightedListingId, pageListings]);
 
   return (
     <section className="listing-table">
@@ -129,7 +151,13 @@ export function ListingTable({
                 );
 
                 return (
-                  <tr key={listing.id}>
+                  <tr
+                    key={listing.id}
+                    ref={registerRow(listing.id)}
+                    className={`listing-table__row${
+                      highlightedListingId === listing.id ? ' listing-table__row--highlight' : ''
+                    }`}
+                  >
                     <td>
                       {listing.complex ? (
                         <Link
