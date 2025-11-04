@@ -27,7 +27,7 @@ describe('RegionMap displayedListings logic', () => {
   it('should show allListings when showAllProperties is true and no regions exist', () => {
     const showAllProperties = true;
     const allListings = [{ id: '1' }, { id: '2' }, { id: '3' }];
-    const listings: typeof allListings = []; // empty when no regions
+    const listings: typeof allListings = []; // HomePage passes empty array when no regions defined
     const regions: Array<{ type: 'circle'; lat: number; lng: number; radius: number }> = [];
 
     // Simulate the displayedListings logic
@@ -53,7 +53,7 @@ describe('RegionMap displayedListings logic', () => {
   it('should show empty listings when showAllProperties is false and no regions exist', () => {
     const showAllProperties = false;
     const allListings = [{ id: '1' }, { id: '2' }, { id: '3' }];
-    const listings: typeof allListings = []; // empty when no regions
+    const listings: typeof allListings = []; // HomePage passes empty array when no regions defined
     const regions: Array<{ type: 'circle'; lat: number; lng: number; radius: number }> = [];
 
     // Simulate the displayedListings logic
