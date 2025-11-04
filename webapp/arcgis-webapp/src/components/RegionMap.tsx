@@ -712,7 +712,7 @@ type DrawManagerProps = {
   regions: RegionShape[];
   onRegionsChange: (regions: RegionShape[]) => void;
   showAllProperties: boolean;
-  onToggleShowAll: () => void;
+  onToggleShowAll: (nextState: boolean) => void;
 };
 
 type MapToolbarProps = {
@@ -723,7 +723,7 @@ type MapToolbarProps = {
   hasRegions: boolean;
   activeTool: 'polygon' | 'circle' | null;
   showAllProperties: boolean;
-  onToggleShowAll: () => void;
+  onToggleShowAll: (nextState: boolean) => void;
 };
 
 function MapToolbar({
@@ -744,6 +744,7 @@ function MapToolbar({
     onFitRegions,
     onToggleShowAll,
   });
+  const showAllStateRef = useRef(Boolean(showAllProperties));
   const buttonRefs = useRef<
     | {
         clearButton?: HTMLButtonElement;
@@ -764,6 +765,10 @@ function MapToolbar({
       onToggleShowAll,
     };
   }, [onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll]);
+
+  useEffect(() => {
+    showAllStateRef.current = Boolean(showAllProperties);
+  }, [showAllProperties]);
 
   useEffect(() => {
     const toolbarControl = new L.Control({ position: 'topright' });
@@ -847,7 +852,10 @@ function MapToolbar({
       }
       toggleAllButton.addEventListener('click', (event) => {
         event.preventDefault();
-        latestHandlersRef.current.onToggleShowAll();
+        event.stopPropagation();
+        const nextState = !showAllStateRef.current;
+        showAllStateRef.current = nextState;
+        latestHandlersRef.current.onToggleShowAll(nextState);
       });
 
       L.DomEvent.disableClickPropagation(container);
@@ -1325,8 +1333,8 @@ function RegionMap({
     setHoveredListingId(listingId);
   }, []);
 
-  const handleToggleShowAll = useCallback(() => {
-    setShowAllProperties((prev) => !prev);
+  const handleToggleShowAll = useCallback((nextState: boolean) => {
+    setShowAllProperties(nextState);
   }, []);
 
   return (
