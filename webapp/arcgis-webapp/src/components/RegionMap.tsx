@@ -264,6 +264,31 @@ const MAP_LAYERS: Record<MapLayerType, MapLayerConfig> = {
 
 const LAYER_ORDER: readonly MapLayerType[] = ['map', 'satellite', 'terrain'] as const;
 
+const LAYER_ICONS: Record<MapLayerType, string> = {
+  map: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6.75 9 4.5l6 2.25 6-2.25v13.5l-6 2.25-6-2.25-6 2.25z" />
+      <path d="M9 4.5v13.5" />
+      <path d="M15 6.75v13.5" />
+    </svg>
+  `,
+  satellite: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10.5" cy="13.5" r="4.25" />
+      <path d="M7.25 4.5 11 8.25" />
+      <path d="m13.75 3 3.25 3.25" />
+      <path d="m16.5 9.5 4.5-4.5" />
+      <path d="M3 16.5 8 21.5" />
+    </svg>
+  `,
+  terrain: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m3 18 6.5-11 4.25 6 3-4.5L21 18z" />
+      <path d="m9.5 11 2 3" />
+    </svg>
+  `,
+};
+
 function getNextLayer(currentLayer: MapLayerType): MapLayerType {
   const currentIndex = LAYER_ORDER.indexOf(currentLayer);
   const nextIndex = (currentIndex + 1) % LAYER_ORDER.length;
@@ -788,7 +813,7 @@ function MapToolbar({
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
         toggleAllButton?: HTMLButtonElement;
-        layerButton?: HTMLButtonElement;
+        layerButtons?: Record<MapLayerType, HTMLButtonElement>;
       }
     | null
   >(null);
@@ -869,27 +894,54 @@ function MapToolbar({
       toggleAllButton.title = 'Show all properties or only those within regions';
       toggleAllButton.textContent = 'Show all properties';
       toggleAllButton.dataset.action = 'toggle-all';
-      toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
-      if (showAllProperties) {
-        toggleAllButton.classList.add('region-map__toolbar-button--active');
-      }
+      toggleAllButton.setAttribute('aria-pressed', 'false');
       toggleAllButton.addEventListener('click', (event) => {
         event.preventDefault();
         onToggleShowAll();
       });
 
-      const layerButton = L.DomUtil.create(
-        'button',
-        'region-map__toolbar-button',
+      const layerToggleGroup = L.DomUtil.create(
+        'div',
+        'region-map__layer-toggle',
         container,
-      ) as HTMLButtonElement;
-      layerButton.type = 'button';
-      layerButton.title = 'Switch between map, satellite, and terrain views';
-      layerButton.textContent = MAP_LAYERS[currentLayer].name;
-      layerButton.dataset.action = 'toggle-layer';
-      layerButton.addEventListener('click', (event) => {
-        event.preventDefault();
-        onLayerChange(getNextLayer(currentLayer));
+      ) as HTMLDivElement;
+      layerToggleGroup.setAttribute('role', 'group');
+      layerToggleGroup.setAttribute('aria-label', 'Base map layer');
+
+      const layerButtons: Record<MapLayerType, HTMLButtonElement> = {} as Record<
+        MapLayerType,
+        HTMLButtonElement
+      >;
+      LAYER_ORDER.forEach((layerKey) => {
+        const button = L.DomUtil.create(
+          'button',
+          'region-map__layer-button',
+          layerToggleGroup,
+        ) as HTMLButtonElement;
+        button.type = 'button';
+        button.title = MAP_LAYERS[layerKey].name;
+        button.setAttribute('data-layer', layerKey);
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          onLayerChange(layerKey);
+        });
+
+        const content = document.createElement('span');
+        content.className = 'region-map__layer-button-content';
+
+        const iconWrapper = document.createElement('span');
+        iconWrapper.className = 'region-map__layer-button-icon';
+        iconWrapper.innerHTML = LAYER_ICONS[layerKey];
+
+        const label = document.createElement('span');
+        label.className = 'region-map__layer-button-label';
+        label.textContent = MAP_LAYERS[layerKey].name;
+
+        content.append(iconWrapper, label);
+        button.appendChild(content);
+
+        layerButtons[layerKey] = button;
       });
 
       L.DomEvent.disableClickPropagation(container);
@@ -901,7 +953,14 @@ function MapToolbar({
         button.classList.add('region-map__toolbar-button--disabled');
       });
 
-      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton, toggleAllButton, layerButton };
+      buttonRefs.current = {
+        clearButton,
+        fitButton,
+        polygonButton,
+        circleButton,
+        toggleAllButton,
+        layerButtons,
+      };
 
       return container;
     };
@@ -912,7 +971,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties, currentLayer, onLayerChange]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, onLayerChange]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -962,11 +1021,20 @@ function MapToolbar({
 
   useEffect(() => {
     const refs = buttonRefs.current;
-    if (!refs || !refs.layerButton) {
+    if (!refs || !refs.layerButtons) {
       return;
     }
 
-    refs.layerButton.textContent = MAP_LAYERS[currentLayer].name;
+    LAYER_ORDER.forEach((layerKey) => {
+      const button = refs.layerButtons?.[layerKey];
+      if (!button) {
+        return;
+      }
+
+      const isActive = layerKey === currentLayer;
+      button.classList.toggle('region-map__layer-button--active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
   }, [currentLayer]);
 
   return null;
