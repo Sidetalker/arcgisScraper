@@ -48,8 +48,15 @@
   overflow: hidden;
 }
 
-.listing-table table {
+.listing-table__scroll {
   width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.listing-table table {
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   min-width: 1100px;
 }
