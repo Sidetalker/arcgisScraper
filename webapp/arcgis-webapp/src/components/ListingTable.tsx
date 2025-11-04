@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+
 import './ListingTable.css';
 
 import type { ListingRecord } from '@/types';
@@ -9,6 +11,8 @@ interface ListingTableProps {
   onPageChange: (page: number) => void;
   isLoading: boolean;
   error?: string | null;
+  focusRequest?: { id: string; nonce: number } | null;
+  onFocusClear?: () => void;
 }
 
 export function ListingTable({
@@ -18,6 +22,8 @@ export function ListingTable({
   onPageChange,
   isLoading,
   error,
+  focusRequest,
+  onFocusClear,
 }: ListingTableProps) {
   const effectivePageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Math.max(listings.length, 1);
@@ -27,11 +33,54 @@ export function ListingTable({
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, listings.length);
   const pageListings = listings.slice(startIndex, endIndex);
+  const tableBodyRef = useRef<HTMLTableSectionElement | null>(null);
 
   const handlePageChange = (page: number) => {
     const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
     onPageChange(clampPage(sanitisedPage));
   };
+
+  useEffect(() => {
+    if (!focusRequest) {
+      return;
+    }
+
+    const targetId = focusRequest.id;
+    if (!targetId) {
+      return;
+    }
+
+    const body = tableBodyRef.current;
+    if (!body) {
+      return;
+    }
+
+    const escapeSelector = (value: string) => {
+      if (typeof window !== 'undefined' && window.CSS && typeof window.CSS.escape === 'function') {
+        return window.CSS.escape(value);
+      }
+      return value.replace(/"/g, '\\"');
+    };
+
+    const row = body.querySelector<HTMLTableRowElement>(
+      `[data-listing-id="${escapeSelector(targetId)}"]`,
+    );
+
+    if (!row) {
+      return;
+    }
+
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.focus({ preventScroll: true });
+
+    const timeout = window.setTimeout(() => {
+      onFocusClear?.();
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [focusRequest, onFocusClear]);
 
   return (
     <section className="listing-table">
@@ -86,7 +135,7 @@ export function ListingTable({
               <th scope="col">Details</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={tableBodyRef}>
             {isLoading ? (
               <tr>
                 <td colSpan={12} className="listing-table__loading">
@@ -119,9 +168,18 @@ export function ListingTable({
                 ) : (
                   '—'
                 );
+                const isHighlighted = focusRequest?.id === listing.id;
+                const rowClassName = `listing-table__row${
+                  isHighlighted ? ' listing-table__row--highlight' : ''
+                }`;
 
                 return (
-                  <tr key={listing.id}>
+                  <tr
+                    key={listing.id}
+                    className={rowClassName}
+                    data-listing-id={listing.id}
+                    tabIndex={-1}
+                  >
                     <td>{listing.complex || '—'}</td>
                     <td>{listing.unit || '—'}</td>
                     <td>

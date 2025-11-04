@@ -431,6 +431,29 @@ function toListingRecord(feature: ArcgisFeature<ListingAttributes>, index: numbe
     (typeof attributes.BriefPropertyDescription === 'string' && attributes.BriefPropertyDescription.trim()) ||
     '';
 
+  let latitude: number | undefined;
+  let longitude: number | undefined;
+  const geometry = feature.geometry;
+  if (geometry && typeof geometry === 'object') {
+    const candidateLat =
+      typeof (geometry as { y?: unknown }).y === 'number'
+        ? (geometry as { y?: number }).y
+        : typeof (geometry as { latitude?: unknown }).latitude === 'number'
+        ? (geometry as { latitude?: number }).latitude
+        : undefined;
+    const candidateLng =
+      typeof (geometry as { x?: unknown }).x === 'number'
+        ? (geometry as { x?: number }).x
+        : typeof (geometry as { longitude?: unknown }).longitude === 'number'
+        ? (geometry as { longitude?: number }).longitude
+        : undefined;
+
+    if (Number.isFinite(candidateLat) && Number.isFinite(candidateLng)) {
+      latitude = candidateLat as number;
+      longitude = candidateLng as number;
+    }
+  }
+
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -449,6 +472,8 @@ function toListingRecord(feature: ArcgisFeature<ListingAttributes>, index: numbe
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
     isBusinessOwner,
+    latitude,
+    longitude,
     raw: attributes,
   };
 }
@@ -525,6 +550,7 @@ function App(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [focusedListing, setFocusedListing] = useState<{ id: string; nonce: number } | null>(null);
   const [regions, setRegions] = useState<RegionCircle[]>([]);
   const [refreshCounter, setRefreshCounter] = useState(0);
   const { entries, get: getCache, set: setCache, clear: clearPersistentCache } = useCache();
@@ -672,14 +698,14 @@ function App(): JSX.Element {
       regionGeometries.length > 0
         ? regionGeometries.map((geometry) =>
             fetchListings({
-              filters: { returnGeometry: false },
+              filters: { returnGeometry: true },
               geometry,
               signal: controller.signal,
             }).then((featureSet) => featureSet.features ?? []),
           )
         : [
             fetchListings({
-              filters: { returnGeometry: false },
+              filters: { returnGeometry: true },
               signal: controller.signal,
             }).then((featureSet) => featureSet.features ?? []),
           ];
@@ -757,9 +783,25 @@ function App(): JSX.Element {
     setCurrentPage(1);
   }, [filters, regions]);
 
+  useEffect(() => {
+    setFocusedListing(null);
+  }, [filters, regions]);
+
+  useEffect(() => {
+    setFocusedListing(null);
+  }, [listings]);
+
   const filteredListings = useMemo(() => {
     return listings.filter((listing) => applyFilters(listing, filters));
   }, [listings, filters]);
+
+  const listingIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredListings.forEach((listing, index) => {
+      map.set(listing.id, index);
+    });
+    return map;
+  }, [filteredListings]);
 
   useEffect(() => {
     if (!listings.length) {
@@ -779,6 +821,24 @@ function App(): JSX.Element {
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
   }, [listings]);
+
+  const handleListingFocus = useCallback(
+    (listingId: string) => {
+      const index = listingIndexMap.get(listingId);
+      if (index == null) {
+        return;
+      }
+
+      const targetPage = Math.floor(index / PAGE_SIZE) + 1;
+      setCurrentPage(targetPage);
+      setFocusedListing({ id: listingId, nonce: Date.now() });
+    },
+    [listingIndexMap],
+  );
+
+  const handleListingFocusClear = useCallback(() => {
+    setFocusedListing(null);
+  }, []);
 
   const stateOptions = useMemo(() => {
     const values = new Set<string>();
@@ -864,7 +924,12 @@ function App(): JSX.Element {
           disabled={loading}
         />
         <div className="app__main">
-          <RegionMap regions={regions} onRegionsChange={handleRegionsChange} />
+          <RegionMap
+            regions={regions}
+            onRegionsChange={handleRegionsChange}
+            listings={filteredListings}
+            onListingFocus={handleListingFocus}
+          />
           <ListingTable
             listings={filteredListings}
             pageSize={PAGE_SIZE}
@@ -872,6 +937,8 @@ function App(): JSX.Element {
             onPageChange={setCurrentPage}
             isLoading={loading}
             error={error}
+            focusRequest={focusedListing}
+            onFocusClear={handleListingFocusClear}
           />
         </div>
       </main>

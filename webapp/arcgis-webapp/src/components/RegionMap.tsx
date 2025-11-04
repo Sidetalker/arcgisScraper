@@ -5,13 +5,18 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
 
-import type { RegionCircle } from '@/types';
+import type { ListingRecord, RegionCircle } from '@/types';
 
 import './RegionMap.css';
 
-type RegionMapProps = {
+type DrawManagerProps = {
   regions: RegionCircle[];
   onRegionsChange: (regions: RegionCircle[]) => void;
+};
+
+type RegionMapProps = DrawManagerProps & {
+  listings: ListingRecord[];
+  onListingFocus: (listingId: string) => void;
 };
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
@@ -36,7 +41,7 @@ function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
   return results;
 }
 
-function DrawManager({ regions, onRegionsChange }: RegionMapProps): null {
+function DrawManager({ regions, onRegionsChange }: DrawManagerProps): null {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
   const drawControlRef = useRef<L.Control.Draw | null>(null);
@@ -171,7 +176,112 @@ function DrawManager({ regions, onRegionsChange }: RegionMapProps): null {
   return null;
 }
 
-function RegionMap({ regions, onRegionsChange }: RegionMapProps): JSX.Element {
+type ListingMarkerManagerProps = {
+  regions: RegionCircle[];
+  listings: ListingRecord[];
+  onListingFocus: (listingId: string) => void;
+};
+
+function ListingMarkerManager({ regions, listings, onListingFocus }: ListingMarkerManagerProps): null {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  const markerIcon = useMemo(
+    () =>
+      L.divIcon({
+        className: 'region-map__listing-marker',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!layerRef.current) {
+      layerRef.current = L.layerGroup();
+      layerRef.current.addTo(map);
+    }
+
+    return () => {
+      if (layerRef.current) {
+        layerRef.current.remove();
+        layerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) {
+      return;
+    }
+
+    layer.clearLayers();
+
+    const validRegions = regions
+      .filter(
+        (region) =>
+          Number.isFinite(region.lat) &&
+          Number.isFinite(region.lng) &&
+          Number.isFinite(region.radius) &&
+          region.radius > 0,
+      )
+      .map((region) => ({ center: L.latLng(region.lat, region.lng), radius: region.radius }));
+
+    if (validRegions.length === 0) {
+      return;
+    }
+
+    listings.forEach((listing) => {
+      const { latitude, longitude } = listing;
+      if (typeof latitude !== 'number' || !Number.isFinite(latitude)) {
+        return;
+      }
+      if (typeof longitude !== 'number' || !Number.isFinite(longitude)) {
+        return;
+      }
+
+      const listingLatLng = L.latLng(latitude, longitude);
+      const matchesRegion = validRegions.some(({ center, radius }) => center.distanceTo(listingLatLng) <= radius);
+
+      if (!matchesRegion) {
+        return;
+      }
+
+      const marker = L.marker(listingLatLng, {
+        icon: markerIcon,
+        keyboard: true,
+        bubblingMouseEvents: false,
+        title: listing.physicalAddress
+          ? `${listing.physicalAddress} — click to view in the table`
+          : 'View listing in the table',
+      });
+
+      const tooltipLabel = listing.physicalAddress || listing.complex || listing.ownerName;
+      if (tooltipLabel) {
+        marker.bindTooltip(tooltipLabel, { direction: 'top' });
+      }
+
+      marker.on('click', (event) => {
+        event.originalEvent?.preventDefault?.();
+        onListingFocus(listing.id);
+      });
+
+      marker.on('keypress', (event) => {
+        const key = (event.originalEvent as KeyboardEvent | undefined)?.key;
+        if (key === 'Enter' || key === ' ') {
+          event.originalEvent?.preventDefault?.();
+          onListingFocus(listing.id);
+        }
+      });
+
+      marker.addTo(layer);
+    });
+  }, [regions, listings, markerIcon, onListingFocus]);
+
+  return null;
+}
+
+function RegionMap({ regions, onRegionsChange, listings, onListingFocus }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
 
   return (
@@ -194,6 +304,7 @@ function RegionMap({ regions, onRegionsChange }: RegionMapProps): JSX.Element {
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
         <DrawManager regions={regions} onRegionsChange={onRegionsChange} />
+        <ListingMarkerManager regions={regions} listings={listings} onListingFocus={onListingFocus} />
       </MapContainer>
     </section>
   );

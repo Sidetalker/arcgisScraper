@@ -28,6 +28,21 @@
   overflow: hidden;
 }
 
+.region-map__listing-marker {
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 999px;
+  background-color: #ef4444;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.35);
+  cursor: pointer;
+}
+
+.region-map__listing-marker:focus-visible {
+  outline: 2px solid rgba(249, 115, 22, 0.9);
+  outline-offset: 2px;
+}
+
 @media (max-width: 720px) {
   .region-map {
     padding: 1.5rem;
