@@ -1,4 +1,11 @@
 import type { ListingTableState } from '@/constants/listingTable';
+import type {
+  ArcgisFeature as SharedArcgisFeature,
+  ListingAttributes as SharedListingAttributes,
+  ListingFilters as SharedListingFilters,
+  ListingRecord as SharedListingRecord,
+  RegionCircle as SharedRegionCircle,
+} from '@shared/types';
 
 export interface SpatialReference {
   wkid?: number;
@@ -25,10 +32,8 @@ export interface ArcgisField {
   [key: string]: unknown;
 }
 
-export interface ArcgisFeature<A = Record<string, unknown>, G = QueryGeometry> {
-  attributes: A;
-  geometry?: G;
-}
+export interface ArcgisFeature<A = Record<string, unknown>, G = QueryGeometry>
+  extends SharedArcgisFeature<A, G> {}
 
 export interface ArcgisFeatureSet<A = Record<string, unknown>, G = QueryGeometry> {
   objectIdFieldName?: string;
@@ -42,44 +47,15 @@ export interface ArcgisFeatureSet<A = Record<string, unknown>, G = QueryGeometry
   [key: string]: unknown;
 }
 
-export type ListingAttributes = Record<string, string | number | boolean | null>;
+export type ListingAttributes = SharedListingAttributes;
 
 export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
-export interface ListingRecord {
-  id: string;
-  complex: string;
-  unit: string;
-  ownerName: string;
-  ownerNames: string[];
-  mailingAddress: string;
-  mailingAddressLine1: string;
-  mailingAddressLine2: string;
-  mailingCity: string;
-  mailingState: string;
-  mailingZip5: string;
-  mailingZip9: string;
-  subdivision: string;
-  scheduleNumber: string;
-  publicDetailUrl: string;
-  physicalAddress: string;
-  isBusinessOwner: boolean;
-  latitude: number | null;
-  longitude: number | null;
-  raw: ListingAttributes;
-}
+export type ListingRecord = SharedListingRecord;
 
-export interface ListingFilters {
-  searchTerm: string;
-  complex: string;
-  owner: string;
-}
+export type ListingFilters = SharedListingFilters;
 
-export interface RegionCircle {
-  lat: number;
-  lng: number;
-  radius: number;
-}
+export type RegionCircle = SharedRegionCircle;
 
 export interface ConfigurationProfile {
   id: string;

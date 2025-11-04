@@ -32,6 +32,7 @@ interface ListingTableProps {
   onColumnOrderChange: (order: ListingTableColumnKey[]) => void;
   onHiddenColumnsChange: (hidden: ListingTableColumnKey[]) => void;
   onColumnFiltersChange: (filters: ListingTableColumnFilters) => void;
+  actions?: ReactNode;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -207,6 +208,7 @@ export function ListingTable({
   onColumnOrderChange,
   onHiddenColumnsChange,
   onColumnFiltersChange,
+  actions,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
@@ -530,15 +532,18 @@ export function ListingTable({
           <h2>Listings</h2>
           <p>{summaryText}</p>
         </div>
-        <div className="listing-table__summary">
-          <span>
-            Page {safePage} of {totalPages}
-          </span>
-          <span>
-            {filteredListingsCount > 0
-              ? `Displaying ${startIndex + 1}-${endIndex} of ${filteredListingsCount.toLocaleString()}`
-              : 'No rows to display'}
-          </span>
+        <div className="listing-table__meta">
+          <div className="listing-table__summary">
+            <span>
+              Page {safePage} of {totalPages}
+            </span>
+            <span>
+              {filteredListingsCount > 0
+                ? `Displaying ${startIndex + 1}-${endIndex} of ${filteredListingsCount.toLocaleString()}`
+                : 'No rows to display'}
+            </span>
+          </div>
+          {actions ? <div className="listing-table__actions">{actions}</div> : null}
         </div>
       </header>
 

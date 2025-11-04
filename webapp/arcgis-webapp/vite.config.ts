@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(projectRootDir, './src'),
+      '@shared': path.resolve(projectRootDir, './shared'),
     },
   },
   test: {
