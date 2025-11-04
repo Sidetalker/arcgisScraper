@@ -1,6 +1,15 @@
 import './ListingTable.css';
 
-import { useEffect, useRef } from 'react';
+import {
+  type ChangeEvent,
+  type DragEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ListingRecord } from '@/types';
@@ -15,6 +24,197 @@ interface ListingTableProps {
   highlightedListingId?: string;
 }
 
+type ColumnKey =
+  | 'complex'
+  | 'unit'
+  | 'owners'
+  | 'business'
+  | 'mailingAddress'
+  | 'mailingCity'
+  | 'mailingState'
+  | 'mailingZip'
+  | 'subdivision'
+  | 'scheduleNumber'
+  | 'physicalAddress'
+  | 'details';
+
+interface ColumnDefinition {
+  key: ColumnKey;
+  label: string;
+  render: (listing: ListingRecord) => ReactNode;
+  getFilterValue: (listing: ListingRecord) => string;
+}
+
+function toUniqueOwners(listing: ListingRecord): string[] {
+  return Array.from(
+    new Set(
+      listing.ownerNames
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0),
+    ),
+  );
+}
+
+function normalizeText(value: string | null | undefined): string {
+  if (!value) {
+    return '';
+  }
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function fuzzyMatch(haystack: string, needle: string): boolean {
+  const query = needle.trim().toLowerCase();
+  if (query.length === 0) {
+    return true;
+  }
+
+  const source = haystack.toLowerCase();
+  let position = 0;
+
+  for (const char of query) {
+    const foundIndex = source.indexOf(char, position);
+    if (foundIndex === -1) {
+      return false;
+    }
+    position = foundIndex + 1;
+  }
+
+  return true;
+}
+
+const COLUMN_DEFINITIONS: ColumnDefinition[] = [
+  {
+    key: 'complex',
+    label: 'Complex',
+    render: (listing) =>
+      listing.complex ? (
+        <Link to={`/complex/${encodeURIComponent(listing.complex)}`} className="listing-table__link">
+          {listing.complex}
+        </Link>
+      ) : (
+        '—'
+      ),
+    getFilterValue: (listing) => normalizeText(listing.complex),
+  },
+  {
+    key: 'unit',
+    label: 'Unit',
+    render: (listing) => listing.unit || '—',
+    getFilterValue: (listing) => normalizeText(listing.unit),
+  },
+  {
+    key: 'owners',
+    label: 'Owner(s)',
+    render: (listing) => {
+      const owners = toUniqueOwners(listing);
+      return (
+        <div className="listing-table__owner">
+          {owners.length > 0 ? (
+            <div className="listing-table__owner-list">
+              {owners.map((owner) => (
+                <Link
+                  key={owner}
+                  to={`/owner/${encodeURIComponent(owner)}`}
+                  className="listing-table__link"
+                >
+                  {owner}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            '—'
+          )}
+          {owners.length > 1 ? (
+            <div className="listing-table__owner-count">{owners.length} owners</div>
+          ) : null}
+        </div>
+      );
+    },
+    getFilterValue: (listing) => normalizeText(listing.ownerNames.join(' ')),
+  },
+  {
+    key: 'business',
+    label: 'Business',
+    render: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
+    getFilterValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
+  },
+  {
+    key: 'mailingAddress',
+    label: 'Mailing address',
+    render: (listing) => {
+      const mailingLines = listing.mailingAddress ? listing.mailingAddress.split('\n') : [];
+      return mailingLines.length ? (
+        <span className="listing-table__multiline">
+          {mailingLines.map((line, index) => (
+            <span key={index}>{line}</span>
+          ))}
+        </span>
+      ) : (
+        '—'
+      );
+    },
+    getFilterValue: (listing) => normalizeText(listing.mailingAddress),
+  },
+  {
+    key: 'mailingCity',
+    label: 'Mailing city',
+    render: (listing) => listing.mailingCity || '—',
+    getFilterValue: (listing) => normalizeText(listing.mailingCity),
+  },
+  {
+    key: 'mailingState',
+    label: 'State',
+    render: (listing) => listing.mailingState || '—',
+    getFilterValue: (listing) => normalizeText(listing.mailingState),
+  },
+  {
+    key: 'mailingZip',
+    label: 'ZIP',
+    render: (listing) => listing.mailingZip9 || listing.mailingZip5 || '—',
+    getFilterValue: (listing) => normalizeText(listing.mailingZip9 || listing.mailingZip5),
+  },
+  {
+    key: 'subdivision',
+    label: 'Subdivision',
+    render: (listing) => listing.subdivision || '—',
+    getFilterValue: (listing) => normalizeText(listing.subdivision),
+  },
+  {
+    key: 'scheduleNumber',
+    label: 'Schedule #',
+    render: (listing) => listing.scheduleNumber || '—',
+    getFilterValue: (listing) => normalizeText(listing.scheduleNumber),
+  },
+  {
+    key: 'physicalAddress',
+    label: 'Physical address',
+    render: (listing) => listing.physicalAddress || '—',
+    getFilterValue: (listing) => normalizeText(listing.physicalAddress),
+  },
+  {
+    key: 'details',
+    label: 'Details',
+    render: (listing) =>
+      listing.publicDetailUrl ? (
+        <a href={listing.publicDetailUrl} target="_blank" rel="noreferrer" className="listing-table__link">
+          View
+        </a>
+      ) : (
+        '—'
+      ),
+    getFilterValue: (listing) => normalizeText(listing.publicDetailUrl ? 'view' : ''),
+  },
+];
+
+type ColumnFilters = Record<ColumnKey, string>;
+
+function createInitialFilters(): ColumnFilters {
+  return COLUMN_DEFINITIONS.reduce<ColumnFilters>((acc, column) => {
+    acc[column.key] = '';
+    return acc;
+  }, {} as ColumnFilters);
+}
+
 export function ListingTable({
   listings,
   pageSize,
@@ -24,19 +224,163 @@ export function ListingTable({
   error,
   highlightedListingId,
 }: ListingTableProps) {
+  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(() =>
+    COLUMN_DEFINITIONS.map((definition) => definition.key),
+  );
+  const [hiddenColumns, setHiddenColumns] = useState<ColumnKey[]>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>(() => createInitialFilters());
+  const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
+  const dragSource = useRef<ColumnKey | null>(null);
+
+  const columnDefinitionMap = useMemo(() => {
+    return new Map<ColumnKey, ColumnDefinition>(
+      COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]),
+    );
+  }, []);
+
+  const visibleColumns = useMemo(
+    () => columnOrder.filter((key) => !hiddenColumns.includes(key)),
+    [columnOrder, hiddenColumns],
+  );
+
+  const hasActiveColumnFilters = useMemo(
+    () => Object.values(columnFilters).some((value) => value.trim().length > 0),
+    [columnFilters],
+  );
+
+  const filteredListings = useMemo(() => {
+    const activeEntries = Object.entries(columnFilters).filter(([, value]) => value.trim().length > 0) as [
+      ColumnKey,
+      string,
+    ][];
+
+    if (activeEntries.length === 0) {
+      return listings;
+    }
+
+    return listings.filter((listing) =>
+      activeEntries.every(([columnKey, query]) => {
+        const column = columnDefinitionMap.get(columnKey);
+        if (!column) {
+          return true;
+        }
+        return fuzzyMatch(column.getFilterValue(listing), query);
+      }),
+    );
+  }, [columnDefinitionMap, columnFilters, listings]);
+
   const effectivePageSize =
-    Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Math.max(listings.length, 1);
-  const totalPages = Math.max(1, Math.ceil(listings.length / effectivePageSize) || 1);
+    Number.isFinite(pageSize) && pageSize > 0
+      ? Math.floor(pageSize)
+      : Math.max(filteredListings.length, 1);
+  const totalPages = Math.max(1, Math.ceil(filteredListings.length / effectivePageSize) || 1);
   const clampPage = (value: number) => Math.min(Math.max(value, 1), totalPages);
-  const safePage = clampPage(Number.isFinite(currentPage) ? Math.floor(currentPage) : 1);
+  const requestedPage = Number.isFinite(currentPage) ? Math.floor(currentPage) : 1;
+  const safePage = clampPage(requestedPage);
   const startIndex = (safePage - 1) * effectivePageSize;
-  const endIndex = Math.min(startIndex + effectivePageSize, listings.length);
-  const pageListings = listings.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
+  const pageListings = filteredListings.slice(startIndex, endIndex);
+  const columnCount = Math.max(1, visibleColumns.length);
+
+  useEffect(() => {
+    if (safePage !== requestedPage) {
+      onPageChange(safePage);
+    }
+  }, [requestedPage, safePage, onPageChange]);
 
   const handlePageChange = (page: number) => {
     const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
     onPageChange(clampPage(sanitisedPage));
   };
+
+  const handleFilterChange = useCallback(
+    (columnKey: ColumnKey) => (event: ChangeEvent<HTMLInputElement>) => {
+      const nextValue = event.target.value;
+      setColumnFilters((previous) => {
+        if (previous[columnKey] === nextValue) {
+          return previous;
+        }
+        return { ...previous, [columnKey]: nextValue };
+      });
+      onPageChange(1);
+    },
+    [onPageChange],
+  );
+
+  const handleHideColumn = useCallback(
+    (columnKey: ColumnKey) => {
+      setHiddenColumns((previous) => {
+        if (previous.includes(columnKey)) {
+          return previous;
+        }
+        return [...previous, columnKey];
+      });
+      setColumnFilters((previous) => {
+        if (!previous[columnKey]) {
+          return previous;
+        }
+        return { ...previous, [columnKey]: '' };
+      });
+    },
+    [],
+  );
+
+  const handleUnhideColumn = useCallback((columnKey: ColumnKey) => {
+    setHiddenColumns((previous) => previous.filter((key) => key !== columnKey));
+  }, []);
+
+  const handleDragStart = useCallback((columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
+    dragSource.current = columnKey;
+    setDragTarget(columnKey);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', columnKey);
+  }, []);
+
+  const handleDragOver = useCallback((columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+    event.preventDefault();
+    if (dragTarget !== columnKey) {
+      setDragTarget(columnKey);
+    }
+    event.dataTransfer.dropEffect = 'move';
+  }, [dragTarget]);
+
+  const handleDragLeave = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+      const nextTarget = event.relatedTarget as Node | null;
+      if (nextTarget && event.currentTarget.contains(nextTarget)) {
+        return;
+      }
+      if (dragTarget === columnKey) {
+        setDragTarget(null);
+      }
+    },
+    [dragTarget],
+  );
+
+  const handleDrop = useCallback((columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+    event.preventDefault();
+    const sourceColumn = dragSource.current;
+    setDragTarget(null);
+    dragSource.current = null;
+    if (!sourceColumn || sourceColumn === columnKey) {
+      return;
+    }
+
+    setColumnOrder((previous) => {
+      const nextOrder = previous.filter((key) => key !== sourceColumn);
+      const insertIndex = nextOrder.indexOf(columnKey);
+      if (insertIndex === -1) {
+        return previous;
+      }
+      nextOrder.splice(insertIndex, 0, sourceColumn);
+      return [...nextOrder];
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragSource.current = null;
+    setDragTarget(null);
+  }, []);
 
   const rowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
   const registerRow = (id: string) => (element: HTMLTableRowElement | null) => {
@@ -57,24 +401,40 @@ export function ListingTable({
     }
   }, [highlightedListingId, pageListings]);
 
+  const visibleColumnDefinitions = visibleColumns
+    .map((columnKey) => columnDefinitionMap.get(columnKey))
+    .filter((definition): definition is ColumnDefinition => Boolean(definition));
+
+  const hiddenColumnDefinitions = hiddenColumns
+    .map((columnKey) => columnDefinitionMap.get(columnKey))
+    .filter((definition): definition is ColumnDefinition => Boolean(definition));
+
+  const totalListingsCount = listings.length;
+  const filteredListingsCount = filteredListings.length;
+  const summaryText = isLoading
+    ? 'Loading listings from ArcGIS…'
+    : `Showing ${filteredListingsCount.toLocaleString()} matching listings${
+        filteredListingsCount !== totalListingsCount
+          ? ` (filtered from ${totalListingsCount.toLocaleString()})`
+          : ''
+      }`;
+
+  const shouldDisableHide = visibleColumns.length <= 1;
+
   return (
     <section className="listing-table">
       <header className="listing-table__header">
         <div>
           <h2>Listings</h2>
-          <p>
-            {isLoading
-              ? 'Loading listings from ArcGIS…'
-              : `Showing ${listings.length.toLocaleString()} matching listings`}
-          </p>
+          <p>{summaryText}</p>
         </div>
         <div className="listing-table__summary">
           <span>
             Page {safePage} of {totalPages}
           </span>
           <span>
-            {listings.length > 0
-              ? `Displaying ${startIndex + 1}-${endIndex} of ${listings.length.toLocaleString()}`
+            {filteredListingsCount > 0
+              ? `Displaying ${startIndex + 1}-${endIndex} of ${filteredListingsCount.toLocaleString()}`
               : 'No rows to display'}
           </span>
         </div>
@@ -84,6 +444,21 @@ export function ListingTable({
         <p role="alert" className="listing-table__error">
           {error}
         </p>
+      ) : null}
+
+      {hiddenColumnDefinitions.length > 0 ? (
+        <div className="listing-table__hidden-columns" aria-live="polite">
+          <span>Hidden columns:</span>
+          <ul>
+            {hiddenColumnDefinitions.map((definition) => (
+              <li key={definition.key}>
+                <button type="button" onClick={() => handleUnhideColumn(definition.key)}>
+                  {definition.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <div
@@ -96,60 +471,74 @@ export function ListingTable({
         <table>
           <thead>
             <tr>
-              <th scope="col">Complex</th>
-              <th scope="col">Unit</th>
-              <th scope="col">Owner(s)</th>
-              <th scope="col">Business</th>
-              <th scope="col">Mailing address</th>
-              <th scope="col">Mailing city</th>
-              <th scope="col">State</th>
-              <th scope="col">ZIP</th>
-              <th scope="col">Subdivision</th>
-              <th scope="col">Schedule #</th>
-              <th scope="col">Physical address</th>
-              <th scope="col">Details</th>
+              {visibleColumnDefinitions.map((definition) => (
+                <th
+                  key={definition.key}
+                  scope="col"
+                  onDragOver={handleDragOver(definition.key)}
+                  onDrop={handleDrop(definition.key)}
+                  onDragLeave={handleDragLeave(definition.key)}
+                  data-drop-target={dragTarget === definition.key}
+                >
+                  <div className="listing-table__column-header">
+                    <button
+                      type="button"
+                      className="listing-table__drag-handle"
+                      draggable
+                      onDragStart={handleDragStart(definition.key)}
+                      onDragEnd={handleDragEnd}
+                      aria-label={`Drag to reorder the ${definition.label} column`}
+                    >
+                      <span aria-hidden="true">⋮⋮</span>
+                    </button>
+                    <span className="listing-table__column-title">{definition.label}</span>
+                    <button
+                      type="button"
+                      className="listing-table__hide-button"
+                      onClick={() => handleHideColumn(definition.key)}
+                      disabled={shouldDisableHide}
+                      aria-label={`Hide the ${definition.label} column`}
+                    >
+                      Hide
+                    </button>
+                  </div>
+                </th>
+              ))}
+            </tr>
+            <tr className="listing-table__filters">
+              {visibleColumnDefinitions.map((definition) => (
+                <th key={`${definition.key}-filter`}>
+                  <label className="listing-table__filter">
+                    <span className="visually-hidden">Filter {definition.label}</span>
+                    <input
+                      type="text"
+                      value={columnFilters[definition.key] ?? ''}
+                      onChange={handleFilterChange(definition.key)}
+                      placeholder="Type to filter…"
+                      className="listing-table__filter-input"
+                    />
+                  </label>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={12} className="listing-table__loading">
+                <td colSpan={columnCount} className="listing-table__loading">
                   Loading…
                 </td>
               </tr>
             ) : pageListings.length === 0 ? (
               <tr>
-                <td colSpan={12} className="listing-table__empty">
-                  No listings match the current filters.
+                <td colSpan={columnCount} className="listing-table__empty">
+                  {hasActiveColumnFilters
+                    ? 'No listings match the current table filters.'
+                    : 'No listings match the current filters.'}
                 </td>
               </tr>
             ) : (
               pageListings.map((listing) => {
-                const owners = Array.from(
-                  new Set(
-                    listing.ownerNames
-                      .map((name) => name.trim())
-                      .filter((name) => name.length > 0),
-                  ),
-                );
-                const businessLabel = listing.isBusinessOwner ? 'Yes' : 'No';
-                const mailingLines = listing.mailingAddress
-                  ? listing.mailingAddress.split('\n')
-                  : [];
-                const zipDisplay = listing.mailingZip9 || listing.mailingZip5 || '—';
-                const detailLink = listing.publicDetailUrl ? (
-                  <a
-                    href={listing.publicDetailUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="listing-table__link"
-                  >
-                    View
-                  </a>
-                ) : (
-                  '—'
-                );
-
                 return (
                   <tr
                     key={listing.id}
@@ -158,62 +547,9 @@ export function ListingTable({
                       highlightedListingId === listing.id ? ' listing-table__row--highlight' : ''
                     }`}
                   >
-                    <td>
-                      {listing.complex ? (
-                        <Link
-                          to={`/complex/${encodeURIComponent(listing.complex)}`}
-                          className="listing-table__link"
-                        >
-                          {listing.complex}
-                        </Link>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>{listing.unit || '—'}</td>
-                    <td>
-                      <div className="listing-table__owner">
-                        {owners.length > 0 ? (
-                          <div className="listing-table__owner-list">
-                            {owners.map((owner) => (
-                              <Link
-                                key={owner}
-                                to={`/owner/${encodeURIComponent(owner)}`}
-                                className="listing-table__link"
-                              >
-                                {owner}
-                              </Link>
-                            ))}
-                          </div>
-                        ) : (
-                          '—'
-                        )}
-                      </div>
-                      {owners.length > 1 ? (
-                        <div className="listing-table__owner-count">
-                          {owners.length} owners
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>{businessLabel}</td>
-                    <td>
-                      {mailingLines.length ? (
-                        <span className="listing-table__multiline">
-                          {mailingLines.map((line, index) => (
-                            <span key={index}>{line}</span>
-                          ))}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>{listing.mailingCity || '—'}</td>
-                    <td>{listing.mailingState || '—'}</td>
-                    <td>{zipDisplay}</td>
-                    <td>{listing.subdivision || '—'}</td>
-                    <td>{listing.scheduleNumber || '—'}</td>
-                    <td>{listing.physicalAddress || '—'}</td>
-                    <td>{detailLink}</td>
+                    {visibleColumnDefinitions.map((definition) => (
+                      <td key={`${listing.id}-${definition.key}`}>{definition.render(listing)}</td>
+                    ))}
                   </tr>
                 );
               })
