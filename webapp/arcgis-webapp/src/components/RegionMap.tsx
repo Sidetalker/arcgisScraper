@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -192,19 +192,27 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
         totalListingCount === 0
           ? 'No properties match the current filters.'
           : `${formattedCount} ${pluralised} the current filters.`;
-      return (
-        <div className="region-map__selection region-map__selection--empty" aria-live="polite">
-          <p className="region-map__selection-empty-primary">
-            {hasListings
-              ? 'Hover over a property marker to see details.'
-              : 'Draw a region or adjust filters to find properties.'}
-          </p>
-          <p className="region-map__selection-empty-secondary">
-            {countMessage}
-          </p>
+    return (
+      <div className="region-map__selection region-map__selection--empty" aria-live="polite">
+        <p className="region-map__selection-empty-primary">
+          {hasListings
+            ? 'Hover over a property marker to see details.'
+            : 'Draw a region or adjust filters to find properties.'}
+        </p>
+        <p className="region-map__selection-empty-secondary">
+          {countMessage}
+        </p>
+        <div className="region-map__selection-empty-hints">
+          <p>Need somewhere to start?</p>
+          <ul>
+            <li>Use the filters to narrow down complexes or owners.</li>
+            <li>Draw regions on the map to focus on specific neighborhoods.</li>
+            <li>Hover any marker to preview the property before jumping to the table.</li>
+          </ul>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
     const title =
       listing.complex?.trim() ||
@@ -212,17 +220,6 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
       listing.ownerName?.trim() ||
       listing.scheduleNumber?.trim() ||
       'Listing';
-
-    const subtitleParts: string[] = [];
-    const unit = listing.unit?.trim();
-    if (unit) {
-      subtitleParts.push(`Unit ${unit}`);
-    }
-    const subdivision = listing.subdivision?.trim();
-    if (subdivision) {
-      subtitleParts.push(subdivision);
-    }
-    const subtitle = subtitleParts.join(' · ');
 
     const owners = getUniqueOwners(listing);
     const mailingAddressLines = splitLines(listing.mailingAddress);
@@ -233,7 +230,6 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
         <div className="region-map__selection-header">
           <div className="region-map__selection-heading">
             <h3 className="region-map__selection-title">{title}</h3>
-            {subtitle ? <p className="region-map__selection-subtitle">{subtitle}</p> : null}
           </div>
           {detailUrl ? (
             <a
@@ -288,8 +284,7 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
         </dl>
       </div>
     );
-  },
-);
+}
 
 ListingSelectionPanel.displayName = 'ListingSelectionPanel';
 

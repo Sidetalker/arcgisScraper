@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 import { fetchListings } from '@/services/arcgisClient';
-import { loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
+import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
 import type { ListingRecord, RegionCircle } from '@/types';
@@ -29,6 +29,7 @@ export interface ListingsContextValue {
   refresh: () => void;
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
+  clearCacheAndReload: () => Promise<void>;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -200,6 +201,31 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     loadListingsFromSupabase();
   }, [loadListingsFromSupabase]);
 
+  const clearCacheAndReload = useCallback(async () => {
+    console.info('Clearing local listings cache and reloading from Supabase.');
+    setLoading(true);
+    setError(null);
+    try {
+      await clearListingsCache();
+      applyListingSnapshot([], null, null);
+      setCachedAt(null);
+      setLocalCachedAt(null);
+      setSource('unknown');
+      await loadListingsFromSupabase();
+      console.info('Local cache cleared and reloaded successfully.');
+    } catch (clearError) {
+      console.error('Failed to clear local cache.', clearError);
+      const message =
+        clearError instanceof Error
+          ? clearError.message
+          : 'Unable to clear local cache.';
+      setError(message);
+      throw clearError instanceof Error ? clearError : new Error(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyListingSnapshot, loadListingsFromSupabase]);
+
   const syncFromArcgis = useCallback(async () => {
     console.info('Syncing listings from ArcGIS into Supabase.');
     setSyncing(true);
@@ -263,6 +289,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       refresh,
       syncing,
       syncFromArcgis,
+      clearCacheAndReload,
     }),
     [
       cachedAt,
@@ -274,6 +301,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       isLocalCacheStale,
       source,
       refresh,
+      clearCacheAndReload,
       regions,
       syncing,
       syncFromArcgis,

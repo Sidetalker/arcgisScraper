@@ -21,6 +21,7 @@ function Layout(): JSX.Element {
     source,
     syncing,
     syncFromArcgis,
+    clearCacheAndReload,
   } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
 
@@ -85,6 +86,27 @@ function Layout(): JSX.Element {
             title="Fetch fresh data from ArcGIS and replace the Supabase listings dataset."
           >
             {syncing ? 'Syncing…' : 'Sync from ArcGIS'}
+          </button>
+          <button
+            type="button"
+            className="app__clear-cache"
+            onClick={async () => {
+              setStatusMessage('Clearing local cache…');
+              try {
+                await clearCacheAndReload();
+                setStatusMessage('Local cache cleared. Reloaded from Supabase.');
+              } catch (error) {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to clear local cache.';
+                setStatusMessage(message);
+              }
+            }}
+            disabled={loading || syncing}
+            title="Delete the local cache and reload the dataset from Supabase."
+          >
+            Clear local cache
           </button>
           <span
             className={`app__cache${source === 'local' ? ' app__cache--active' : ''}`}
