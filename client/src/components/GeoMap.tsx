@@ -5,11 +5,15 @@ import L, { LatLng, LeafletEvent } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { ArcgisFeature, GeoCircle } from '../types';
+import { CircleControls } from './CircleControls';
+import { getFeatureId } from '../utils/features';
 
 interface GeoMapProps {
   features: ArcgisFeature[];
   circles: GeoCircle[];
   onCirclesChange: (circles: GeoCircle[]) => void;
+  selectedFeatureId: string | null;
+  onSelectFeature: (featureId: string | null) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [39.63, -106.06];
@@ -23,7 +27,13 @@ function toCircle(layer: L.Circle): GeoCircle {
   };
 }
 
-export function GeoMap({ features, circles, onCirclesChange }: GeoMapProps) {
+export function GeoMap({
+  features,
+  circles,
+  onCirclesChange,
+  selectedFeatureId,
+  onSelectFeature,
+}: GeoMapProps) {
   const drawnItemsRef = useRef<L.FeatureGroup<any> | null>(null);
 
   const initialBounds = useMemo(() => {
@@ -96,6 +106,9 @@ export function GeoMap({ features, circles, onCirclesChange }: GeoMapProps) {
   };
 
   const mapCenter = initialBounds ? initialBounds.getCenter() : null;
+  const defaultCenter = mapCenter
+    ? { lat: mapCenter.lat, lng: mapCenter.lng }
+    : { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
 
   return (
     <section className="panel">
@@ -106,6 +119,7 @@ export function GeoMap({ features, circles, onCirclesChange }: GeoMapProps) {
           regions are hidden from the results.
         </p>
       </header>
+      <CircleControls circles={circles} onCirclesChange={onCirclesChange} defaultCenter={defaultCenter} />
       <div className="map-container">
         <MapContainer
           center={mapCenter ? [mapCenter.lat, mapCenter.lng] : DEFAULT_CENTER}
@@ -137,16 +151,26 @@ export function GeoMap({ features, circles, onCirclesChange }: GeoMapProps) {
               }}
             />
           </FeatureGroup>
-          {features.map((feature, index) => {
+          {features.map((feature) => {
             if (!feature.geometry) {
               return null;
             }
+            const featureId = getFeatureId(feature);
+            const isSelected = selectedFeatureId === featureId;
             return (
               <CircleMarker
-                key={index}
+                key={featureId}
                 center={[feature.geometry.y, feature.geometry.x]}
-                radius={4}
-                pathOptions={{ color: '#22c55e' }}
+                radius={isSelected ? 6 : 4}
+                pathOptions={{
+                  color: isSelected ? '#1d4ed8' : '#15803d',
+                  weight: isSelected ? 2 : 0,
+                  fillColor: isSelected ? '#3b82f6' : '#22c55e',
+                  fillOpacity: 0.95,
+                }}
+                eventHandlers={{
+                  click: () => onSelectFeature(isSelected ? null : featureId),
+                }}
               />
             );
           })}

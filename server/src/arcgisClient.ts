@@ -11,10 +11,16 @@ export interface Feature<TAttributes extends Record<string, unknown> = Record<st
   geometry?: Geometry | null;
 }
 
+export interface FieldDefinition {
+  name: string;
+  type: string;
+  alias?: string;
+}
+
 export interface QueryResponse<TAttributes extends Record<string, unknown>> {
   features: Feature<TAttributes>[];
   exceededTransferLimit?: boolean;
-  fields?: Array<{ name: string; type: string }>;
+  fields?: FieldDefinition[];
 }
 
 export interface FetchOptions {

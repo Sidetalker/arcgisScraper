@@ -8,9 +8,15 @@ export interface ArcgisFeature {
   geometry?: ArcgisGeometry | null;
 }
 
+export interface ArcgisField {
+  name: string;
+  type: string;
+  alias?: string;
+}
+
 export interface ArcgisResponse {
   features: ArcgisFeature[];
-  fields?: Array<{ name: string; type: string }>;
+  fields?: ArcgisField[];
 }
 
 export interface GeoCircle {
