@@ -122,6 +122,22 @@ const DEFAULT_ZOOM = 10;
 
 type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
 
+type SummitCountyBoundaryProperties = {
+  geoid?: string;
+  GEOID?: string;
+  name?: string;
+  boundarySource?: string;
+  [key: string]: unknown;
+};
+
+type SummitCountyFeature = SummitCountyFeatureCollection['features'][number] & {
+  properties?: SummitCountyBoundaryProperties;
+};
+
+const SUMMIT_COUNTY_FIPS = '08117';
+const SUMMIT_BOUNDARY_SOURCE_URL =
+  'https://cdn.jsdelivr.net/gh/plotly/datasets@master/geojson-counties-fips.json';
+
 const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
   color: '#1f78b4',
   weight: 2,
@@ -129,24 +145,118 @@ const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
   fillOpacity: 0.2,
 };
 
-const SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
+const LOCAL_SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
   const geometry = summitCountyGeoJson as SummitCountyFeatureCollection;
   return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
 })();
 
-function SummitCountyOverlay(): JSX.Element | null {
-  const overlayGeometry = SUMMIT_COUNTY_OVERLAY;
-  const overlayRef = useRef<L.GeoJSON | null>(null);
-  const map = useMap();
-  const hasFittedViewRef = useRef(false);
+function useSummitCountyBoundary(): SummitCountyFeatureCollection | null {
+  const [boundary, setBoundary] = useState<SummitCountyFeatureCollection | null>(
+    LOCAL_SUMMIT_COUNTY_OVERLAY,
+  );
 
   useEffect(() => {
-    if (!overlayGeometry || !overlayRef.current || hasFittedViewRef.current) {
+    let cancelled = false;
+
+    async function loadBoundary(): Promise<void> {
+      try {
+        const response = await fetch(SUMMIT_BOUNDARY_SOURCE_URL, {
+          cache: 'force-cache',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch county boundaries: ${response.status}`);
+        }
+
+        const dataset = (await response.json()) as FeatureCollection<Polygon | MultiPolygon> & {
+          features: SummitCountyFeature[];
+        };
+
+        const summitFeature = dataset.features.find((feature) => {
+          if (!feature) {
+            return false;
+          }
+
+          if (feature.id === SUMMIT_COUNTY_FIPS) {
+            return true;
+          }
+
+          const properties = feature.properties ?? {};
+          const candidateGeoid =
+            typeof properties.geoid === 'string'
+              ? properties.geoid
+              : typeof properties.GEOID === 'string'
+                ? properties.GEOID
+                : undefined;
+
+          return candidateGeoid === SUMMIT_COUNTY_FIPS;
+        });
+
+        if (!summitFeature?.geometry || cancelled) {
+          return;
+        }
+
+        const nextBoundary: SummitCountyFeatureCollection = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                name: 'Summit County',
+                geoid: SUMMIT_COUNTY_FIPS,
+                boundarySource: 'remote',
+                ...(summitFeature.properties ?? {}),
+              },
+              geometry: summitFeature.geometry,
+            },
+          ],
+        };
+
+        if (!cancelled) {
+          setBoundary(nextBoundary);
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- surface network issues in development only
+          console.warn('Failed to load Summit County boundary overlay', error);
+        }
+      }
+    }
+
+    void loadBoundary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return boundary;
+}
+
+function SummitCountyOverlay(): JSX.Element | null {
+  const overlayGeometry = useSummitCountyBoundary();
+  const overlayRef = useRef<L.GeoJSON | null>(null);
+  const map = useMap();
+  const fittedSourceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!overlayGeometry || !overlayRef.current) {
       return;
     }
 
     const bounds = overlayRef.current.getBounds();
     if (!bounds.isValid()) {
+      return;
+    }
+
+    const overlaySource =
+      overlayGeometry.features[0]?.properties &&
+      typeof overlayGeometry.features[0].properties === 'object'
+        ? (overlayGeometry.features[0].properties as SummitCountyBoundaryProperties)
+            .boundarySource ?? 'unknown'
+        : 'unknown';
+
+    if (fittedSourceRef.current === overlaySource) {
       return;
     }
 
@@ -159,7 +269,7 @@ function SummitCountyOverlay(): JSX.Element | null {
     });
 
     overlayRef.current.bringToBack();
-    hasFittedViewRef.current = true;
+    fittedSourceRef.current = overlaySource;
   }, [map, overlayGeometry]);
 
   if (!overlayGeometry) {
