@@ -94,6 +94,11 @@ export interface RegionPoint {
   lng: number;
 }
 
+export interface RegionPoint {
+  lat: number;
+  lng: number;
+}
+
 export interface RegionCircle {
   type: 'circle';
   lat: number;

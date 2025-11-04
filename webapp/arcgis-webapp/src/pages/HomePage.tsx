@@ -212,19 +212,22 @@ function HomePage(): JSX.Element {
     setCurrentPage(1);
   }, [filters, regions]);
 
+  const filteredByFilters = useMemo(() => {
+    return listings.filter((listing) => applyFilters(listing, filters));
+  }, [filters, listings]);
+
   const filteredListings = useMemo(() => {
-    const filtered = listings.filter((listing) => applyFilters(listing, filters));
     if (regions.length === 0) {
-      return filtered;
+      return filteredByFilters;
     }
 
-    return filtered.filter((listing) => {
+    return filteredByFilters.filter((listing) => {
       if (typeof listing.latitude !== 'number' || typeof listing.longitude !== 'number') {
         return false;
       }
       return isPointInsideRegions({ lat: listing.latitude, lng: listing.longitude }, regions);
     });
-  }, [filters, listings, regions]);
+  }, [filteredByFilters, regions]);
 
   const regionListings = useMemo(() => {
     return regions.length > 0 ? filteredListings : [];
@@ -499,9 +502,9 @@ function HomePage(): JSX.Element {
         regions={regions}
         onRegionsChange={handleRegionsChange}
         listings={regionListings}
-        allListings={filteredListings}
+        allListings={filteredByFilters}
         onListingSelect={handleListingFocus}
-        totalListingCount={filteredListings.length}
+        totalListingCount={filteredByFilters.length}
       />
       <ListingInsights
         supabaseAvailable={supabaseAvailable}

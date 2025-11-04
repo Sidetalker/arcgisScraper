@@ -1,6 +1,6 @@
 import { normaliseTableState, type ListingTableState } from '@/constants/listingTable';
 import { assertSupabaseClient } from '@/services/supabaseClient';
-import { normaliseRegionList } from '@/services/regionShapes';
+import { cloneRegionShape, normaliseRegionList } from '@/services/regionShapes';
 import {
   type ConfigurationProfile,
   type ListingFilters,
@@ -92,7 +92,7 @@ function fromRow(row: ConfigurationProfileRow): ConfigurationProfile {
     id: row.id,
     name: row.name,
     filters: normaliseFilters(row.filters),
-    regions: normaliseRegionList(row.regions),
+    regions: normaliseRegionList(row.regions).map((region) => cloneRegionShape(region)),
     table: normaliseTableState(row.table_state),
     updatedAt: normalisedUpdatedAt,
   };
@@ -103,7 +103,7 @@ function prepareRow(input: SaveConfigurationProfileInput): Partial<Configuration
     ...(input.id ? { id: input.id } : {}),
     name: input.name,
     filters: input.filters,
-    regions: input.regions,
+    regions: input.regions.map((region) => cloneRegionShape(region)),
     table_state: input.table,
     updated_at: new Date().toISOString(),
   };
