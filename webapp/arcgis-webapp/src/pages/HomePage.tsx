@@ -38,11 +38,40 @@ interface StoredLocalProfile {
   table?: Partial<ListingTableState> | null;
 }
 
+function normaliseStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Set<string>();
+  const result: string[] = [];
+  value.forEach((entry) => {
+    if (typeof entry !== 'string') {
+      return;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      return;
+    }
+    const key = trimmed.toLowerCase();
+    if (deduped.has(key)) {
+      return;
+    }
+    deduped.add(key);
+    result.push(trimmed);
+  });
+  return result;
+}
+
 function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): ListingFilters {
   return {
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
     owner: typeof filters?.owner === 'string' ? filters.owner : '',
+    subdivisions: normaliseStringList(filters?.subdivisions),
+    renewalCategories: normaliseStringList(filters?.renewalCategories),
+    renewalMethods: normaliseStringList(filters?.renewalMethods),
+    renewalMonths: normaliseStringList(filters?.renewalMonths),
   };
 }
 
@@ -70,8 +99,31 @@ function normaliseRegions(regions: RegionCircle[] | null | undefined): RegionCir
     }));
 }
 
+function stringSetsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  const normalise = (list: string[]) =>
+    list
+      .map((value) => value.toLowerCase())
+      .sort((first, second) => first.localeCompare(second));
+
+  const normalisedA = normalise(a);
+  const normalisedB = normalise(b);
+  return normalisedA.every((value, index) => value === normalisedB[index]);
+}
+
 function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
-  return a.searchTerm === b.searchTerm && a.complex === b.complex && a.owner === b.owner;
+  return (
+    a.searchTerm === b.searchTerm &&
+    a.complex === b.complex &&
+    a.owner === b.owner &&
+    stringSetsEqual(a.subdivisions, b.subdivisions) &&
+    stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
+    stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
+    stringSetsEqual(a.renewalMonths, b.renewalMonths)
+  );
 }
 
 function regionsEqual(a: RegionCircle[], b: RegionCircle[]): boolean {
@@ -501,7 +553,11 @@ function HomePage(): JSX.Element {
         onListingSelect={handleListingFocus}
         totalListingCount={filteredListings.length}
       />
-      <ListingInsights supabaseAvailable={supabaseAvailable} />
+      <ListingInsights
+        supabaseAvailable={supabaseAvailable}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+      />
       <div className="app__listings">
         <ConfigurationProfiles
           profiles={profiles}

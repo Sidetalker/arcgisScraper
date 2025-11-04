@@ -44,10 +44,9 @@ export interface ArcgisFeatureSet<A = Record<string, unknown>, G = QueryGeometry
 
 export type ListingAttributes = Record<string, string | number | boolean | null>;
 
-export interface ListingFeatureSet extends ArcgisFeatureSet<ListingAttributes> {
-  layerUrl?: string;
-  layerPresetId?: string | null;
-}
+export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
+
+export type RenewalCategory = 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'future' | 'missing';
 
 export interface ListingRecord {
   id: string;
@@ -69,15 +68,22 @@ export interface ListingRecord {
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;
+  estimatedRenewalDate: Date | null;
+  estimatedRenewalMethod: string | null;
+  estimatedRenewalReference: Date | null;
+  estimatedRenewalCategory: RenewalCategory;
+  estimatedRenewalMonthKey: string | null;
   raw: ListingAttributes;
-  sourceLayerUrl: string | null;
-  sourcePresetId: string | null;
 }
 
 export interface ListingFilters {
   searchTerm: string;
   complex: string;
   owner: string;
+  subdivisions: string[];
+  renewalCategories: string[];
+  renewalMethods: string[];
+  renewalMonths: string[];
 }
 
 export interface RegionCircle {
@@ -124,7 +130,6 @@ export interface FetchListingsParams {
   filters?: ArcgisQueryFilters;
   authentication?: ArcgisAuthentication;
   layerUrl?: string;
-  layerPresetId?: string;
   portalUrl?: string;
   referer?: string;
   signal?: AbortSignal;
