@@ -24,6 +24,7 @@ export interface ListingsContextValue {
   cachedAt: Date | null;
   localCachedAt: Date | null;
   isLocalCacheStale: boolean;
+  source: 'local' | 'supabase' | 'syncing' | 'unknown';
   onRegionsChange: (nextRegions: RegionCircle[]) => void;
   refresh: () => void;
   syncing: boolean;
@@ -40,6 +41,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [cachedAt, setCachedAt] = useState<Date | null>(null);
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -125,6 +127,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       try {
         const savedAt = await saveListingsToCache(records, supabaseUpdatedAt);
         setLocalCachedAt(savedAt);
+        setSource('local');
       } catch (storageError) {
         console.warn('Unable to persist listings cache to IndexedDB.', storageError);
       }
@@ -140,6 +143,9 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       }
       if (savedAt) {
         setLocalCachedAt(savedAt);
+      }
+      if (!savedAt) {
+        setSource('supabase');
       }
     },
     [],
@@ -162,6 +168,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
 
   const loadListingsFromSupabase = useCallback(async () => {
     setLoading(true);
+    setSource('supabase');
     setError(null);
     try {
       const { records, latestUpdatedAt } = await fetchStoredListings();
@@ -196,6 +203,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const syncFromArcgis = useCallback(async () => {
     console.info('Syncing listings from ArcGIS into Supabase.');
     setSyncing(true);
+    setSource('syncing');
     setError(null);
     try {
       const featureSet = await fetchListings({
@@ -216,8 +224,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
 
       await replaceAllListings(records);
       const syncTimestamp = new Date();
-      setListings(records);
-      setCachedAt(syncTimestamp);
+      applyListingSnapshot(records, syncTimestamp, syncTimestamp);
       await persistLocalCache(records, syncTimestamp);
       console.info('Supabase listings were synchronised successfully.', {
         listingCount: records.length,
@@ -251,6 +258,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       cachedAt,
       localCachedAt,
       isLocalCacheStale,
+      source,
       onRegionsChange: handleRegionsChange,
       refresh,
       syncing,
@@ -264,6 +272,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       loading,
       localCachedAt,
       isLocalCacheStale,
+      source,
       refresh,
       regions,
       syncing,

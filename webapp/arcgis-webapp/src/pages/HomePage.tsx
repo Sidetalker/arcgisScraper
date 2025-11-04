@@ -41,7 +41,7 @@ function isListingInsideRegions(
 }
 
 function HomePage(): JSX.Element {
-  const { listings, loading, error, regions, onRegionsChange, cachedAt } = useListings();
+  const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -192,7 +192,16 @@ function HomePage(): JSX.Element {
 
   const statusMessage = useMemo(() => {
     if (loading) {
-      return 'Refreshing listings from ArcGIS…';
+      switch (source) {
+        case 'local':
+          return 'Loading listings from local cache…';
+        case 'supabase':
+          return 'Loading listings from Supabase…';
+        case 'syncing':
+          return 'Syncing listings from ArcGIS…';
+        default:
+          return 'Loading listings…';
+      }
     }
     if (error) {
       return `ArcGIS request failed: ${error}`;
@@ -207,7 +216,7 @@ function HomePage(): JSX.Element {
         : `Showing ${filteredListings.length.toLocaleString()} of ${listings.length.toLocaleString()} listings after filters.`;
 
     if (cachedAt) {
-      return `${baseMessage} Cached ${cachedAt.toLocaleTimeString([], {
+      return `${baseMessage} Supabase synced ${cachedAt.toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',

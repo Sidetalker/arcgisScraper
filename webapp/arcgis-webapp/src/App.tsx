@@ -13,7 +13,15 @@ export type LayoutOutletContext = {
 };
 
 function Layout(): JSX.Element {
-  const { loading, cachedAt, localCachedAt, isLocalCacheStale, syncing, syncFromArcgis } = useListings();
+  const {
+    loading,
+    cachedAt,
+    localCachedAt,
+    isLocalCacheStale,
+    source,
+    syncing,
+    syncFromArcgis,
+  } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
 
   const handleStatusChange = useCallback((message: string) => {
@@ -78,11 +86,16 @@ function Layout(): JSX.Element {
           >
             {syncing ? 'Syncing…' : 'Sync from ArcGIS'}
           </button>
-          <span className="app__cache" title={localSummary}>
+          <span
+            className={`app__cache${source === 'local' ? ' app__cache--active' : ''}`}
+            title={localSummary}
+          >
             {localSummary}
           </span>
           <span
-            className={`app__cache${isLocalCacheStale ? ' app__cache--warn' : ''}`}
+            className={`app__cache${isLocalCacheStale ? ' app__cache--warn' : ''} ${
+              source === 'supabase' || source === 'syncing' ? ' app__cache--active' : ''
+            }`}
             title={supabaseSummary}
           >
             {supabaseSummary}
