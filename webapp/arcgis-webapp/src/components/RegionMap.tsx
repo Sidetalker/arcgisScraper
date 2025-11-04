@@ -232,6 +232,26 @@ type RegionMapProps = {
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
 
+export function resolveDisplayedListings(
+  showAllProperties: boolean,
+  allListings: ListingRecord[],
+  listings: ListingRecord[],
+): ListingRecord[] {
+  if (!showAllProperties) {
+    return listings;
+  }
+
+  return allListings.length > 0 ? allListings : listings;
+}
+
+export function canToggleShowAll(allListingsCount: number): boolean {
+  return allListingsCount > 0;
+}
+
+export function shouldForceShowAllOff(showAllProperties: boolean, allListingsCount: number): boolean {
+  return showAllProperties && !canToggleShowAll(allListingsCount);
+}
+
 type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
 
 type SummitCountyBoundaryProperties = {
@@ -713,6 +733,7 @@ type DrawManagerProps = {
   onRegionsChange: (regions: RegionShape[]) => void;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  canShowAllProperties: boolean;
 };
 
 type MapToolbarProps = {
@@ -724,6 +745,7 @@ type MapToolbarProps = {
   activeTool: 'polygon' | 'circle' | null;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  canShowAllProperties: boolean;
 };
 
 function MapToolbar({
@@ -735,6 +757,7 @@ function MapToolbar({
   activeTool,
   showAllProperties,
   onToggleShowAll,
+  canShowAllProperties,
 }: MapToolbarProps): null {
   const map = useMap();
   const buttonRefs = useRef<
@@ -747,6 +770,11 @@ function MapToolbar({
       }
     | null
   >(null);
+  const toggleAllHandlerRef = useRef(onToggleShowAll);
+
+  useEffect(() => {
+    toggleAllHandlerRef.current = onToggleShowAll;
+  }, [onToggleShowAll]);
 
   useEffect(() => {
     const toolbarControl = new L.Control({ position: 'topright' });
@@ -824,14 +852,13 @@ function MapToolbar({
       toggleAllButton.title = 'Show all properties or only those within regions';
       toggleAllButton.textContent = 'Show all properties';
       toggleAllButton.dataset.action = 'toggle-all';
-      toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
-      if (showAllProperties) {
-        toggleAllButton.classList.add('region-map__toolbar-button--active');
-      }
-      toggleAllButton.addEventListener('click', (event) => {
+      toggleAllButton.setAttribute('aria-pressed', 'false');
+      const handleToggleAllClick = (event: MouseEvent) => {
         event.preventDefault();
-        onToggleShowAll();
-      });
+        event.stopPropagation();
+        toggleAllHandlerRef.current?.();
+      };
+      toggleAllButton.addEventListener('click', handleToggleAllClick);
 
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
@@ -850,10 +877,11 @@ function MapToolbar({
     toolbarControl.addTo(map);
 
     return () => {
+      toggleAllButton.removeEventListener('click', handleToggleAllClick);
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -875,13 +903,28 @@ function MapToolbar({
 
   useEffect(() => {
     const refs = buttonRefs.current;
-    if (!refs || !refs.toggleAllButton) {
+    if (!refs?.toggleAllButton) {
       return;
     }
 
-    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
-    refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
-  }, [showAllProperties]);
+    const button = refs.toggleAllButton;
+    const isActive = canShowAllProperties && showAllProperties;
+    button.classList.toggle('region-map__toolbar-button--active', isActive);
+    button.classList.toggle('region-map__toolbar-button--disabled', !canShowAllProperties);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    button.setAttribute('aria-disabled', canShowAllProperties ? 'false' : 'true');
+    button.disabled = !canShowAllProperties;
+
+    const label = isActive ? 'Show region matches' : 'Show all properties';
+    button.textContent = label;
+
+    const title = canShowAllProperties
+      ? isActive
+        ? 'Showing all filtered properties. Click to limit results to your drawn regions.'
+        : 'Showing properties inside your drawn regions. Click to show all filtered properties.'
+      : 'No filtered properties are available to display.';
+    button.title = title;
+  }, [canShowAllProperties, showAllProperties]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -909,6 +952,7 @@ function DrawManager({
   onRegionsChange,
   showAllProperties,
   onToggleShowAll,
+  canShowAllProperties,
 }: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
@@ -1125,6 +1169,7 @@ function DrawManager({
       activeTool={activeTool}
       showAllProperties={showAllProperties}
       onToggleShowAll={onToggleShowAll}
+      canShowAllProperties={canShowAllProperties}
     />
   );
 }
@@ -1258,11 +1303,18 @@ function RegionMap({
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
 
+  const allListingsCount = allListings.length;
+  const canShowAllProperties = useMemo(() => canToggleShowAll(allListingsCount), [allListingsCount]);
+
   const displayedListings = useMemo(() => {
-    // When toggle is on, always show all filtered listings
-    // When toggle is off, show region-filtered listings only
-    return showAllProperties ? allListings : listings;
+    return resolveDisplayedListings(showAllProperties, allListings, listings);
   }, [showAllProperties, allListings, listings]);
+
+  useEffect(() => {
+    if (shouldForceShowAllOff(showAllProperties, allListingsCount)) {
+      setShowAllProperties(false);
+    }
+  }, [allListingsCount, showAllProperties]);
 
   useEffect(() => {
     if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
@@ -1339,6 +1391,7 @@ function RegionMap({
           onRegionsChange={onRegionsChange}
           showAllProperties={showAllProperties}
           onToggleShowAll={handleToggleShowAll}
+          canShowAllProperties={canShowAllProperties}
         />
         <EvStationMarkers />
         {displayedListings.length ? (
