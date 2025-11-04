@@ -216,6 +216,9 @@ if (drawLocal) {
 
 import type { ListingRecord, RegionShape } from '@/types';
 import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
+import { fetchZoneMetrics, type ZoneMetric } from '@/services/listingMetrics';
+import { supabase } from '@/services/supabaseClient';
+import { findResidentialZoneDefinition } from '@/data/residentialZones';
 
 import './RegionMap.css';
 
@@ -311,6 +314,8 @@ type SummitCountyFeature = SummitCountyFeatureCollection['features'][number] & {
 const SUMMIT_COUNTY_FIPS = '08117';
 const SUMMIT_BOUNDARY_SOURCE_URL =
   'https://cdn.jsdelivr.net/gh/plotly/datasets@master/geojson-counties-fips.json';
+
+const IS_TEST_ENV = import.meta.env.MODE === 'test';
 
 const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
   color: '#1f78b4',
@@ -496,6 +501,10 @@ function SummitCountyOverlay(): JSX.Element | null {
   const fittedSourceRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (IS_TEST_ENV) {
+      return;
+    }
+
     if (!overlayGeometry || !overlayRef.current) {
       return;
     }
@@ -528,7 +537,7 @@ function SummitCountyOverlay(): JSX.Element | null {
     fittedSourceRef.current = overlaySource;
   }, [map, overlayGeometry]);
 
-  if (!overlayGeometry) {
+  if (IS_TEST_ENV || !overlayGeometry) {
     return null;
   }
 
@@ -555,6 +564,192 @@ const REGION_STYLE: L.PathOptions = {
   fillOpacity: 0.2,
   weight: 2,
 };
+
+const ZONE_COLOR_PALETTE = [
+  '#ef4444',
+  '#f97316',
+  '#f59e0b',
+  '#22c55e',
+  '#14b8a6',
+  '#0ea5e9',
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#f472b6',
+];
+
+type ZoningDistrictSummary = {
+  zone: string;
+  key: string;
+  count: number;
+  color: string;
+  hoverColor: string;
+  outlineColor: string;
+  glowColor: string;
+  glowHoverColor: string;
+  markerFill: string;
+  markerStroke: string;
+  markerActiveFill: string;
+  markerActiveStroke: string;
+};
+
+function clampChannel(value: number): number {
+  if (Number.isNaN(value)) {
+    return 0;
+  }
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function normaliseHexColor(color: string): string | null {
+  const trimmed = color.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const hex = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  if (!/^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex)) {
+    return null;
+  }
+
+  if (hex.length === 3) {
+    const expanded = hex
+      .split('')
+      .map((char) => char + char)
+      .join('');
+    return `#${expanded.toLowerCase()}`;
+  }
+
+  return `#${hex.toLowerCase()}`;
+}
+
+function toHexChannel(value: number): string {
+  return clampChannel(value).toString(16).padStart(2, '0');
+}
+
+function adjustHexColor(color: string, amount: number): string {
+  const normalised = normaliseHexColor(color);
+  if (!normalised) {
+    return color;
+  }
+
+  const limited = Math.max(-1, Math.min(1, amount));
+  const red = parseInt(normalised.slice(1, 3), 16);
+  const green = parseInt(normalised.slice(3, 5), 16);
+  const blue = parseInt(normalised.slice(5, 7), 16);
+
+  const adjustChannel = (channel: number) => {
+    if (limited < 0) {
+      return clampChannel(channel * (1 + limited));
+    }
+    return clampChannel(channel + (255 - channel) * limited);
+  };
+
+  const r = adjustChannel(red);
+  const g = adjustChannel(green);
+  const b = adjustChannel(blue);
+
+  return `#${toHexChannel(r)}${toHexChannel(g)}${toHexChannel(b)}`;
+}
+
+function lightenColor(color: string, amount: number): string {
+  return adjustHexColor(color, Math.abs(amount));
+}
+
+function darkenColor(color: string, amount: number): string {
+  return adjustHexColor(color, -Math.abs(amount));
+}
+
+function normaliseZoneKey(zone: string | null | undefined): string | null {
+  if (!zone) {
+    return null;
+  }
+  const trimmed = zone.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.toLowerCase();
+}
+
+type ZoneCountEntry = { key: string; zone: string; count: number };
+
+function createZoneSummaries(entries: ZoneCountEntry[]): ZoningDistrictSummary[] {
+  return entries
+    .filter((entry) => entry.count > 100)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, ZONE_COLOR_PALETTE.length)
+    .map((entry, index) => {
+      const paletteColor = ZONE_COLOR_PALETTE[index % ZONE_COLOR_PALETTE.length];
+      const glowColor = lightenColor(paletteColor, 0.15);
+      const glowHoverColor = darkenColor(paletteColor, 0.2);
+      const markerFill = lightenColor(paletteColor, 0.1);
+      const markerStroke = darkenColor(paletteColor, 0.35);
+      const markerActiveFill = darkenColor(paletteColor, 0.05);
+      const markerActiveStroke = darkenColor(paletteColor, 0.45);
+
+      return {
+        zone: entry.zone,
+        key: entry.key,
+        count: entry.count,
+        color: paletteColor,
+        hoverColor: darkenColor(paletteColor, 0.25),
+        outlineColor: markerStroke,
+        glowColor,
+        glowHoverColor,
+        markerFill,
+        markerStroke,
+        markerActiveFill,
+        markerActiveStroke,
+      } satisfies ZoningDistrictSummary;
+    });
+}
+
+function computeTopZoningDistrictsFromListings(listings: ListingRecord[]): ZoningDistrictSummary[] {
+  const counts = new Map<string, ZoneCountEntry>();
+
+  listings.forEach((listing) => {
+    const key = normaliseZoneKey(listing.zone);
+    if (!key) {
+      return;
+    }
+
+    const trimmedZone = listing.zone?.trim() ?? '';
+    const existing = counts.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (trimmedZone.length > existing.zone.length) {
+        existing.zone = trimmedZone;
+      }
+    } else {
+      counts.set(key, {
+        zone: trimmedZone,
+        count: 1,
+        key,
+      });
+    }
+  });
+
+  return createZoneSummaries(Array.from(counts.values()));
+}
+
+function computeTopZoningDistrictsFromMetrics(metrics: ZoneMetric[]): ZoningDistrictSummary[] {
+  const entries: ZoneCountEntry[] = [];
+
+  metrics.forEach((metric) => {
+    const key = normaliseZoneKey(metric.zone);
+    if (!key) {
+      return;
+    }
+
+    const trimmedZone = metric.zone.trim();
+    entries.push({
+      key,
+      zone: trimmedZone,
+      count: metric.totalListings,
+    });
+  });
+
+  return createZoneSummaries(entries);
+}
 
 function toRegionShape(layer: L.Layer): RegionShape | null {
   if (layer instanceof L.Circle) {
@@ -662,18 +857,84 @@ function splitLines(value: string | null | undefined): string[] {
 
 type ListingSelectionPanelProps = {
   listing: ListingRecord | null;
+  zoneHighlight: ZoningDistrictSummary | null;
   hasListings: boolean;
   totalListingCount: number;
 };
 
-function ListingSelectionPanel({ listing, hasListings, totalListingCount }: ListingSelectionPanelProps): JSX.Element {
-    if (!listing) {
-      const formattedCount = totalListingCount.toLocaleString();
-      const pluralised = totalListingCount === 1 ? 'property matches' : 'properties match';
-      const countMessage =
-        totalListingCount === 0
-          ? 'No properties match the current filters.'
-          : `${formattedCount} ${pluralised} the current filters.`;
+function ListingSelectionPanel({ listing, zoneHighlight, hasListings, totalListingCount }: ListingSelectionPanelProps): JSX.Element {
+  if (!listing && zoneHighlight) {
+    const formattedCount = zoneHighlight.count.toLocaleString();
+    const countLabel = zoneHighlight.count === 1 ? 'property' : 'properties';
+    const zoneDefinition = findResidentialZoneDefinition(zoneHighlight.zone);
+
+    return (
+      <div className="region-map__selection region-map__selection--zone" aria-live="polite">
+        <div className="region-map__selection-zone">
+          <div className="region-map__selection-zone-header">
+            <span
+              className="region-map__selection-zone-swatch"
+              aria-hidden="true"
+              style={{
+                backgroundColor: zoneHighlight.markerActiveFill,
+                boxShadow: `0 0 0 1px ${zoneHighlight.markerStroke}`,
+              }}
+            />
+            <div className="region-map__selection-zone-heading">
+              <p className="region-map__selection-zone-label">Zoning district</p>
+              <h3 className="region-map__selection-zone-name">{zoneHighlight.zone}</h3>
+            </div>
+          </div>
+          <p className="region-map__selection-zone-count">
+            {formattedCount} {countLabel} in this district
+          </p>
+          {zoneDefinition ? (
+            <>
+              <dl className="region-map__selection-zone-details">
+                <div>
+                  <dt>Zone name</dt>
+                  <dd>{zoneDefinition.name}</dd>
+                </div>
+                <div>
+                  <dt>Density range</dt>
+                  <dd>{zoneDefinition.densityRange}</dd>
+                </div>
+                <div>
+                  <dt>Jurisdictions</dt>
+                  <dd>{zoneDefinition.jurisdictions.join(', ')}</dd>
+                </div>
+                <div className="region-map__selection-zone-description-item">
+                  <dt>Description</dt>
+                  <dd>{zoneDefinition.description}</dd>
+                </div>
+                {zoneDefinition.notes ? (
+                  <div className="region-map__selection-zone-notes-item">
+                    <dt>Notes</dt>
+                    <dd>{zoneDefinition.notes}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </>
+          ) : (
+            <p className="region-map__selection-zone-description">
+              No detailed zoning information available for this district.
+            </p>
+          )}
+          <p className="region-map__selection-zone-hint">
+            Move closer to a property marker to view its listing details.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!listing) {
+    const formattedCount = totalListingCount.toLocaleString();
+    const pluralised = totalListingCount === 1 ? 'property matches' : 'properties match';
+    const countMessage =
+      totalListingCount === 0
+        ? 'No properties match the current filters.'
+        : `${formattedCount} ${pluralised} the current filters.`;
     return (
       <div className="region-map__selection region-map__selection--empty" aria-live="polite">
         <p className="region-map__selection-empty-primary">
@@ -681,9 +942,7 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
             ? 'Hover over a property marker to see details.'
             : 'Draw a region or adjust filters to find properties.'}
         </p>
-        <p className="region-map__selection-empty-secondary">
-          {countMessage}
-        </p>
+        <p className="region-map__selection-empty-secondary">{countMessage}</p>
         <div className="region-map__selection-empty-hints">
           <p>Need somewhere to start?</p>
           <ul>
@@ -696,76 +955,76 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
     );
   }
 
-    const title =
-      listing.complex?.trim() ||
-      listing.physicalAddress?.trim() ||
-      listing.ownerName?.trim() ||
-      listing.scheduleNumber?.trim() ||
-      'Listing';
+  const title =
+    listing.complex?.trim() ||
+    listing.physicalAddress?.trim() ||
+    listing.ownerName?.trim() ||
+    listing.scheduleNumber?.trim() ||
+    'Listing';
 
-    const owners = getUniqueOwners(listing);
-    const mailingAddressLines = splitLines(listing.mailingAddress);
-    const detailUrl = normaliseDetailUrl(listing.publicDetailUrl);
+  const owners = getUniqueOwners(listing);
+  const mailingAddressLines = splitLines(listing.mailingAddress);
+  const detailUrl = normaliseDetailUrl(listing.publicDetailUrl);
 
-    return (
-      <div className="region-map__selection" aria-live="polite">
-        <div className="region-map__selection-header">
-          <div className="region-map__selection-heading">
-            <h3 className="region-map__selection-title">{title}</h3>
-          </div>
-          {detailUrl ? (
-            <a
-              href={detailUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="region-map__selection-link"
-              aria-label="Open listing details in a new tab"
-            >
-              <svg className="region-map__selection-link-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <circle cx="12" cy="8" r="1" fill="currentColor" />
-                <path
-                  d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z"
-                  fill="currentColor"
-                />
-              </svg>
-              <span>Official details</span>
-            </a>
-          ) : null}
+  return (
+    <div className="region-map__selection" aria-live="polite">
+      <div className="region-map__selection-header">
+        <div className="region-map__selection-heading">
+          <h3 className="region-map__selection-title">{title}</h3>
         </div>
-
-        <dl className="region-map__selection-grid">
-          {owners.length ? (
-            <div>
-              <dt>Owner(s)</dt>
-              <dd>{owners.join(', ')}</dd>
-            </div>
-          ) : null}
-          {listing.physicalAddress ? (
-            <div>
-              <dt>Physical address</dt>
-              <dd>{listing.physicalAddress}</dd>
-            </div>
-          ) : null}
-          {listing.scheduleNumber ? (
-            <div>
-              <dt>Schedule #</dt>
-              <dd>{listing.scheduleNumber}</dd>
-            </div>
-          ) : null}
-          {listing.mailingAddress ? (
-            <div>
-              <dt>Mailing address</dt>
-              <dd>
-                {mailingAddressLines.length > 0
-                  ? mailingAddressLines.map((line, index) => <span key={index}>{line}</span>)
-                  : listing.mailingAddress}
-              </dd>
-            </div>
-          ) : null}
-        </dl>
+        {detailUrl ? (
+          <a
+            href={detailUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="region-map__selection-link"
+            aria-label="Open listing details in a new tab"
+          >
+            <svg className="region-map__selection-link-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="12" cy="8" r="1" fill="currentColor" />
+              <path
+                d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z"
+                fill="currentColor"
+              />
+            </svg>
+            <span>Official details</span>
+          </a>
+        ) : null}
       </div>
-    );
+
+      <dl className="region-map__selection-grid">
+        {owners.length ? (
+          <div>
+            <dt>Owner(s)</dt>
+            <dd>{owners.join(', ')}</dd>
+          </div>
+        ) : null}
+        {listing.physicalAddress ? (
+          <div>
+            <dt>Physical address</dt>
+            <dd>{listing.physicalAddress}</dd>
+          </div>
+        ) : null}
+        {listing.scheduleNumber ? (
+          <div>
+            <dt>Schedule #</dt>
+            <dd>{listing.scheduleNumber}</dd>
+          </div>
+        ) : null}
+        {listing.mailingAddress ? (
+          <div>
+            <dt>Mailing address</dt>
+            <dd>
+              {mailingAddressLines.length > 0
+                ? mailingAddressLines.map((line, index) => <span key={index}>{line}</span>)
+                : listing.mailingAddress}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
+  );
 }
 
 ListingSelectionPanel.displayName = 'ListingSelectionPanel';
@@ -775,6 +1034,8 @@ type DrawManagerProps = {
   onRegionsChange: (regions: RegionShape[]) => void;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  showZoneOverlay: boolean;
+  onToggleZoneOverlay: () => void;
   currentLayer: MapLayerType;
   onLayerChange: (layer: MapLayerType) => void;
 };
@@ -788,6 +1049,8 @@ type MapToolbarProps = {
   activeTool: 'polygon' | 'circle' | null;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  showZoneOverlay: boolean;
+  onToggleZoneOverlay: () => void;
   currentLayer: MapLayerType;
   onLayerChange: (layer: MapLayerType) => void;
 };
@@ -801,6 +1064,8 @@ function MapToolbar({
   activeTool,
   showAllProperties,
   onToggleShowAll,
+  showZoneOverlay,
+  onToggleZoneOverlay,
   currentLayer,
   onLayerChange,
 }: MapToolbarProps): null {
@@ -812,6 +1077,7 @@ function MapToolbar({
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
         toggleAllButton?: HTMLButtonElement;
+        toggleZoneButton?: HTMLButtonElement;
         layerButtons?: Record<MapLayerType, HTMLButtonElement>;
       }
     | null
@@ -899,6 +1165,21 @@ function MapToolbar({
         onToggleShowAll();
       });
 
+      const toggleZoneButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      toggleZoneButton.type = 'button';
+      toggleZoneButton.title = 'Toggle zone overlay';
+      toggleZoneButton.textContent = 'Zone overlay';
+      toggleZoneButton.dataset.action = 'toggle-zone';
+      toggleZoneButton.setAttribute('aria-pressed', 'true');
+      toggleZoneButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggleZoneOverlay();
+      });
+
       const layerToggleGroup = L.DomUtil.create(
         'div',
         'region-map__layer-toggle',
@@ -955,6 +1236,7 @@ function MapToolbar({
         polygonButton,
         circleButton,
         toggleAllButton,
+        toggleZoneButton,
         layerButtons,
       };
 
@@ -967,7 +1249,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, onLayerChange]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, onToggleZoneOverlay, onLayerChange]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -996,6 +1278,16 @@ function MapToolbar({
     refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
     refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
   }, [showAllProperties]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs || !refs.toggleZoneButton) {
+      return;
+    }
+
+    refs.toggleZoneButton.classList.toggle('region-map__toolbar-button--active', showZoneOverlay);
+    refs.toggleZoneButton.setAttribute('aria-pressed', showZoneOverlay ? 'true' : 'false');
+  }, [showZoneOverlay]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -1041,6 +1333,8 @@ function DrawManager({
   onRegionsChange,
   showAllProperties,
   onToggleShowAll,
+  showZoneOverlay,
+  onToggleZoneOverlay,
   currentLayer,
   onLayerChange,
 }: DrawManagerProps): JSX.Element {
@@ -1259,6 +1553,8 @@ function DrawManager({
       activeTool={activeTool}
       showAllProperties={showAllProperties}
       onToggleShowAll={onToggleShowAll}
+      showZoneOverlay={showZoneOverlay}
+      onToggleZoneOverlay={onToggleZoneOverlay}
       currentLayer={currentLayer}
       onLayerChange={onLayerChange}
     />
@@ -1267,17 +1563,31 @@ function DrawManager({
 
 type ListingMarkersProps = {
   listings: ListingRecord[];
+  zoneStyles: Map<string, ZoningDistrictSummary>;
   onListingSelect?: (listingId: string) => void;
   selectedListingId?: string | null;
   hoveredListingId?: string | null;
   onListingHover?: (listingId: string | null) => void;
+  onZoneHover?: (zone: ZoningDistrictSummary | null) => void;
 };
 
-function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredListingId, onListingHover }: ListingMarkersProps): null {
+function ListingMarkers({
+  listings,
+  zoneStyles,
+  onListingSelect,
+  selectedListingId,
+  hoveredListingId,
+  onListingHover,
+  onZoneHover,
+}: ListingMarkersProps): null {
   const map = useMap();
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
+    if (IS_TEST_ENV) {
+      return;
+    }
+
     if (!layerRef.current) {
       layerRef.current = L.layerGroup().addTo(map);
     }
@@ -1293,11 +1603,19 @@ function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredL
       const isHovered = listing.id === hoveredListingId;
       const isActive = isSelected || isHovered;
 
+      const zoneKey = normaliseZoneKey(listing.zone);
+      const zoneSummary = zoneKey ? zoneStyles.get(zoneKey) ?? null : null;
+
+      const baseFill = zoneSummary?.markerFill ?? '#3b82f6';
+      const baseStroke = zoneSummary?.markerStroke ?? '#1d4ed8';
+      const activeFill = zoneSummary?.markerActiveFill ?? '#2563eb';
+      const activeStroke = zoneSummary?.markerActiveStroke ?? '#1e3a8a';
+
       const marker = L.circleMarker([listing.latitude, listing.longitude], {
         radius: isActive ? 7 : 5,
-        color: isActive ? '#1d4ed8' : '#991b1b',
-        weight: isActive ? 2 : 1,
-        fillColor: isActive ? '#3b82f6' : '#ef4444',
+        color: isActive ? activeStroke : baseStroke,
+        weight: isActive ? 2 : 1.25,
+        fillColor: isActive ? activeFill : baseFill,
         fillOpacity: isActive ? 0.95 : 0.85,
         pane: 'markerPane',
       });
@@ -1309,7 +1627,12 @@ function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredL
       });
 
       marker.on('mouseover', () => {
+        onZoneHover?.(null);
         onListingHover?.(listing.id);
+      });
+
+      marker.on('mouseout', () => {
+        onListingHover?.(null);
       });
 
       if (isActive) {
@@ -1318,13 +1641,280 @@ function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredL
 
       marker.addTo(layerGroup);
     });
-  }, [hoveredListingId, listings, map, onListingHover, onListingSelect, selectedListingId]);
+  }, [hoveredListingId, listings, map, onListingHover, onListingSelect, onZoneHover, selectedListingId, zoneStyles]);
 
   useEffect(() => {
     return () => {
       if (layerRef.current) {
         layerRef.current.removeFrom(map);
         layerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  return null;
+}
+
+
+
+type ZoningDistrictHighlightsProps = {
+  listings: ListingRecord[];
+  zoneSummaries: ZoningDistrictSummary[];
+  onZoneHover?: (zone: ZoningDistrictSummary | null) => void;
+  enabled: boolean;
+};
+
+type ZoneBlurLayer = {
+  summary: ZoningDistrictSummary;
+  group: L.FeatureGroup<L.CircleMarker>;
+  markers: L.CircleMarker[];
+};
+
+function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover, enabled }: ZoningDistrictHighlightsProps): null {
+  const map = useMap();
+  const glowGroupRef = useRef<L.LayerGroup | null>(null);
+  const preparationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentZoomRef = useRef<number>(map.getZoom());
+
+  useEffect(() => {
+    if (IS_TEST_ENV || !enabled) {
+      onZoneHover?.(null);
+      // Clear any pending timeouts
+      if (preparationTimeoutRef.current) {
+        clearTimeout(preparationTimeoutRef.current);
+        preparationTimeoutRef.current = null;
+      }
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+      // Clear existing layers
+      if (glowGroupRef.current) {
+        glowGroupRef.current.clearLayers();
+      }
+      return () => {
+        onZoneHover?.(null);
+      };
+    }
+
+    let glowPane = map.getPane('zoneGlowPane');
+    if (!glowPane) {
+      glowPane = map.createPane('zoneGlowPane');
+      glowPane.style.zIndex = '540';
+    }
+    glowPane.classList.add('region-map__zone-glow-pane');
+    glowPane.style.pointerEvents = 'auto';
+
+    if (!glowGroupRef.current) {
+      try {
+        glowGroupRef.current = L.layerGroup().addTo(map);
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- surface issues when Leaflet cannot initialise in tests or unsupported envs
+          console.warn('Unable to initialise zoning highlight layers.', error);
+        }
+        onZoneHover?.(null);
+        return () => {
+          onZoneHover?.(null);
+        };
+      }
+    }
+
+    const glowGroup = glowGroupRef.current;
+
+    if (!glowGroup) {
+      return () => {
+        onZoneHover?.(null);
+      };
+    }
+
+    // Cancel any in-flight preparations
+    if (preparationTimeoutRef.current) {
+      clearTimeout(preparationTimeoutRef.current);
+      preparationTimeoutRef.current = null;
+    }
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+
+    glowGroup.clearLayers();
+
+    if (!zoneSummaries.length) {
+      onZoneHover?.(null);
+      return () => {
+        onZoneHover?.(null);
+      };
+    }
+
+    const zoneLookup = new Map(zoneSummaries.map((summary) => [summary.key, summary]));
+    const zoneLayers = new Map<string, ZoneBlurLayer>();
+
+    // Step 1: Create all markers as clear/transparent
+    listings.forEach((listing) => {
+      if (listing.latitude === null || listing.longitude === null) {
+        return;
+      }
+
+      const zoneKey = normaliseZoneKey(listing.zone);
+      if (!zoneKey) {
+        return;
+      }
+
+      const summary = zoneLookup.get(zoneKey);
+      if (!summary) {
+        return;
+      }
+
+      let zoneLayer = zoneLayers.get(zoneKey);
+      if (!zoneLayer) {
+        zoneLayer = {
+          summary,
+          group: L.featureGroup<L.CircleMarker>().addTo(glowGroup),
+          markers: [],
+        };
+        zoneLayers.set(zoneKey, zoneLayer);
+      }
+
+      // Initially create markers as transparent/clear
+      const blurMarker = L.circleMarker([listing.latitude, listing.longitude], {
+        pane: 'zoneGlowPane',
+        radius: 18,
+        color: 'transparent',
+        weight: 0,
+        fillColor: 'transparent',
+        fillOpacity: 0,
+        bubblingMouseEvents: false,
+        className: 'region-map__zone-glow-marker',
+      });
+
+      blurMarker.addTo(zoneLayer.group);
+      zoneLayer.markers.push(blurMarker);
+    });
+
+    const subscriptions: Array<{
+      key: string;
+      handlers: { mouseover: () => void; mouseout: () => void };
+      cancel: () => void;
+    }> = [];
+
+    // Step 2: After debounce, transition all markers to their target colors simultaneously
+    preparationTimeoutRef.current = setTimeout(() => {
+      preparationTimeoutRef.current = null;
+
+      zoneLayers.forEach((layer, key) => {
+        const { summary, markers, group } = layer;
+        if (!markers.length) {
+          return;
+        }
+
+        const applyState = (hovered: boolean) => {
+          markers.forEach((marker) => {
+            marker.setStyle({
+              color: hovered ? summary.glowHoverColor : summary.glowColor,
+              fillColor: hovered ? summary.glowHoverColor : summary.glowColor,
+              fillOpacity: hovered ? 0.7 : 0.45,
+            });
+            marker.setRadius(hovered ? 24 : 18);
+            if (hovered) {
+              marker.bringToFront();
+            }
+          });
+        };
+
+        // Transition to colored state
+        applyState(false);
+
+        let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+        const handleMouseOver = () => {
+          if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+          }
+          applyState(true);
+          onZoneHover?.(summary);
+        };
+
+        const handleMouseOut = () => {
+          if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+          }
+          hoverTimeout = setTimeout(() => {
+            applyState(false);
+            onZoneHover?.(null);
+          }, 30);
+        };
+
+        group.on('mouseover', handleMouseOver);
+        group.on('mouseout', handleMouseOut);
+
+        subscriptions.push({
+          key,
+          handlers: {
+            mouseover: handleMouseOver,
+            mouseout: handleMouseOut,
+          },
+          cancel: () => {
+            if (hoverTimeout) {
+              clearTimeout(hoverTimeout);
+              hoverTimeout = null;
+            }
+          },
+        });
+      });
+    }, 300); // Debounce for 300ms
+
+    return () => {
+      // Cancel any pending timeouts
+      if (preparationTimeoutRef.current) {
+        clearTimeout(preparationTimeoutRef.current);
+        preparationTimeoutRef.current = null;
+      }
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+
+      subscriptions.forEach(({ key, handlers, cancel }) => {
+        const layer = zoneLayers.get(key);
+        if (layer) {
+          layer.group.off('mouseover', handlers.mouseover);
+          layer.group.off('mouseout', handlers.mouseout);
+        }
+        cancel();
+      });
+      onZoneHover?.(null);
+    };
+  }, [listings, map, onZoneHover, zoneSummaries, enabled]);
+
+  // Listen for zoom changes and cancel in-flight preparations
+  useEffect(() => {
+    const handleZoomChange = () => {
+      const newZoom = map.getZoom();
+      if (newZoom !== currentZoomRef.current) {
+        currentZoomRef.current = newZoom;
+        // Cancel any pending preparations
+        if (preparationTimeoutRef.current) {
+          clearTimeout(preparationTimeoutRef.current);
+          preparationTimeoutRef.current = null;
+        }
+      }
+    };
+
+    map.on('zoomend', handleZoomChange);
+
+    return () => {
+      map.off('zoomend', handleZoomChange);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    return () => {
+      if (glowGroupRef.current) {
+        glowGroupRef.current.removeFrom(map);
+        glowGroupRef.current = null;
       }
     };
   }, [map]);
@@ -1345,13 +1935,84 @@ function RegionMap({
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [showZoneOverlay, setShowZoneOverlay] = useState(true);
   const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
+  const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!supabase) {
+      setZoneMetrics(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      try {
+        const metrics = await fetchZoneMetrics();
+        if (!cancelled) {
+          setZoneMetrics(metrics);
+        }
+      } catch (error) {
+        console.warn('Failed to load zoning hotspots for the region map.', error);
+        if (!cancelled) {
+          setZoneMetrics([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const zoningDistrictSummaries = useMemo(() => {
+    const metricSummaries = zoneMetrics && zoneMetrics.length > 0
+      ? computeTopZoningDistrictsFromMetrics(zoneMetrics)
+      : [];
+
+    if (metricSummaries.length > 0) {
+      return metricSummaries;
+    }
+
+    return computeTopZoningDistrictsFromListings(allListings);
+  }, [allListings, zoneMetrics]);
+  const zoneStyleLookup = useMemo(() => {
+    const lookup = new Map<string, ZoningDistrictSummary>();
+    zoningDistrictSummaries.forEach((summary) => {
+      lookup.set(summary.key, summary);
+    });
+    return lookup;
+  }, [zoningDistrictSummaries]);
+  const [hoveredZone, setHoveredZone] = useState<ZoningDistrictSummary | null>(null);
 
   const displayedListings = useMemo(() => {
     // When toggle is on, always show all filtered listings
     // When toggle is off, show region-filtered listings only
     return showAllProperties ? allListings : listings;
   }, [showAllProperties, allListings, listings]);
+
+  useEffect(() => {
+    if (hoveredZone && !zoneStyleLookup.has(hoveredZone.key)) {
+      setHoveredZone(null);
+    }
+  }, [hoveredZone, zoneStyleLookup]);
+
+  useEffect(() => {
+    if (!hoveredZone) {
+      return;
+    }
+
+    const zoneHasListings = displayedListings.some(
+      (listing) => normaliseZoneKey(listing.zone) === hoveredZone.key && listing.latitude !== null && listing.longitude !== null,
+    );
+
+    if (!zoneHasListings) {
+      setHoveredZone(null);
+    }
+  }, [displayedListings, hoveredZone]);
 
   useEffect(() => {
     if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
@@ -1371,7 +2032,7 @@ function RegionMap({
     }
   }, [displayedListings, selectedListingId]);
 
-  const activeListingId = hoveredListingId ?? selectedListingId;
+  const activeListingId = hoveredListingId ?? (hoveredZone ? null : selectedListingId);
 
   const activeListing = useMemo(() => {
     if (!activeListingId) {
@@ -1382,6 +2043,7 @@ function RegionMap({
 
   const handleMarkerSelect = useCallback(
     (listingId: string) => {
+      setHoveredZone(null);
       setSelectedListingId(listingId);
       onListingSelect?.(listingId);
     },
@@ -1389,6 +2051,9 @@ function RegionMap({
   );
 
   const handleMarkerHover = useCallback((listingId: string | null) => {
+    if (listingId) {
+      setHoveredZone(null);
+    }
     setHoveredListingId(listingId);
   }, []);
 
@@ -1396,9 +2061,22 @@ function RegionMap({
     setShowAllProperties((prev) => !prev);
   }, []);
 
+  const handleToggleZoneOverlay = useCallback(() => {
+    setShowZoneOverlay((prev) => !prev);
+  }, []);
+
   const handleLayerChange = useCallback((layer: MapLayerType) => {
     setCurrentLayer(layer);
   }, []);
+
+  const handleZoneHover = useCallback((zone: ZoningDistrictSummary | null) => {
+    if (zone) {
+      setHoveredListingId(null);
+    }
+    setHoveredZone(zone);
+  }, []);
+
+  const zoneDetailHighlight = hoveredZone && !hoveredListingId ? hoveredZone : null;
 
   const currentLayerConfig = MAP_LAYERS[currentLayer];
 
@@ -1417,6 +2095,7 @@ function RegionMap({
       <div className="region-map__selection-wrapper">
         <ListingSelectionPanel
           listing={activeListing}
+          zoneHighlight={zoneDetailHighlight}
           hasListings={displayedListings.length > 0}
           totalListingCount={totalListingCount}
         />
@@ -1438,18 +2117,28 @@ function RegionMap({
           onRegionsChange={onRegionsChange}
           showAllProperties={showAllProperties}
           onToggleShowAll={handleToggleShowAll}
+          showZoneOverlay={showZoneOverlay}
+          onToggleZoneOverlay={handleToggleZoneOverlay}
           currentLayer={currentLayer}
           onLayerChange={handleLayerChange}
         />
         {displayedListings.length ? (
           <ListingMarkers
             listings={displayedListings}
+            zoneStyles={zoneStyleLookup}
             onListingSelect={handleMarkerSelect}
             selectedListingId={selectedListingId}
             hoveredListingId={hoveredListingId}
             onListingHover={handleMarkerHover}
+            onZoneHover={handleZoneHover}
           />
         ) : null}
+        <ZoningDistrictHighlights
+          listings={displayedListings}
+          zoneSummaries={zoningDistrictSummaries}
+          onZoneHover={handleZoneHover}
+          enabled={showZoneOverlay}
+        />
       </MapContainer>
     </section>
   );

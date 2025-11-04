@@ -164,7 +164,7 @@
   height: 240px;
 }
 
-.region-map__selection {
+.region-map__selection { 
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -175,6 +175,111 @@
   color: #0f172a;
   flex: 1;
   overflow: auto;
+}
+
+.region-map__selection--zone {
+  justify-content: center;
+}
+
+.region-map__selection-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.region-map__selection-zone-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.region-map__selection-zone-swatch {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 0.4rem;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+}
+
+.region-map__selection-zone-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.region-map__selection-zone-label {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #475569;
+}
+
+.region-map__selection-zone-name {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.region-map__selection-zone-count {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.region-map__selection-zone-description {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.region-map__selection-zone-details {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.region-map__selection-zone-details > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.region-map__selection-zone-details dt {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.region-map__selection-zone-details dd {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #0f172a;
+}
+
+.region-map__selection-zone-description-item dd {
+  line-height: 1.5;
+}
+
+.region-map__selection-zone-notes-item dd {
+  font-size: 0.82rem;
+  color: #475569;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.region-map__selection-zone-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  padding-top: 0.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .region-map__selection--empty {
@@ -264,6 +369,17 @@
 .region-map__selection-link:hover,
 .region-map__selection-link:focus {
   text-decoration: underline;
+}
+
+.leaflet-zoneGlowPane-pane {
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  pointer-events: auto;
+}
+
+.leaflet-zoneGlowPane-pane .region-map__zone-glow-marker {
+  filter: blur(18px);
+  transition: fill 0.2s ease, fill-opacity 0.2s ease, stroke 0.2s ease;
 }
 
 .region-map__selection-link-icon {
