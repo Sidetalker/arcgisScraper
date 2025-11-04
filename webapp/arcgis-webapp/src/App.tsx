@@ -4,8 +4,7 @@ import './App.css';
 import FilterPanel from './components/FilterPanel';
 import RegionMap from './components/RegionMap';
 import ListingTable from './components/ListingTable';
-import { clearArcgisCaches, fetchListings } from './services/arcgisClient';
-import { circlesToPolygonGeometry } from './services/regionGeometry';
+import { buildSearchEnvelope, clearArcgisCaches, fetchListings } from './services/arcgisClient';
 import { useCache } from './context/CacheContext';
 import type {
   ArcgisFeature,
@@ -608,11 +607,18 @@ function App(): JSX.Element {
     });
   }, []);
 
-  const queryGeometry = useMemo(() => circlesToPolygonGeometry(regions), [regions]);
-  const geometrySignature = useMemo(() => JSON.stringify(queryGeometry ?? null), [queryGeometry]);
+  const regionSignature = useMemo(() => {
+    return JSON.stringify(
+      regions.map((region) => ({
+        lat: region.lat,
+        lng: region.lng,
+        radius: region.radius,
+      })),
+    );
+  }, [regions]);
   const listingCacheEntry = useMemo(() => {
-    return entries.find((entry) => entry.key === LISTINGS_CACHE_KEY && entry.dependencies?.[0] === geometrySignature);
-  }, [entries, geometrySignature]);
+    return entries.find((entry) => entry.key === LISTINGS_CACHE_KEY && entry.dependencies?.[0] === regionSignature);
+  }, [entries, regionSignature]);
   const cachedAt = useMemo(() => {
     if (!listingCacheEntry) {
       return null;
@@ -622,8 +628,8 @@ function App(): JSX.Element {
 
   useEffect(() => {
     console.groupCollapsed('ArcGIS listing fetch request');
-    console.debug('Geometry signature', geometrySignature);
-    console.debug('Query geometry', queryGeometry);
+    console.debug('Region signature', regionSignature);
+    console.debug('Regions', regions);
 
     let groupClosed = false;
     const endGroup = () => {
@@ -633,12 +639,10 @@ function App(): JSX.Element {
       }
     };
 
-    const dependencies = [geometrySignature] as const;
+    const dependencies = [regionSignature] as const;
     const cached = getCache<ListingRecord[]>(LISTINGS_CACHE_KEY, { dependencies });
     if (cached) {
-      console.info(
-        `Using ${cached.length.toLocaleString()} cached ArcGIS listings for geometry signature ${geometrySignature}.`,
-      );
+      console.info(`Using ${cached.length.toLocaleString()} cached ArcGIS listings for region signature ${regionSignature}.`);
       setListings(cached);
       setError(null);
       setLoading(false);
@@ -650,21 +654,52 @@ function App(): JSX.Element {
     setLoading(true);
     setError(null);
 
+    const regionGeometries = regions.map((region) =>
+      buildSearchEnvelope({
+        latitude: region.lat,
+        longitude: region.lng,
+        radiusMeters: region.radius,
+      }),
+    );
+
     console.info('Requesting listings from ArcGIS.', {
       dependencies,
-      hasGeometry: Boolean(queryGeometry),
       regionCount: regions.length,
+      requestCount: regionGeometries.length || 1,
     });
 
-    fetchListings({
-      filters: { returnGeometry: false },
-      geometry: queryGeometry,
-      signal: controller.signal,
-    })
-      .then((featureSet) => {
-        const features = featureSet.features ?? [];
-        console.info(`Received ${features.length.toLocaleString()} listings from ArcGIS.`);
-        const mapped = features.map((feature, index) => toListingRecord(feature, index));
+    const fetchPromises =
+      regionGeometries.length > 0
+        ? regionGeometries.map((geometry) =>
+            fetchListings({
+              filters: { returnGeometry: false },
+              geometry,
+              signal: controller.signal,
+            }).then((featureSet) => featureSet.features ?? []),
+          )
+        : [
+            fetchListings({
+              filters: { returnGeometry: false },
+              signal: controller.signal,
+            }).then((featureSet) => featureSet.features ?? []),
+          ];
+
+    Promise.all(fetchPromises)
+      .then((pages) => {
+        const combinedFeatures = pages.flat();
+        console.info(
+          `Received ${combinedFeatures.length.toLocaleString()} listings from ArcGIS across ${fetchPromises.length.toLocaleString()} request(s).`,
+        );
+        const seenIds = new Set<string>();
+        const mapped: ListingRecord[] = [];
+        combinedFeatures.forEach((feature, index) => {
+          const record = toListingRecord(feature, index);
+          if (seenIds.has(record.id)) {
+            return;
+          }
+          seenIds.add(record.id);
+          mapped.push(record);
+        });
         console.debug('Mapped listing sample', mapped.slice(0, 3));
         setListings(mapped);
         setCache(LISTINGS_CACHE_KEY, mapped, {
@@ -695,7 +730,7 @@ function App(): JSX.Element {
       controller.abort();
       endGroup();
     };
-  }, [geometrySignature, getCache, queryGeometry, refreshCounter, regions.length, setCache]);
+  }, [getCache, refreshCounter, regionSignature, regions, setCache]);
 
   useEffect(() => {
     console.debug('Filters updated', filters);
