@@ -8,7 +8,6 @@ interface FilterPanelProps {
   filters: ListingFilters;
   onChange: (filters: ListingFilters) => void;
   subdivisionOptions: string[];
-  stateOptions: string[];
   disabled?: boolean;
   onReset: () => void;
   onDropPinRequest: () => void;
@@ -22,7 +21,6 @@ export function FilterPanel({
   filters,
   onChange,
   subdivisionOptions,
-  stateOptions,
   disabled = false,
   onReset,
   onDropPinRequest,
@@ -35,22 +33,12 @@ export function FilterPanel({
     return [...subdivisionOptions].sort((a, b) => a.localeCompare(b));
   }, [subdivisionOptions]);
 
-  const sortedStates = useMemo(() => {
-    return [...stateOptions].sort((a, b) => a.localeCompare(b));
-  }, [stateOptions]);
-
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     if (name === 'searchTerm') {
       onChange({ ...filters, searchTerm: value });
     } else if (name === 'scheduleNumber') {
       onChange({ ...filters, scheduleNumber: value });
-    } else if (name === 'mailingCity') {
-      onChange({ ...filters, mailingCity: value });
-    } else if (name === 'mailingZip') {
-      onChange({ ...filters, mailingZip: value });
-    } else if (name === 'mailingAddress') {
-      onChange({ ...filters, mailingAddress: value });
     } else if (name === 'complex') {
       onChange({ ...filters, complex: value });
     } else if (name === 'owner') {
@@ -58,17 +46,6 @@ export function FilterPanel({
     } else if (name === 'pinRadiusMeters') {
       onChange({ ...filters, pinRadiusMeters: value });
     }
-  };
-
-  const handleStateChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const { value } = event.target;
-    onChange({ ...filters, mailingState: value || '' });
-  };
-
-  const handleBusinessChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const { value } = event.target;
-    const nextValue = value === '' ? null : (value as 'yes' | 'no');
-    onChange({ ...filters, businessOwner: nextValue });
   };
 
   const handleSubdivisionChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -138,20 +115,6 @@ export function FilterPanel({
       </div>
 
       <div className="filters__group">
-        <label htmlFor="mailingAddress">Mailing address contains</label>
-        <input
-          id="mailingAddress"
-          name="mailingAddress"
-          type="search"
-          value={filters.mailingAddress}
-          onChange={handleInputChange}
-          placeholder="Street, city or ZIP"
-          disabled={disabled}
-          title="Match any part of the mailing address"
-        />
-      </div>
-
-      <div className="filters__group">
         <label htmlFor="scheduleNumber">Schedule number</label>
         <input
           id="scheduleNumber"
@@ -164,72 +127,6 @@ export function FilterPanel({
           title="Filter listings whose schedule number contains this value"
         />
       </div>
-
-      <fieldset className="filters__group filters__group--grid" disabled={disabled}>
-        <legend>Mailing details</legend>
-        <label htmlFor="mailingCity" className="filters__field">
-          City
-          <input
-            id="mailingCity"
-            name="mailingCity"
-            type="search"
-            value={filters.mailingCity}
-            onChange={handleInputChange}
-            placeholder="e.g. Breckenridge"
-            title="Filter by mailing city"
-          />
-        </label>
-
-        <label htmlFor="mailingZip" className="filters__field">
-          ZIP
-          <input
-            id="mailingZip"
-            name="mailingZip"
-            type="search"
-            value={filters.mailingZip}
-            onChange={handleInputChange}
-            placeholder="e.g. 80424"
-            inputMode="numeric"
-            title="Filter by mailing ZIP code prefix"
-          />
-        </label>
-      </fieldset>
-
-      <fieldset className="filters__group filters__group--grid" disabled={disabled}>
-        <legend>Owner type</legend>
-        <label htmlFor="mailingState" className="filters__field">
-          State
-          <select
-            id="mailingState"
-            name="mailingState"
-            value={filters.mailingState}
-            onChange={handleStateChange}
-            title="Only show owners with mailing addresses in this state"
-          >
-            <option value="">All states</option>
-            {sortedStates.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label htmlFor="businessOwner" className="filters__field">
-          Business owner
-          <select
-            id="businessOwner"
-            name="businessOwner"
-            value={filters.businessOwner ?? ''}
-            onChange={handleBusinessChange}
-            title="Show only owners flagged as businesses"
-          >
-            <option value="">All owners</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </select>
-        </label>
-      </fieldset>
 
       <div className="filters__group">
         <label htmlFor="subdivision">Subdivision</label>
