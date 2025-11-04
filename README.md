@@ -185,9 +185,59 @@ three coordinated panels:
   if an ArcGIS request fails.
 
 A status banner summarises the most recent fetch and whether results are being
-served from cache. Use the **Refresh data** button to clear both the in-memory
-ArcGIS client cache and the persisted browser cache; the app immediately
-recomputes the query so you always know the data is fresh.
+served from cache. When you need a quarterly refresh, hit **Sync from ArcGIS**
+to pull the latest county export into Supabase; day-to-day browsing simply
+reads from the cached table.
+
+### Supabase persistence
+
+The React app can cache the full Summit County dataset in Supabase so the UI no
+longer hammers the ArcGIS API. Provide the following environment variables when
+running the Vite dev server (and in Vercel during deployment). The client will
+look for `VITE_*`, `NEXT_PUBLIC_*`, or plain `SUPABASE_*` names, so whichever
+convention you already use will work:
+
+```
+VITE_SUPABASE_URL=<your-project-url>
+VITE_SUPABASE_ANON_KEY=<anon-key>
+# or NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY
+# or SUPABASE_URL / SUPABASE_ANON_KEY
+```
+
+Create a `listings` table in Supabase before syncing for the first time:
+
+```sql
+create table public.listings (
+  id text primary key,
+  complex text,
+  unit text,
+  owner_name text,
+  owner_names text[],
+  mailing_address text,
+  mailing_address_line1 text,
+  mailing_address_line2 text,
+  mailing_city text,
+  mailing_state text,
+  mailing_zip5 text,
+  mailing_zip9 text,
+  subdivision text,
+  schedule_number text,
+  public_detail_url text,
+  physical_address text,
+  is_business_owner boolean,
+  latitude double precision,
+  longitude double precision,
+  raw jsonb,
+  updated_at timestamptz default timezone('utc', now())
+);
+```
+
+Enable Row Level Security and add policies (or disable RLS) that allow your
+Supabase anon key to `select`, `insert`, and `delete` from `public.listings`.
+With the table in place the **Sync from ArcGIS** button (available in the app
+header) will fetch the entire dataset once, replace every row in Supabase, and
+subsequent browsing will only hit your database. Use this occasionally to
+refresh the data (quarterly is sufficient for Summit County).
 
 ## Troubleshooting
 

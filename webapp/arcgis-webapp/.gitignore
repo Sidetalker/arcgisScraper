@@ -4,3 +4,5 @@ dist
 .vite
 .env*
 coverage
+.vercel
+.env

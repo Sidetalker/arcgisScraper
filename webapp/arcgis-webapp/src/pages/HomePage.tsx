@@ -10,6 +10,36 @@ import { useListings } from '@/context/ListingsContext';
 import { applyFilters } from '@/services/listingTransformer';
 import type { ListingFilters, RegionCircle } from '@/types';
 
+function isListingInsideRegions(
+  listing: { latitude: number | null; longitude: number | null },
+  regions: RegionCircle[],
+): boolean {
+  if (regions.length === 0) {
+    return true;
+  }
+
+  if (typeof listing.latitude !== 'number' || typeof listing.longitude !== 'number') {
+    return false;
+  }
+
+  const { latitude, longitude } = listing;
+  const EARTH_RADIUS_METERS = 6_371_000;
+
+  return regions.some((region) => {
+    const lat1 = (latitude * Math.PI) / 180;
+    const lat2 = (region.lat * Math.PI) / 180;
+    const deltaLat = ((region.lat - latitude) * Math.PI) / 180;
+    const deltaLng = ((region.lng - longitude) * Math.PI) / 180;
+
+    const haversine =
+      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+
+    const distance = 2 * EARTH_RADIUS_METERS * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    return distance <= region.radius;
+  });
+}
+
 function HomePage(): JSX.Element {
   const { listings, loading, error, regions, onRegionsChange, cachedAt } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
@@ -139,8 +169,12 @@ function HomePage(): JSX.Element {
   }, [filters, regions]);
 
   const filteredListings = useMemo(() => {
-    return listings.filter((listing) => applyFilters(listing, filters));
-  }, [listings, filters]);
+    const filtered = listings.filter((listing) => applyFilters(listing, filters));
+    if (regions.length === 0) {
+      return filtered;
+    }
+    return filtered.filter((listing) => isListingInsideRegions(listing, regions));
+  }, [filters, listings, regions]);
 
   const circleListings = useMemo(() => {
     return regions.length > 0 ? filteredListings : [];

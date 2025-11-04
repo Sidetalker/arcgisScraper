@@ -15,6 +15,11 @@ vi.mock('@/services/arcgisClient', async () => {
   };
 });
 
+vi.mock('@/services/listingStorage', () => ({
+  fetchStoredListings: vi.fn(() => Promise.resolve({ records: [], latestUpdatedAt: null })),
+  replaceAllListings: vi.fn(() => Promise.resolve()),
+}));
+
 describe('App', () => {
   const renderApp = () =>
     render(
@@ -29,9 +34,7 @@ describe('App', () => {
 
   it('renders the heading', async () => {
     renderApp();
-    expect(
-      await screen.findByRole('heading', { name: /arcgis web app/i })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /arcgis/i })).toBeInTheDocument();
   });
 
   it('renders the filter sidebar', async () => {

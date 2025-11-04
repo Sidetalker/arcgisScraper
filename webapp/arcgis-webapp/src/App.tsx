@@ -13,7 +13,7 @@ export type LayoutOutletContext = {
 };
 
 function Layout(): JSX.Element {
-  const { refresh, loading, cachedAt } = useListings();
+  const { loading, cachedAt, syncing, syncFromArcgis } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
 
   const handleStatusChange = useCallback((message: string) => {
@@ -42,18 +42,30 @@ function Layout(): JSX.Element {
     <div className="app">
       <header className="app__header">
         <div>
-          <h1>ArcGIS Web App</h1>
-          <p>Explore Summit County short-term rental listings with instant filtering and pagination.</p>
+          <h1>ArcGIS 2.0</h1>
+          <p>Everything you need for short-term rental listings, all in one place. Sync data with ArcGIS on demand at any time, and instantly query across 10s of thousands of listings.</p>
         </div>
         <div className="app__actions">
           <button
             type="button"
             className="app__refresh"
-            onClick={refresh}
-            disabled={loading}
-            title="Clear cached ArcGIS data and request fresh results."
+            onClick={async () => {
+              setStatusMessage('Syncing dataset from ArcGIS…');
+              try {
+                await syncFromArcgis();
+                setStatusMessage('Dataset synced successfully.');
+              } catch (error) {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to sync listings from ArcGIS.';
+                setStatusMessage(message);
+              }
+            }}
+            disabled={loading || syncing}
+            title="Fetch fresh data from ArcGIS and replace the Supabase listings dataset."
           >
-            Refresh data
+            {syncing ? 'Syncing…' : 'Sync from ArcGIS'}
           </button>
           <span className="app__cache" title={cacheSummary}>
             {cacheSummary}
