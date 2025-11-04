@@ -468,12 +468,13 @@ export function ListingTable({
         aria-busy={isLoading}
         title="Tabular summary of listings that match the current filters and map region"
       >
-        <table>
-          <thead>
-            <tr>
-              {visibleColumnDefinitions.map((definition) => (
-                <th
-                  key={definition.key}
+        <div className="listing-table__scroll">
+          <table>
+            <thead>
+              <tr>
+                {visibleColumnDefinitions.map((definition) => (
+                  <th
+                    key={definition.key}
                   scope="col"
                   onDragOver={handleDragOver(definition.key)}
                   onDrop={handleDrop(definition.key)}
@@ -555,7 +556,8 @@ export function ListingTable({
               })
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       <nav className="listing-table__pagination" aria-label="Listing pagination">
