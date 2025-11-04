@@ -1,16 +1,17 @@
 import { normaliseTableState, type ListingTableState } from '@/constants/listingTable';
 import { assertSupabaseClient } from '@/services/supabaseClient';
+import { cloneRegionShape, normaliseRegionList } from '@/services/regionShapes';
 import {
   type ConfigurationProfile,
   type ListingFilters,
-  type RegionCircle,
+  type RegionShape,
 } from '@/types';
 
 interface ConfigurationProfileRow {
   id: string;
   name: string;
   filters: ListingFilters | null;
-  regions: RegionCircle[] | null;
+  regions: RegionShape[] | null;
   table_state: ListingTableState | null;
   updated_at?: string | null;
 }
@@ -19,7 +20,7 @@ export interface SaveConfigurationProfileInput {
   id?: string | null;
   name: string;
   filters: ListingFilters;
-  regions: RegionCircle[];
+  regions: RegionShape[];
   table: ListingTableState;
 }
 
@@ -74,29 +75,6 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
   };
 }
 
-function normaliseRegions(regions: RegionCircle[] | null | undefined): RegionCircle[] {
-  if (!Array.isArray(regions)) {
-    return [];
-  }
-
-  return regions
-    .filter((region) =>
-      region &&
-      typeof region.lat === 'number' &&
-      typeof region.lng === 'number' &&
-      typeof region.radius === 'number' &&
-      Number.isFinite(region.lat) &&
-      Number.isFinite(region.lng) &&
-      Number.isFinite(region.radius) &&
-      region.radius > 0,
-    )
-    .map((region) => ({
-      lat: region.lat,
-      lng: region.lng,
-      radius: region.radius,
-    }));
-}
-
 function fromRow(row: ConfigurationProfileRow): ConfigurationProfile {
   const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
   const normalisedUpdatedAt =
@@ -106,7 +84,7 @@ function fromRow(row: ConfigurationProfileRow): ConfigurationProfile {
     id: row.id,
     name: row.name,
     filters: normaliseFilters(row.filters),
-    regions: normaliseRegions(row.regions),
+    regions: normaliseRegionList(row.regions).map((region) => cloneRegionShape(region)),
     table: normaliseTableState(row.table_state),
     updatedAt: normalisedUpdatedAt,
   };
@@ -117,7 +95,7 @@ function prepareRow(input: SaveConfigurationProfileInput): Partial<Configuration
     ...(input.id ? { id: input.id } : {}),
     name: input.name,
     filters: input.filters,
-    regions: input.regions,
+    regions: input.regions.map((region) => cloneRegionShape(region)),
     table_state: input.table,
     updated_at: new Date().toISOString(),
   };
