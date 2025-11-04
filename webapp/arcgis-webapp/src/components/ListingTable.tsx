@@ -1,5 +1,6 @@
 import './ListingTable.css';
 
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ListingRecord } from '@/types';
@@ -11,6 +12,7 @@ interface ListingTableProps {
   onPageChange: (page: number) => void;
   isLoading: boolean;
   error?: string | null;
+  focusListingId?: string | null;
 }
 
 export function ListingTable({
@@ -20,6 +22,7 @@ export function ListingTable({
   onPageChange,
   isLoading,
   error,
+  focusListingId,
 }: ListingTableProps) {
   const effectivePageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Math.max(listings.length, 1);
@@ -28,7 +31,60 @@ export function ListingTable({
   const safePage = clampPage(Number.isFinite(currentPage) ? Math.floor(currentPage) : 1);
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, listings.length);
-  const pageListings = listings.slice(startIndex, endIndex);
+  const pageListings = useMemo(
+    () => listings.slice(startIndex, endIndex),
+    [listings, startIndex, endIndex],
+  );
+  const highlightId = focusListingId ?? null;
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null);
+  const lastScrollTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!highlightId) {
+      return;
+    }
+
+    const highlightIndex = listings.findIndex((listing) => listing.id === highlightId);
+    if (highlightIndex === -1) {
+      return;
+    }
+
+    const targetPage = Math.floor(highlightIndex / effectivePageSize) + 1;
+    if (targetPage !== safePage) {
+      onPageChange(targetPage);
+    }
+  }, [effectivePageSize, highlightId, listings, onPageChange, safePage]);
+
+  const highlightVisible = useMemo(
+    () => pageListings.some((listing) => listing.id === highlightId),
+    [highlightId, pageListings],
+  );
+  const scrollToken = highlightVisible ? `${highlightId}-${startIndex}-${endIndex}` : null;
+
+  useEffect(() => {
+    if (!scrollToken) {
+      lastScrollTokenRef.current = null;
+      return;
+    }
+
+    const viewport = viewportRef.current;
+    const highlightedRow = highlightRowRef.current;
+    if (!viewport || !highlightedRow) {
+      return;
+    }
+
+    if (lastScrollTokenRef.current === scrollToken) {
+      return;
+    }
+
+    lastScrollTokenRef.current = scrollToken;
+    highlightedRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [scrollToken]);
+
+  const setHighlightRef = useCallback((node: HTMLTableRowElement | null) => {
+    highlightRowRef.current = node;
+  }, []);
 
   const handlePageChange = (page: number) => {
     const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
@@ -70,6 +126,7 @@ export function ListingTable({
         aria-live="polite"
         aria-busy={isLoading}
         title="Tabular summary of listings that match the current filters and map region"
+        ref={viewportRef}
       >
         <table>
           <thead>
@@ -128,12 +185,21 @@ export function ListingTable({
                   '—'
                 );
 
+                const isHighlighted = highlightId === listing.id;
+
                 return (
-                  <tr key={listing.id}>
+                  <tr
+                    key={listing.id}
+                    className={`listing-table__row${
+                      isHighlighted ? ' listing-table__row--highlight' : ''
+                    }`}
+                    ref={isHighlighted ? setHighlightRef : undefined}
+                  >
                     <td>
                       {listing.complex ? (
                         <Link
                           to={`/complex/${encodeURIComponent(listing.complex)}`}
+                          state={{ focusListingId: listing.id }}
                           className="listing-table__link"
                         >
                           {listing.complex}
@@ -151,6 +217,7 @@ export function ListingTable({
                               <Link
                                 key={owner}
                                 to={`/owner/${encodeURIComponent(owner)}`}
+                                state={{ focusListingId: listing.id }}
                                 className="listing-table__link"
                               >
                                 {owner}

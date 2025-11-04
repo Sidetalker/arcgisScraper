@@ -1,13 +1,14 @@
 .app {
-  min-height: 100vh;
+  height: 100%;
   padding: 3rem clamp(1.5rem, 4vw, 4rem) 4rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3rem;
+  gap: 2.5rem;
   font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   color: #102a43;
   background: radial-gradient(circle at top, #f0f4ff, #ffffff 65%);
+  overflow: hidden;
 }
 
 .app__header {
@@ -82,6 +83,7 @@
   font-size: 0.98rem;
   color: #334155;
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+  flex-shrink: 0;
 }
 
 .app__content {
@@ -89,13 +91,17 @@
   display: grid;
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   gap: 2.5rem;
-  align-items: start;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .app__main {
   display: flex;
   flex-direction: column;
-  gap: 2.5rem;
+  gap: 2rem;
+  min-height: 0;
+  height: 100%;
 }
 
 .detail-sidebar {
@@ -107,6 +113,8 @@
   flex-direction: column;
   gap: 1.5rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
+  max-height: 100%;
+  overflow: auto;
 }
 
 .detail-sidebar__back {
@@ -156,6 +164,8 @@
 .detail-table {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 
 @media (max-width: 960px) {

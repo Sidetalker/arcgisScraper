@@ -3,6 +3,7 @@
   flex-direction: column;
   gap: 1.5rem;
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .listing-table__header {
@@ -45,7 +46,10 @@
   background-color: rgba(255, 255, 255, 0.93);
   border: 1px solid rgba(148, 163, 184, 0.25);
   box-shadow: 0 20px 35px -28px rgba(15, 23, 42, 0.5);
-  overflow: hidden;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .listing-table table {
@@ -55,8 +59,12 @@
 }
 
 .listing-table thead {
-  background: linear-gradient(120deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.1));
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(120deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.12));
   color: #0f172a;
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.4);
 }
 
 .listing-table th,
@@ -74,8 +82,22 @@
   color: #475569;
 }
 
+.listing-table__row {
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+  scroll-margin: 4.5rem;
+}
+
 .listing-table tbody tr:nth-of-type(even) {
   background-color: rgba(248, 250, 252, 0.65);
+}
+
+.listing-table__row--highlight {
+  background: linear-gradient(120deg, rgba(37, 99, 235, 0.15), rgba(14, 165, 233, 0.08));
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.35);
+}
+
+.listing-table__row--highlight td {
+  border-bottom-color: rgba(37, 99, 235, 0.35);
 }
 
 .listing-table__owner {

@@ -6,6 +6,7 @@
   border-radius: 1.5rem;
   padding: 1.75rem;
   box-shadow: 0 24px 48px -36px rgba(15, 23, 42, 0.6);
+  flex: 0 0 auto;
 }
 
 .region-map__title {

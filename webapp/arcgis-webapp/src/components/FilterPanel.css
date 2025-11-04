@@ -7,6 +7,8 @@
   background-color: rgba(255, 255, 255, 0.92);
   box-shadow: 0 18px 32px -28px rgba(15, 23, 42, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.25);
+  max-height: 100%;
+  overflow: auto;
 }
 
 .filters__header {

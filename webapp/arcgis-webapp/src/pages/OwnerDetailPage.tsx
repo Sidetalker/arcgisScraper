@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext, useParams } from 'react-router-dom';
+import { Link, useLocation, useOutletContext, useParams } from 'react-router-dom';
 
 import ListingTable from '@/components/ListingTable';
 import { type LayoutOutletContext } from '@/App';
@@ -22,6 +22,9 @@ function decodeParam(value: string | undefined): string {
 function OwnerDetailPage(): JSX.Element {
   const { ownerId } = useParams<{ ownerId: string }>();
   const ownerName = decodeParam(ownerId);
+  const location = useLocation();
+  const focusListingId =
+    (location.state as { focusListingId?: string | null } | null)?.focusListingId ?? null;
 
   const { listings, loading, error } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
@@ -103,6 +106,7 @@ function OwnerDetailPage(): JSX.Element {
           onPageChange={setCurrentPage}
           isLoading={loading}
           error={error}
+          focusListingId={focusListingId}
         />
       </div>
     </>
