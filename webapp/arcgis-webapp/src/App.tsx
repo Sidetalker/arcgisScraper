@@ -7,121 +7,77 @@ import ListingTable from './components/ListingTable';
 import { clearArcgisCaches, fetchListings } from './services/arcgisClient';
 import { circlesToPolygonGeometry } from './services/regionGeometry';
 import { useCache } from './context/CacheContext';
-import type {
-  ArcgisFeature,
-  ListingAttributes,
-  ListingFilters,
-  ListingRecord,
-  RegionCircle,
-} from './types';
+import { formatOwnerRecords } from './services/ownerFormatter';
+import type { ListingFilters, OwnerRecord, RegionCircle } from './types';
 
 const DEFAULT_FILTERS: ListingFilters = {
-  searchTerm: '',
-  minPrice: null,
-  maxPrice: null,
-  minBeds: null,
-  minBaths: null,
-  status: null,
+  ownerName: '',
+  complex: '',
+  city: '',
+  state: '',
+  zip: '',
+  subdivision: '',
+  scheduleNumber: '',
+  unit: '',
+  businessType: 'all',
 };
 
 const PAGE_SIZE = 25;
-
-const ADDRESS_KEYS = ['SITEADDR', 'SITE_ADDRESS', 'SITEADDRESS', 'Address', 'ADDRESS', 'SITEADD'];
-const CITY_KEYS = ['CITY', 'City', 'MUNICIPALITY', 'Town'];
-const PRICE_KEYS = ['NightlyRate', 'NIGHTLYRATE', 'AVERAGENIGHTLYRATE', 'AverageNightlyRate', 'PRICE', 'Price'];
-const BED_KEYS = ['Bedrooms', 'BEDROOMS', 'BEDS', 'Beds'];
-const BATH_KEYS = ['Bathrooms', 'BATHROOMS', 'Baths', 'BATHS'];
-const STATUS_KEYS = ['STATUS', 'Status', 'LICENSESTATUS', 'LicenseStatus'];
-const OCCUPANCY_KEYS = ['Occupancy', 'OCCUPANCY', 'MaxOccupancy', 'MAXOCCUPANCY'];
-const ID_KEYS = ['OBJECTID', 'OBJECTID_1', 'GlobalID', 'GLOBALID', 'License', 'LICENSE'];
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
 const LISTINGS_CACHE_KEY = 'arcgis:listings';
 
-function pickString(attributes: ListingAttributes, keys: string[]): string | null {
-  for (const key of keys) {
-    const value = attributes[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value.trim();
+function applyFilters(listing: OwnerRecord, filters: ListingFilters): boolean {
+  const matchText = (value: string, query: string) => {
+    if (!query.trim()) {
+      return true;
     }
-  }
-  return null;
-}
-
-function pickNumber(attributes: ListingAttributes, keys: string[]): number | null {
-  for (const key of keys) {
-    const value = attributes[key];
-    if (typeof value === 'number') {
-      return Number.isFinite(value) ? value : null;
-    }
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-  }
-  return null;
-}
-
-function toListingRecord(feature: ArcgisFeature<ListingAttributes>, index: number): ListingRecord {
-  const attributes = feature.attributes ?? {};
-  const idString = pickString(attributes, ID_KEYS);
-  const idNumber = pickNumber(attributes, ID_KEYS);
-  const id =
-    idString ??
-    (typeof idNumber === 'number' ? idNumber.toString() : `listing-${attributes.OBJECTID ?? index}`);
-
-  return {
-    id,
-    address: pickString(attributes, ADDRESS_KEYS) ?? '',
-    city: pickString(attributes, CITY_KEYS) ?? '',
-    nightlyRate: pickNumber(attributes, PRICE_KEYS),
-    bedrooms: pickNumber(attributes, BED_KEYS),
-    bathrooms: pickNumber(attributes, BATH_KEYS),
-    status: pickString(attributes, STATUS_KEYS),
-    occupancy: pickNumber(attributes, OCCUPANCY_KEYS),
-    raw: attributes,
+    return value.toLowerCase().includes(query.trim().toLowerCase());
   };
-}
 
-function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean {
-  const search = filters.searchTerm.trim().toLowerCase();
-  if (search) {
-    const haystack = `${listing.address} ${listing.city}`.toLowerCase();
-    if (!haystack.includes(search)) {
+  if (!matchText(listing.ownerName, filters.ownerName)) {
+    return false;
+  }
+
+  if (!matchText(listing.complex, filters.complex)) {
+    return false;
+  }
+
+  if (!matchText(listing.city, filters.city)) {
+    return false;
+  }
+
+  if (filters.state.trim()) {
+    if (listing.state.toLowerCase() !== filters.state.trim().toLowerCase()) {
       return false;
     }
   }
 
-  if (filters.minPrice !== null) {
-    if (listing.nightlyRate === null || listing.nightlyRate < filters.minPrice) {
+  if (filters.zip.trim()) {
+    const normalisedZip = filters.zip.trim().toLowerCase();
+    const candidate = `${listing.zip5} ${listing.zip9}`.toLowerCase();
+    if (!candidate.includes(normalisedZip)) {
       return false;
     }
   }
 
-  if (filters.maxPrice !== null) {
-    if (listing.nightlyRate === null || listing.nightlyRate > filters.maxPrice) {
-      return false;
-    }
+  if (!matchText(listing.subdivision, filters.subdivision)) {
+    return false;
   }
 
-  if (filters.minBeds !== null) {
-    if (listing.bedrooms === null || listing.bedrooms < filters.minBeds) {
-      return false;
-    }
+  if (!matchText(listing.scheduleNumber, filters.scheduleNumber)) {
+    return false;
   }
 
-  if (filters.minBaths !== null) {
-    if (listing.bathrooms === null || listing.bathrooms < filters.minBaths) {
-      return false;
-    }
+  if (!matchText(listing.unit, filters.unit)) {
+    return false;
   }
 
-  if (filters.status) {
-    const listingStatus = listing.status ? listing.status.toLowerCase() : '';
-    if (listingStatus !== filters.status.toLowerCase()) {
-      return false;
-    }
+  if (filters.businessType === 'business' && !listing.businessOwner) {
+    return false;
+  }
+
+  if (filters.businessType === 'individual' && listing.businessOwner) {
+    return false;
   }
 
   return true;
@@ -129,7 +85,7 @@ function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean 
 
 function App(): JSX.Element {
   const [filters, setFilters] = useState<ListingFilters>(DEFAULT_FILTERS);
-  const [listings, setListings] = useState<ListingRecord[]>([]);
+  const [listings, setListings] = useState<OwnerRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -229,7 +185,7 @@ function App(): JSX.Element {
 
   useEffect(() => {
     const dependencies = [geometrySignature] as const;
-    const cached = getCache<ListingRecord[]>(LISTINGS_CACHE_KEY, { dependencies });
+    const cached = getCache<OwnerRecord[]>(LISTINGS_CACHE_KEY, { dependencies });
     if (cached) {
       setListings(cached);
       setError(null);
@@ -248,7 +204,7 @@ function App(): JSX.Element {
     })
       .then((featureSet) => {
         const features = featureSet.features ?? [];
-        const mapped = features.map((feature, index) => toListingRecord(feature, index));
+        const mapped = formatOwnerRecords(features);
         setListings(mapped);
         setCache(LISTINGS_CACHE_KEY, mapped, {
           dependencies,
@@ -282,14 +238,14 @@ function App(): JSX.Element {
     return listings.filter((listing) => applyFilters(listing, filters));
   }, [listings, filters]);
 
-  const statusOptions = useMemo(() => {
-    const statuses = new Set<string>();
+  const stateOptions = useMemo(() => {
+    const states = new Set<string>();
     listings.forEach((listing) => {
-      if (listing.status) {
-        statuses.add(listing.status);
+      if (listing.state) {
+        states.add(listing.state);
       }
     });
-    return Array.from(statuses);
+    return Array.from(states).sort((a, b) => a.localeCompare(b));
   }, [listings]);
 
   const handleRefresh = useCallback(() => {
@@ -309,19 +265,19 @@ function App(): JSX.Element {
 
   const statusMessage = useMemo(() => {
     if (loading) {
-      return 'Refreshing listings from ArcGIS…';
+      return 'Refreshing owner records from ArcGIS…';
     }
     if (error) {
       return `ArcGIS request failed: ${error}`;
     }
     if (listings.length === 0) {
-      return 'No ArcGIS listings have been loaded yet.';
+      return 'No ArcGIS owner records have been loaded yet.';
     }
 
     const baseMessage =
       filteredCount === listings.length
-        ? `Loaded ${listings.length.toLocaleString()} listings.`
-        : `Showing ${filteredCount.toLocaleString()} of ${listings.length.toLocaleString()} listings after filters.`;
+        ? `Loaded ${listings.length.toLocaleString()} owner records.`
+        : `Showing ${filteredCount.toLocaleString()} of ${listings.length.toLocaleString()} owner records after filters.`;
 
     if (cachedAt) {
       return `${baseMessage} Cached ${cachedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.`;
@@ -334,7 +290,7 @@ function App(): JSX.Element {
       <header className="app__header">
         <div>
           <h1>ArcGIS Web App</h1>
-          <p>Explore Summit County short-term rental listings with instant filtering and pagination.</p>
+          <p>Explore Summit County short-term rental owner records with instant filtering and pagination.</p>
         </div>
         <div className="app__actions">
           <button
@@ -357,12 +313,7 @@ function App(): JSX.Element {
       </section>
 
       <main className="app__content">
-        <FilterPanel
-          filters={filters}
-          onChange={setFilters}
-          statusOptions={statusOptions}
-          disabled={loading}
-        />
+        <FilterPanel filters={filters} onChange={setFilters} stateOptions={stateOptions} disabled={loading} />
         <div className="app__main">
           <RegionMap regions={regions} onRegionsChange={handleRegionsChange} />
           <ListingTable

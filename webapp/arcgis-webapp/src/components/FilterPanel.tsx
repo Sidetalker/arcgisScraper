@@ -7,56 +7,40 @@ import type { ListingFilters } from '@/types';
 interface FilterPanelProps {
   filters: ListingFilters;
   onChange: (filters: ListingFilters) => void;
-  statusOptions: string[];
+  stateOptions: string[];
   disabled?: boolean;
 }
 
-function normaliseNumberInput(value: string): number | null {
-  if (!value.trim()) {
-    return null;
-  }
+export function FilterPanel({ filters, onChange, stateOptions, disabled = false }: FilterPanelProps) {
+  const sortedStates = useMemo(() => {
+    return [...stateOptions].sort((a, b) => a.localeCompare(b));
+  }, [stateOptions]);
 
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function FilterPanel({ filters, onChange, statusOptions, disabled = false }: FilterPanelProps) {
-  const sortedStatuses = useMemo(() => {
-    return [...statusOptions].sort((a, b) => a.localeCompare(b));
-  }, [statusOptions]);
-
-  const handleTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { value } = event.target;
-    onChange({ ...filters, searchTerm: value });
-  };
-
-  const handleNumberChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
-    const numericValue = normaliseNumberInput(value);
-    if (name === 'minPrice') {
-      onChange({ ...filters, minPrice: numericValue });
-    } else if (name === 'maxPrice') {
-      onChange({ ...filters, maxPrice: numericValue });
-    } else if (name === 'minBeds') {
-      onChange({ ...filters, minBeds: numericValue });
-    } else if (name === 'minBaths') {
-      onChange({ ...filters, minBaths: numericValue });
-    }
+    onChange({ ...filters, [name]: value });
   };
 
-  const handleStatusChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const { value } = event.target;
-    onChange({ ...filters, status: value || null });
+  const handleStateChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    onChange({ ...filters, state: event.target.value });
+  };
+
+  const handleBusinessChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const next = event.target.value as ListingFilters['businessType'];
+    onChange({ ...filters, businessType: next });
   };
 
   const handleReset = () => {
     onChange({
-      searchTerm: '',
-      minPrice: null,
-      maxPrice: null,
-      minBeds: null,
-      minBaths: null,
-      status: null,
+      ownerName: '',
+      complex: '',
+      city: '',
+      state: '',
+      zip: '',
+      subdivision: '',
+      scheduleNumber: '',
+      unit: '',
+      businessType: 'all',
     });
   };
 
@@ -76,102 +60,137 @@ export function FilterPanel({ filters, onChange, statusOptions, disabled = false
       </div>
 
       <div className="filters__group">
-        <label htmlFor="searchTerm">Search by address</label>
+        <label htmlFor="ownerName">Owner name</label>
         <input
-          id="searchTerm"
-          name="searchTerm"
+          id="ownerName"
+          name="ownerName"
           type="search"
-          value={filters.searchTerm}
-          onChange={handleTextChange}
-          placeholder="e.g. Main St"
+          value={filters.ownerName}
+          onChange={handleInputChange}
+          placeholder="e.g. Smith"
           disabled={disabled}
-          title="Type an address or street name to filter the results instantly"
+          title="Filter by the owner's name or business"
         />
       </div>
 
       <fieldset className="filters__group filters__group--grid" disabled={disabled}>
-        <legend title="Only show listings whose nightly rate falls within this range">Nightly rate ($)</legend>
-        <label htmlFor="minPrice" className="filters__field">
-          Min
+        <legend>Property details</legend>
+        <label htmlFor="complex" className="filters__field">
+          Complex
           <input
-            id="minPrice"
-            name="minPrice"
-            type="number"
-            min={0}
-            step={25}
-            value={filters.minPrice ?? ''}
-            onChange={handleNumberChange}
-            inputMode="numeric"
+            id="complex"
+            name="complex"
+            type="search"
+            value={filters.complex}
+            onChange={handleInputChange}
+            placeholder="e.g. Mountain Thunder"
+            title="Filter by the complex or subdivision name"
           />
         </label>
 
-        <label htmlFor="maxPrice" className="filters__field">
-          Max
+        <label htmlFor="unit" className="filters__field">
+          Unit
           <input
-            id="maxPrice"
-            name="maxPrice"
-            type="number"
-            min={0}
-            step={25}
-            value={filters.maxPrice ?? ''}
-            onChange={handleNumberChange}
-            inputMode="numeric"
-            title="Drop listings above this nightly rate"
+            id="unit"
+            name="unit"
+            type="search"
+            value={filters.unit}
+            onChange={handleInputChange}
+            placeholder="e.g. 201"
+            title="Filter by unit or building identifier"
+          />
+        </label>
+
+        <label htmlFor="subdivision" className="filters__field">
+          Subdivision
+          <input
+            id="subdivision"
+            name="subdivision"
+            type="search"
+            value={filters.subdivision}
+            onChange={handleInputChange}
+            placeholder="e.g. Peak 8"
+            title="Match a subdivision name"
+          />
+        </label>
+
+        <label htmlFor="scheduleNumber" className="filters__field">
+          Schedule number
+          <input
+            id="scheduleNumber"
+            name="scheduleNumber"
+            type="search"
+            value={filters.scheduleNumber}
+            onChange={handleInputChange}
+            placeholder="e.g. 304566"
+            title="Filter by Summit County schedule number"
           />
         </label>
       </fieldset>
 
       <fieldset className="filters__group filters__group--grid" disabled={disabled}>
-        <legend title="Enforce a minimum number of bedrooms and bathrooms">Minimum rooms</legend>
-        <label htmlFor="minBeds" className="filters__field">
-          Beds
+        <legend>Mailing location</legend>
+        <label htmlFor="city" className="filters__field">
+          City
           <input
-            id="minBeds"
-            name="minBeds"
-            type="number"
-            min={0}
-            step={1}
-            value={filters.minBeds ?? ''}
-            onChange={handleNumberChange}
-            inputMode="numeric"
-            title="Require at least this many bedrooms"
+            id="city"
+            name="city"
+            type="search"
+            value={filters.city}
+            onChange={handleInputChange}
+            placeholder="e.g. Breckenridge"
+            title="Filter by mailing city"
           />
         </label>
 
-        <label htmlFor="minBaths" className="filters__field">
-          Baths
+        <label htmlFor="state" className="filters__field">
+          State
+          <select
+            id="state"
+            name="state"
+            value={filters.state}
+            onChange={handleStateChange}
+            disabled={disabled}
+            title="Select a specific state to filter by mailing address"
+          >
+            <option value="">All states</option>
+            {sortedStates.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label htmlFor="zip" className="filters__field">
+          ZIP code
           <input
-            id="minBaths"
-            name="minBaths"
-            type="number"
-            min={0}
-            step={0.5}
-            value={filters.minBaths ?? ''}
-            onChange={handleNumberChange}
-            inputMode="decimal"
-            title="Require at least this many bathrooms"
+            id="zip"
+            name="zip"
+            type="search"
+            value={filters.zip}
+            onChange={handleInputChange}
+            placeholder="e.g. 80424"
+            title="Filter by mailing ZIP code"
           />
+        </label>
+
+        <label htmlFor="businessType" className="filters__field">
+          Owner type
+          <select
+            id="businessType"
+            name="businessType"
+            value={filters.businessType}
+            onChange={handleBusinessChange}
+            disabled={disabled}
+            title="Show only business entities or individual owners"
+          >
+            <option value="all">All owners</option>
+            <option value="individual">Individuals only</option>
+            <option value="business">Businesses only</option>
+          </select>
         </label>
       </fieldset>
-
-      <div className="filters__group">
-        <label htmlFor="status">License status</label>
-        <select
-          id="status"
-          name="status"
-          value={filters.status ?? ''}
-          onChange={handleStatusChange}
-          disabled={disabled || sortedStatuses.length === 0}
-          title="Filter by the exact license status reported by ArcGIS"
-        >
-          <option value="">All statuses</option>
-          {sortedStatuses.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
-      </div>
     </aside>
   );
 }

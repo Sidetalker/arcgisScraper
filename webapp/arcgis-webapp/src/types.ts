@@ -44,25 +44,45 @@ export type ListingAttributes = Record<string, string | number | boolean | null>
 
 export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
-export interface ListingRecord {
+export interface OwnerRecord {
   id: string;
-  address: string;
+  complex: string;
+  unit: string;
+  ownerName: string;
+  ownerLink: string | null;
+  businessOwner: boolean;
+  mailingAddress: string;
+  addressLine1: string;
+  addressLine2: string;
   city: string;
-  nightlyRate: number | null;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  status: string | null;
-  occupancy: number | null;
+  state: string;
+  zip5: string;
+  zip9: string;
+  subdivision: string;
+  scheduleNumber: string;
+  publicDetailUrl: string;
+  physicalAddress: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  suffix: string;
+  title: string;
+  company: string;
+  originalZip: string;
+  comments: string;
   raw: ListingAttributes;
 }
 
 export interface ListingFilters {
-  searchTerm: string;
-  minPrice: number | null;
-  maxPrice: number | null;
-  minBeds: number | null;
-  minBaths: number | null;
-  status: string | null;
+  ownerName: string;
+  complex: string;
+  city: string;
+  state: string;
+  zip: string;
+  subdivision: string;
+  scheduleNumber: string;
+  unit: string;
+  businessType: 'all' | 'business' | 'individual';
 }
 
 export interface RegionCircle {

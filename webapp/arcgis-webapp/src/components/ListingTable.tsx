@@ -1,9 +1,9 @@
 import './ListingTable.css';
 
-import type { ListingRecord } from '@/types';
+import type { OwnerRecord } from '@/types';
 
 interface ListingTableProps {
-  listings: ListingRecord[];
+  listings: OwnerRecord[];
   pageSize: number;
   currentPage: number;
   onPageChange: (page: number) => void;
@@ -34,11 +34,11 @@ export function ListingTable({
     <section className="listing-table">
       <header className="listing-table__header">
         <div>
-          <h2>Listings</h2>
+          <h2>Owner records</h2>
           <p>
             {isLoading
-              ? 'Loading listings from ArcGIS…'
-              : `Showing ${listings.length.toLocaleString()} matching listings`}
+              ? 'Loading owner records from ArcGIS…'
+              : `Showing ${listings.length.toLocaleString()} matching owner records`}
           </p>
         </div>
         <div className="listing-table__summary">
@@ -64,72 +64,84 @@ export function ListingTable({
         role="region"
         aria-live="polite"
         aria-busy={isLoading}
-        title="Tabular summary of listings that match the current filters and map region"
+        title="Tabular summary of owner records that match the current filters and map region"
       >
         <table>
           <thead>
             <tr>
-              <th scope="col">Address</th>
+              <th scope="col">Complex</th>
+              <th scope="col">Unit</th>
+              <th scope="col">Owner name</th>
+              <th scope="col">Owner type</th>
+              <th scope="col">Mailing address</th>
               <th scope="col">City</th>
-              <th scope="col">Nightly rate</th>
-              <th scope="col">Beds</th>
-              <th scope="col">Baths</th>
-              <th scope="col">Status</th>
-              <th scope="col">Occupancy</th>
+              <th scope="col">State</th>
+              <th scope="col">ZIP (5)</th>
+              <th scope="col">ZIP (9)</th>
+              <th scope="col">Subdivision</th>
+              <th scope="col">Schedule #</th>
+              <th scope="col">Public detail</th>
+              <th scope="col">Physical address</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="listing-table__loading">
+                <td colSpan={13} className="listing-table__loading">
                   Loading…
                 </td>
               </tr>
             ) : pageListings.length === 0 ? (
               <tr>
-                <td colSpan={7} className="listing-table__empty">
+                <td colSpan={13} className="listing-table__empty">
                   No listings match the current filters.
                 </td>
               </tr>
             ) : (
               pageListings.map((listing) => {
-                const nightlyRate =
-                  listing.nightlyRate === null
-                    ? '—'
-                    : `$${listing.nightlyRate.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}`;
-
-                const beds =
-                  listing.bedrooms === null
-                    ? '—'
-                    : listing.bedrooms.toLocaleString(undefined, {
-                        maximumFractionDigits: 1,
-                      });
-                const baths =
-                  listing.bathrooms === null
-                    ? '—'
-                    : listing.bathrooms.toLocaleString(undefined, {
-                        maximumFractionDigits: 1,
-                      });
-                const occupancy =
-                  listing.occupancy === null
-                    ? '—'
-                    : listing.occupancy.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      });
-
+                const mailingLines = listing.mailingAddress ? listing.mailingAddress.split('\n') : [];
                 return (
                   <tr key={listing.id}>
+                    <td>{listing.complex || '—'}</td>
+                    <td>{listing.unit || '—'}</td>
                     <td>
-                      <div className="listing-table__address">{listing.address || 'Address unavailable'}</div>
+                      <div className="listing-table__owner">{listing.ownerName || '—'}</div>
+                      {listing.company && listing.ownerName !== listing.company ? (
+                        <div className="listing-table__company">{listing.company}</div>
+                      ) : null}
+                    </td>
+                    <td>{listing.businessOwner ? 'Business' : 'Individual'}</td>
+                    <td>
+                      {mailingLines.length === 0
+                        ? '—'
+                        : mailingLines.map((line, index) => (
+                            <span key={line || index} className="listing-table__mailing-line">
+                              {line}
+                              {index < mailingLines.length - 1 ? <br /> : null}
+                            </span>
+                          ))}
                     </td>
                     <td>{listing.city || '—'}</td>
-                    <td>{nightlyRate}</td>
-                    <td>{beds}</td>
-                    <td>{baths}</td>
-                    <td>{listing.status || '—'}</td>
-                    <td>{occupancy}</td>
+                    <td>{listing.state || '—'}</td>
+                    <td>{listing.zip5 || '—'}</td>
+                    <td>{listing.zip9 || '—'}</td>
+                    <td>{listing.subdivision || '—'}</td>
+                    <td>{listing.scheduleNumber || '—'}</td>
+                    <td>
+                      {listing.publicDetailUrl ? (
+                        <a
+                          href={listing.publicDetailUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="listing-table__link"
+                        >
+                          View
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>{listing.physicalAddress || '—'}</td>
                   </tr>
                 );
               })

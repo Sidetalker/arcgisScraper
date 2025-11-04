@@ -20,6 +20,6 @@ describe('App', () => {
   it('renders the filter sidebar', () => {
     renderApp();
     expect(screen.getByLabelText(/filters/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/search by address/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/owner name/i)).toBeInTheDocument();
   });
 });

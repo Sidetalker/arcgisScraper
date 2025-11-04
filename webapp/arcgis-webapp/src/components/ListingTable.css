@@ -51,7 +51,7 @@
 .listing-table table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 720px;
+  min-width: 1200px;
 }
 
 .listing-table thead {
@@ -78,9 +78,31 @@
   background-color: rgba(248, 250, 252, 0.65);
 }
 
-.listing-table__address {
+.listing-table__owner {
   font-weight: 600;
   color: #0f172a;
+}
+
+.listing-table__company {
+  font-size: 0.85rem;
+  color: #475569;
+  margin-top: 0.25rem;
+}
+
+.listing-table__mailing-line {
+  display: block;
+  color: #0f172a;
+}
+
+.listing-table__link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.listing-table__link:hover,
+.listing-table__link:focus {
+  text-decoration: underline;
 }
 
 .listing-table__loading,
@@ -129,7 +151,7 @@
   }
 
   .listing-table table {
-    min-width: 600px;
+    min-width: 900px;
   }
 
   .listing-table__pagination {
