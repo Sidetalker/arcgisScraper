@@ -41,6 +41,7 @@ interface ColumnDefinition {
   label: string;
   render: (listing: ListingRecord) => ReactNode;
   getFilterValue: (listing: ListingRecord) => string;
+  getExportValue: (listing: ListingRecord) => string;
   filterType?: 'text' | 'boolean';
 }
 
@@ -94,12 +95,14 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
         '—'
       ),
     getFilterValue: (listing) => normalizeText(listing.complex),
+    getExportValue: (listing) => normalizeText(listing.complex),
   },
   {
     key: 'unit',
     label: 'Unit',
     render: (listing) => listing.unit || '—',
     getFilterValue: (listing) => normalizeText(listing.unit),
+    getExportValue: (listing) => normalizeText(listing.unit),
   },
   {
     key: 'owners',
@@ -130,12 +133,14 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
       );
     },
     getFilterValue: (listing) => normalizeText(listing.ownerNames.join(' ')),
+    getExportValue: (listing) => toUniqueOwners(listing).join('; '),
   },
   {
     key: 'business',
     label: 'Business-owned',
     render: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
     getFilterValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
+    getExportValue: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
     filterType: 'boolean',
   },
   {
@@ -154,42 +159,50 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
       );
     },
     getFilterValue: (listing) => normalizeText(listing.mailingAddress),
+    getExportValue: (listing) => normalizeText(listing.mailingAddress?.replace(/\n/g, ', ') ?? ''),
   },
   {
     key: 'mailingCity',
     label: 'Mailing city',
     render: (listing) => listing.mailingCity || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingCity),
+    getExportValue: (listing) => normalizeText(listing.mailingCity),
   },
   {
     key: 'mailingState',
     label: 'State',
     render: (listing) => listing.mailingState || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingState),
+    getExportValue: (listing) => normalizeText(listing.mailingState),
   },
   {
     key: 'mailingZip',
     label: 'ZIP',
     render: (listing) => listing.mailingZip9 || listing.mailingZip5 || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingZip9 || listing.mailingZip5),
+    getExportValue: (listing) =>
+      normalizeText(listing.mailingZip9 || listing.mailingZip5 || ''),
   },
   {
     key: 'subdivision',
     label: 'Subdivision',
     render: (listing) => listing.subdivision || '—',
     getFilterValue: (listing) => normalizeText(listing.subdivision),
+    getExportValue: (listing) => normalizeText(listing.subdivision),
   },
   {
     key: 'scheduleNumber',
     label: 'Schedule #',
     render: (listing) => listing.scheduleNumber || '—',
     getFilterValue: (listing) => normalizeText(listing.scheduleNumber),
+    getExportValue: (listing) => normalizeText(listing.scheduleNumber),
   },
   {
     key: 'physicalAddress',
     label: 'Physical address',
     render: (listing) => listing.physicalAddress || '—',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),
+    getExportValue: (listing) => normalizeText(listing.physicalAddress),
   },
 ];
 
@@ -213,6 +226,10 @@ export function ListingTable({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
+  const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
+  const columnPanelRef = useRef<HTMLDivElement | null>(null);
+  const columnPanelDragSource = useRef<ColumnKey | null>(null);
+  const [columnPanelDragTarget, setColumnPanelDragTarget] = useState<ColumnKey | null>(null);
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -397,6 +414,128 @@ export function ListingTable({
     [hiddenColumns, onHiddenColumnsChange, scheduleScrollIndicatorUpdate],
   );
 
+  const handleToggleColumnVisibility = useCallback(
+    (columnKey: ColumnKey, shouldShow: boolean) => {
+      if (shouldShow) {
+        handleUnhideColumn(columnKey);
+      } else {
+        handleHideColumn(columnKey);
+      }
+    },
+    [handleHideColumn, handleUnhideColumn],
+  );
+
+  const handleColumnPanelDragStart = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
+      columnPanelDragSource.current = columnKey;
+      setColumnPanelDragTarget(columnKey);
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', columnKey);
+    },
+    [],
+  );
+
+  const handleColumnPanelDragOver = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLLIElement>) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      if (columnPanelDragTarget !== columnKey) {
+        setColumnPanelDragTarget(columnKey);
+      }
+    },
+    [columnPanelDragTarget],
+  );
+
+  const handleColumnPanelDragLeave = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLLIElement>) => {
+      const nextTarget = event.relatedTarget as Node | null;
+      if (nextTarget && event.currentTarget.contains(nextTarget)) {
+        return;
+      }
+      if (columnPanelDragTarget === columnKey) {
+        setColumnPanelDragTarget(null);
+      }
+    },
+    [columnPanelDragTarget],
+  );
+
+  const handleColumnPanelDrop = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLLIElement>) => {
+      event.preventDefault();
+      const sourceColumn = columnPanelDragSource.current;
+      setColumnPanelDragTarget(null);
+      columnPanelDragSource.current = null;
+      if (!sourceColumn || sourceColumn === columnKey) {
+        return;
+      }
+
+      const nextOrder = columnOrder.filter((key) => key !== sourceColumn);
+      const insertIndex = nextOrder.indexOf(columnKey);
+      if (insertIndex === -1) {
+        nextOrder.push(sourceColumn);
+      } else {
+        nextOrder.splice(insertIndex, 0, sourceColumn);
+      }
+
+      onColumnOrderChange([...nextOrder]);
+      scheduleScrollIndicatorUpdate();
+    },
+    [columnOrder, onColumnOrderChange, scheduleScrollIndicatorUpdate],
+  );
+
+  const handleColumnPanelDragEnd = useCallback(() => {
+    columnPanelDragSource.current = null;
+    setColumnPanelDragTarget(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isColumnPanelOpen) {
+      return;
+    }
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const panel = columnPanelRef.current;
+      if (!panel) {
+        return;
+      }
+      const target = event.target as Node | null;
+      if (target && panel.contains(target)) {
+        return;
+      }
+      setIsColumnPanelOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [isColumnPanelOpen]);
+
+  useEffect(() => {
+    if (!isColumnPanelOpen) {
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsColumnPanelOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isColumnPanelOpen]);
+
   const handleDragStart = useCallback(
     (columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
       stopAutoScroll();
@@ -511,6 +650,16 @@ export function ListingTable({
     .map((columnKey) => columnDefinitionMap.get(columnKey))
     .filter((definition): definition is ColumnDefinition => Boolean(definition));
 
+  const panelColumnDefinitions = useMemo(() => {
+    const orderedDefinitions = columnOrder
+      .map((columnKey) => columnDefinitionMap.get(columnKey))
+      .filter((definition): definition is ColumnDefinition => Boolean(definition));
+    const hiddenSet = new Set(hiddenColumns);
+    const visible = orderedDefinitions.filter((definition) => !hiddenSet.has(definition.key));
+    const hiddenList = orderedDefinitions.filter((definition) => hiddenSet.has(definition.key));
+    return [...visible, ...hiddenList];
+  }, [columnDefinitionMap, columnOrder, hiddenColumns]);
+
   const totalListingsCount = listings.length;
   const filteredListingsCount = filteredListings.length;
   const summaryText = isLoading
@@ -522,6 +671,61 @@ export function ListingTable({
       }`;
 
   const shouldDisableHide = visibleColumns.length <= 1;
+  const visibleColumnsCount = visibleColumns.length;
+
+  const handleExportCsv = useCallback(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    const exportColumnDefinitions = columnOrder
+      .filter((key) => !hiddenColumns.includes(key))
+      .map((key) => columnDefinitionMap.get(key))
+      .filter((definition): definition is ColumnDefinition => Boolean(definition));
+
+    if (exportColumnDefinitions.length === 0) {
+      return;
+    }
+
+    const rows: string[][] = [
+      exportColumnDefinitions.map((definition) => definition.label),
+      ...filteredListings.map((listing) =>
+        exportColumnDefinitions.map((definition) => definition.getExportValue(listing)),
+      ),
+    ];
+
+    const csvContent = rows
+      .map((row) =>
+        row
+          .map((value) => {
+            const text = value ?? '';
+            const escaped = text.replace(/"/g, '""');
+            return /["\n,]/.test(escaped) ? `"${escaped}"` : escaped;
+          })
+          .join(','),
+      )
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    anchor.href = url;
+    anchor.download = `listings-export-${timestamp}.csv`;
+
+    if (!document.body) {
+      window.URL.revokeObjectURL(url);
+      return;
+    }
+
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+
+    window.setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+    }, 0);
+  }, [columnDefinitionMap, columnOrder, filteredListings, hiddenColumns]);
 
   return (
     <section className="listing-table">
@@ -573,6 +777,91 @@ export function ListingTable({
         title="Tabular summary of listings that match the current filters and map region"
       >
         <div className="listing-table__scroll-indicator-container">
+          <div className="listing-table__export-controls">
+            <div className="listing-table__export-actions">
+              <button
+                type="button"
+                className="listing-table__export-button"
+                onClick={handleExportCsv}
+                disabled={filteredListingsCount === 0}
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                className="listing-table__columns-button"
+                onClick={() => setIsColumnPanelOpen((open) => !open)}
+                aria-expanded={isColumnPanelOpen}
+                aria-controls="listing-table-columns-panel"
+              >
+                Columns
+                <span aria-hidden="true">{isColumnPanelOpen ? '▴' : '▾'}</span>
+              </button>
+            </div>
+            {isColumnPanelOpen ? (
+              <div
+                ref={columnPanelRef}
+                className="listing-table__column-panel"
+                id="listing-table-columns-panel"
+                role="dialog"
+                aria-label="Select listing table columns"
+              >
+                <p className="listing-table__column-panel-description">
+                  Drag to reorder columns. Uncheck to hide and move a column to the bottom of the list.
+                </p>
+                <ul className="listing-table__column-panel-list">
+                  {panelColumnDefinitions.map((definition) => {
+                    const isHidden = hiddenColumns.includes(definition.key);
+                    const isDropTarget = columnPanelDragTarget === definition.key;
+                    const isCheckboxDisabled = !isHidden && visibleColumnsCount <= 1;
+                    return (
+                      <li
+                        key={definition.key}
+                        className="listing-table__column-panel-item"
+                        data-hidden={isHidden}
+                        data-drop-target={isDropTarget}
+                        onDragOver={handleColumnPanelDragOver(definition.key)}
+                        onDrop={handleColumnPanelDrop(definition.key)}
+                        onDragLeave={handleColumnPanelDragLeave(definition.key)}
+                      >
+                        <label className="listing-table__column-panel-label">
+                          <input
+                            type="checkbox"
+                            checked={!isHidden}
+                            onChange={(event) =>
+                              handleToggleColumnVisibility(definition.key, event.target.checked)
+                            }
+                            disabled={isCheckboxDisabled}
+                          />
+                          <span>{definition.label}</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="listing-table__column-panel-drag-handle"
+                          draggable
+                          onDragStart={handleColumnPanelDragStart(definition.key)}
+                          onDragEnd={handleColumnPanelDragEnd}
+                          aria-label={`Drag to reorder the ${definition.label} column`}
+                        >
+                          <span aria-hidden="true">⋮⋮</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="listing-table__column-panel-actions">
+                  <button
+                    type="button"
+                    className="listing-table__export-button listing-table__export-button--secondary"
+                    onClick={handleExportCsv}
+                    disabled={filteredListingsCount === 0}
+                  >
+                    Download CSV
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div
             className={`listing-table__scroll-indicator${
               canScrollRight ? ' listing-table__scroll-indicator--active' : ''
