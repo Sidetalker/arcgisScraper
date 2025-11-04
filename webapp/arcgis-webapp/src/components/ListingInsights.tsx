@@ -90,7 +90,7 @@ const SUMMARY_DESCRIPTORS: Record<
 
 const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
 const LAND_BARON_SECTION_SIZE = 5;
-const MAX_ZONE_OVERVIEW_ROWS = 5;
+const MAX_ZONE_OVERVIEW_ROWS = 16;
 // Treat zones with fewer than five cached listings as noise so the overview stays focused.
 const MIN_ZONE_LISTING_THRESHOLD = 5;
 
