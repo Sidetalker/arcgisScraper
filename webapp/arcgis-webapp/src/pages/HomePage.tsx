@@ -20,11 +20,17 @@ import {
   fetchConfigurationProfiles,
   saveConfigurationProfile,
 } from '@/services/configurationProfiles';
+import {
+  cloneRegionShape,
+  isPointInsideRegions,
+  normaliseRegionList,
+  regionsAreEqual,
+} from '@/services/regionShapes';
 import { supabase } from '@/services/supabaseClient';
 import type {
   ConfigurationProfile,
   ListingFilters,
-  RegionCircle,
+  RegionShape,
 } from '@/types';
 
 const LOCAL_PROFILE_STORAGE_KEY = 'arcgis-config-profile:v1';
@@ -34,7 +40,7 @@ interface StoredLocalProfile {
   profileId?: string | null;
   name?: string;
   filters?: Partial<ListingFilters> | null;
-  regions?: RegionCircle[] | null;
+  regions?: RegionShape[] | null;
   table?: Partial<ListingTableState> | null;
 }
 
@@ -64,6 +70,12 @@ function normaliseStringList(value: unknown): string[] {
 }
 
 function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): ListingFilters {
+  const maxEvDistance = filters?.maxEvDistanceMiles;
+  let normalizedMaxEvDistance: number | null = null;
+  if (typeof maxEvDistance === 'number' && isFinite(maxEvDistance) && maxEvDistance > 0) {
+    normalizedMaxEvDistance = maxEvDistance;
+  }
+
   return {
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
@@ -72,32 +84,8 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
-    maxEvDistanceMiles: typeof filters?.maxEvDistanceMiles === 'number' ? filters.maxEvDistanceMiles : null,
+    maxEvDistanceMiles: normalizedMaxEvDistance,
   };
-}
-
-function normaliseRegions(regions: RegionCircle[] | null | undefined): RegionCircle[] {
-  if (!Array.isArray(regions)) {
-    return [];
-  }
-
-  return regions
-    .filter(
-      (region) =>
-        region &&
-        typeof region.lat === 'number' &&
-        typeof region.lng === 'number' &&
-        typeof region.radius === 'number' &&
-        Number.isFinite(region.lat) &&
-        Number.isFinite(region.lng) &&
-        Number.isFinite(region.radius) &&
-        region.radius > 0,
-    )
-    .map((region) => ({
-      lat: region.lat,
-      lng: region.lng,
-      radius: region.radius,
-    }));
 }
 
 function stringSetsEqual(a: string[], b: string[]): boolean {
@@ -127,52 +115,6 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
   );
 }
 
-function regionsEqual(a: RegionCircle[], b: RegionCircle[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-
-  return a.every((region, index) => {
-    const other = b[index];
-    return (
-      other !== undefined &&
-      region.lat === other.lat &&
-      region.lng === other.lng &&
-      region.radius === other.radius
-    );
-  });
-}
-
-function isListingInsideRegions(
-  listing: { latitude: number | null; longitude: number | null },
-  regions: RegionCircle[],
-): boolean {
-  if (regions.length === 0) {
-    return true;
-  }
-
-  if (typeof listing.latitude !== 'number' || typeof listing.longitude !== 'number') {
-    return false;
-  }
-
-  const { latitude, longitude } = listing;
-  const EARTH_RADIUS_METERS = 6_371_000;
-
-  return regions.some((region) => {
-    const lat1 = (latitude * Math.PI) / 180;
-    const lat2 = (region.lat * Math.PI) / 180;
-    const deltaLat = ((region.lat - latitude) * Math.PI) / 180;
-    const deltaLng = ((region.lng - longitude) * Math.PI) / 180;
-
-    const haversine =
-      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
-
-    const distance = 2 * EARTH_RADIUS_METERS * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-    return distance <= region.radius;
-  });
-}
-
 function HomePage(): JSX.Element {
   const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
@@ -192,7 +134,7 @@ function HomePage(): JSX.Element {
   const supabaseAvailable = Boolean(supabase);
 
   const handleRegionsChange = useCallback(
-    (nextRegions: RegionCircle[]) => {
+    (nextRegions: RegionShape[]) => {
       onRegionsChange(nextRegions);
       setHighlightedListingId(null);
     },
@@ -275,10 +217,16 @@ function HomePage(): JSX.Element {
     if (regions.length === 0) {
       return filtered;
     }
-    return filtered.filter((listing) => isListingInsideRegions(listing, regions));
+
+    return filtered.filter((listing) => {
+      if (typeof listing.latitude !== 'number' || typeof listing.longitude !== 'number') {
+        return false;
+      }
+      return isPointInsideRegions({ lat: listing.latitude, lng: listing.longitude }, regions);
+    });
   }, [filters, listings, regions]);
 
-  const circleListings = useMemo(() => {
+  const regionListings = useMemo(() => {
     return regions.length > 0 ? filteredListings : [];
   }, [filteredListings, regions.length]);
 
@@ -309,7 +257,7 @@ function HomePage(): JSX.Element {
 
       const parsed = JSON.parse(raw) as StoredLocalProfile;
       const restoredFilters = normaliseFilters(parsed.filters);
-      const restoredRegions = normaliseRegions(parsed.regions);
+      const restoredRegions = normaliseRegionList(parsed.regions);
       const restoredTable = normaliseTableState(parsed.table);
 
       setFilters(restoredFilters);
@@ -398,7 +346,7 @@ function HomePage(): JSX.Element {
   const isDirty = selectedProfile
     ? selectedProfile.name !== trimmedProfileName ||
       !filtersEqual(selectedProfile.filters, filters) ||
-      !regionsEqual(selectedProfile.regions, regions) ||
+      !regionsAreEqual(selectedProfile.regions, regions) ||
       !areTableStatesEqual(selectedProfile.table, tableState)
     : trimmedProfileName !== DEFAULT_PROFILE_NAME ||
       !filtersEqual(DEFAULT_FILTERS, filters) ||
@@ -422,7 +370,7 @@ function HomePage(): JSX.Element {
           id: options?.duplicate ? undefined : localProfileId ?? undefined,
           name: nextName,
           filters: { ...filters },
-          regions: regions.map((region) => ({ ...region })),
+          regions: regions.map((region) => cloneRegionShape(region)),
           table: {
             columnOrder: [...tableState.columnOrder],
             hiddenColumns: [...tableState.hiddenColumns],
@@ -550,7 +498,8 @@ function HomePage(): JSX.Element {
       <RegionMap
         regions={regions}
         onRegionsChange={handleRegionsChange}
-        listings={circleListings}
+        listings={regionListings}
+        allListings={filteredListings}
         onListingSelect={handleListingFocus}
         totalListingCount={filteredListings.length}
       />
