@@ -533,7 +533,9 @@ function EvStationMarkers(): null {
       marker.bindPopup(popupContent);
       marker.addTo(layerGroup);
     });
+  }, [map]);
 
+  useEffect(() => {
     return () => {
       if (layerRef.current) {
         layerRef.current.removeFrom(map);
