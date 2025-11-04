@@ -68,6 +68,7 @@ export interface ListingRecord {
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;
+  zoningDistrict: string | null;
   estimatedRenewalDate: Date | null;
   estimatedRenewalMethod: string | null;
   estimatedRenewalReference: Date | null;

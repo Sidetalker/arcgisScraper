@@ -78,6 +78,7 @@ export interface ListingRow {
   is_business_owner: Nullable<boolean>;
   latitude: Nullable<number>;
   longitude: Nullable<number>;
+  zoning_district: Nullable<string>;
   estimated_renewal_date: Nullable<string>;
   estimated_renewal_method: Nullable<string>;
   estimated_renewal_reference: Nullable<string>;
@@ -113,6 +114,7 @@ function toListingRow(record: ListingRecord): ListingRow {
     is_business_owner: record.isBusinessOwner,
     latitude: typeof record.latitude === 'number' ? record.latitude : null,
     longitude: typeof record.longitude === 'number' ? record.longitude : null,
+    zoning_district: record.zoningDistrict || null,
     estimated_renewal_date: formatDateColumn(record.estimatedRenewalDate),
     estimated_renewal_method: record.estimatedRenewalMethod ?? null,
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
@@ -176,6 +178,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     isBusinessOwner: Boolean(row.is_business_owner),
     latitude: typeof row.latitude === 'number' ? row.latitude : null,
     longitude: typeof row.longitude === 'number' ? row.longitude : null,
+    zoningDistrict: row.zoning_district ?? null,
     estimatedRenewalDate,
     estimatedRenewalMethod,
     estimatedRenewalReference,
@@ -205,6 +208,7 @@ const LISTING_COLUMNS = [
   'is_business_owner',
   'latitude',
   'longitude',
+  'zoning_district',
   'estimated_renewal_date',
   'estimated_renewal_method',
   'estimated_renewal_reference',

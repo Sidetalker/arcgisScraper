@@ -465,6 +465,12 @@ export function toListingRecord(
   const estimatedRenewalCategory = renewalSnapshot.category;
   const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
 
+  const zoningDistrictRaw = attributes.HC_RegistrationsOriginalClea_23;
+  const zoningDistrict = 
+    typeof zoningDistrictRaw === 'string' && zoningDistrictRaw.trim() 
+      ? zoningDistrictRaw.trim() 
+      : null;
+
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -485,6 +491,7 @@ export function toListingRecord(
     isBusinessOwner,
     latitude,
     longitude,
+    zoningDistrict,
     estimatedRenewalDate,
     estimatedRenewalMethod,
     estimatedRenewalReference,

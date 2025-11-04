@@ -601,10 +601,56 @@ type ListingSelectionPanelProps = {
   listing: ListingRecord | null;
   hasListings: boolean;
   totalListingCount: number;
+  hoveredDistrict?: string | null;
+  zoningDistricts?: ZoningDistrictMap;
 };
 
-function ListingSelectionPanel({ listing, hasListings, totalListingCount }: ListingSelectionPanelProps): JSX.Element {
-    if (!listing) {
+function ListingSelectionPanel({ 
+  listing, 
+  hasListings, 
+  totalListingCount,
+  hoveredDistrict,
+  zoningDistricts,
+}: ListingSelectionPanelProps): JSX.Element {
+  // If hovering over a district, show district info
+  if (hoveredDistrict && zoningDistricts) {
+    const districtInfo = zoningDistricts.get(hoveredDistrict);
+    if (districtInfo) {
+      return (
+        <div className="region-map__selection" aria-live="polite">
+          <div className="region-map__selection-header">
+            <div className="region-map__selection-heading">
+              <h3 className="region-map__selection-title">Zoning District: {districtInfo.name}</h3>
+            </div>
+          </div>
+          <dl className="region-map__selection-grid">
+            <div>
+              <dt>Properties in District</dt>
+              <dd>{districtInfo.count.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>District Color</dt>
+              <dd>
+                <span style={{ 
+                  display: 'inline-block', 
+                  width: '20px', 
+                  height: '20px', 
+                  backgroundColor: districtInfo.color,
+                  borderRadius: '4px',
+                  verticalAlign: 'middle',
+                  marginRight: '8px',
+                  border: '1px solid #cbd5e1',
+                }} />
+                {districtInfo.color}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      );
+    }
+  }
+
+  if (!listing) {
       const formattedCount = totalListingCount.toLocaleString();
       const pluralised = totalListingCount === 1 ? 'property matches' : 'properties match';
       const countMessage =
@@ -1128,23 +1174,146 @@ function DrawManager({
   );
 }
 
+type ZoningDistrictInfo = {
+  name: string;
+  count: number;
+  color: string;
+};
+
+type ZoningDistrictMap = Map<string, ZoningDistrictInfo>;
+
+const DISTRICT_COLORS = [
+  '#e74c3c', // Red
+  '#3498db', // Blue
+  '#2ecc71', // Green
+  '#f39c12', // Orange
+  '#9b59b6', // Purple
+  '#1abc9c', // Turquoise
+  '#e67e22', // Carrot
+  '#34495e', // Dark Blue Gray
+  '#16a085', // Green Sea
+  '#c0392b', // Dark Red
+];
+
+const DEFAULT_MARKER_COLOR = '#3b82f6'; // Blue fallback
+
+function computeTopZoningDistricts(listings: ListingRecord[]): ZoningDistrictMap {
+  const districtCounts = new Map<string, number>();
+  
+  // Count properties per district
+  listings.forEach((listing) => {
+    if (listing.zoningDistrict) {
+      const count = districtCounts.get(listing.zoningDistrict) || 0;
+      districtCounts.set(listing.zoningDistrict, count + 1);
+    }
+  });
+
+  // Filter districts with > 100 properties and get top 10
+  const qualifiedDistricts = Array.from(districtCounts.entries())
+    .filter(([, count]) => count > 100)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  // Create map with assigned colors
+  const districtMap = new Map<string, ZoningDistrictInfo>();
+  qualifiedDistricts.forEach(([name, count], index) => {
+    districtMap.set(name, {
+      name,
+      count,
+      color: DISTRICT_COLORS[index] || DISTRICT_COLORS[0],
+    });
+  });
+
+  return districtMap;
+}
+
 type ListingMarkersProps = {
   listings: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
   selectedListingId?: string | null;
   hoveredListingId?: string | null;
   onListingHover?: (listingId: string | null) => void;
+  zoningDistricts: ZoningDistrictMap;
+  hoveredDistrict?: string | null;
 };
 
-function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredListingId, onListingHover }: ListingMarkersProps): null {
+function ListingMarkers({ 
+  listings, 
+  onListingSelect, 
+  selectedListingId, 
+  hoveredListingId, 
+  onListingHover,
+  zoningDistricts,
+  hoveredDistrict,
+}: ListingMarkersProps): null {
   const map = useMap();
-  const layerRef = useRef<L.LayerGroup | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const blurLayerRef = useRef<L.LayerGroup | null>(null);
 
+  // Render blur effects for zoning districts
   useEffect(() => {
-    if (!layerRef.current) {
-      layerRef.current = L.layerGroup().addTo(map);
+    if (!blurLayerRef.current) {
+      // Create blur layer below markers
+      blurLayerRef.current = L.layerGroup().addTo(map);
+      blurLayerRef.current.getPane()!.style.zIndex = '400'; // Below markerPane (600)
     }
-    const layerGroup = layerRef.current;
+    
+    const blurGroup = blurLayerRef.current;
+    blurGroup.clearLayers();
+
+    if (zoningDistricts.size === 0) {
+      return;
+    }
+
+    // Group listings by district
+    const listingsByDistrict = new Map<string, ListingRecord[]>();
+    listings.forEach((listing) => {
+      if (listing.latitude !== null && listing.longitude !== null && listing.zoningDistrict) {
+        const districtInfo = zoningDistricts.get(listing.zoningDistrict);
+        if (districtInfo) {
+          if (!listingsByDistrict.has(listing.zoningDistrict)) {
+            listingsByDistrict.set(listing.zoningDistrict, []);
+          }
+          listingsByDistrict.get(listing.zoningDistrict)!.push(listing);
+        }
+      }
+    });
+
+    // Create blur circles for each district
+    listingsByDistrict.forEach((districtListings, districtName) => {
+      const districtInfo = zoningDistricts.get(districtName)!;
+      const isHovered = hoveredDistrict === districtName;
+      
+      districtListings.forEach((listing) => {
+        if (listing.latitude === null || listing.longitude === null) {
+          return;
+        }
+
+        // Create blur effect with larger radius
+        const blurRadius = isHovered ? 35 : 30;
+        const blurOpacity = isHovered ? 0.35 : 0.25;
+        const blurColor = isHovered ? adjustColorBrightness(districtInfo.color, -20) : districtInfo.color;
+
+        const blurCircle = L.circle([listing.latitude, listing.longitude], {
+          radius: blurRadius,
+          color: blurColor,
+          weight: 0,
+          fillColor: blurColor,
+          fillOpacity: blurOpacity,
+          className: 'district-blur',
+        });
+
+        blurCircle.addTo(blurGroup);
+      });
+    });
+  }, [hoveredDistrict, listings, map, zoningDistricts]);
+
+  // Render property markers
+  useEffect(() => {
+    if (!markersLayerRef.current) {
+      markersLayerRef.current = L.layerGroup().addTo(map);
+    }
+    const layerGroup = markersLayerRef.current;
     layerGroup.clearLayers();
 
     listings.forEach((listing) => {
@@ -1156,11 +1325,23 @@ function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredL
       const isHovered = listing.id === hoveredListingId;
       const isActive = isSelected || isHovered;
 
+      // Determine marker color based on zoning district
+      let markerColor = DEFAULT_MARKER_COLOR;
+      let markerBorderColor = '#1d4ed8';
+      
+      if (listing.zoningDistrict) {
+        const districtInfo = zoningDistricts.get(listing.zoningDistrict);
+        if (districtInfo) {
+          markerColor = districtInfo.color;
+          markerBorderColor = adjustColorBrightness(districtInfo.color, -30);
+        }
+      }
+
       const marker = L.circleMarker([listing.latitude, listing.longitude], {
         radius: isActive ? 7 : 5,
-        color: isActive ? '#1d4ed8' : '#991b1b',
+        color: isActive ? markerBorderColor : markerBorderColor,
         weight: isActive ? 2 : 1,
-        fillColor: isActive ? '#3b82f6' : '#ef4444',
+        fillColor: isActive ? markerColor : markerColor,
         fillOpacity: isActive ? 0.95 : 0.85,
         pane: 'markerPane',
       });
@@ -1181,13 +1362,135 @@ function ListingMarkers({ listings, onListingSelect, selectedListingId, hoveredL
 
       marker.addTo(layerGroup);
     });
-  }, [hoveredListingId, listings, map, onListingHover, onListingSelect, selectedListingId]);
+  }, [hoveredListingId, listings, map, onListingHover, onListingSelect, selectedListingId, zoningDistricts]);
 
   useEffect(() => {
     return () => {
-      if (layerRef.current) {
-        layerRef.current.removeFrom(map);
-        layerRef.current = null;
+      if (markersLayerRef.current) {
+        markersLayerRef.current.removeFrom(map);
+        markersLayerRef.current = null;
+      }
+      if (blurLayerRef.current) {
+        blurLayerRef.current.removeFrom(map);
+        blurLayerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  return null;
+}
+
+// Helper function to adjust color brightness
+function adjustColorBrightness(color: string, percent: number): string {
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+
+  const adjust = (value: number) => {
+    const adjusted = value + (value * percent) / 100;
+    return Math.max(0, Math.min(255, Math.round(adjusted)));
+  };
+
+  const newR = adjust(r).toString(16).padStart(2, '0');
+  const newG = adjust(g).toString(16).padStart(2, '0');
+  const newB = adjust(b).toString(16).padStart(2, '0');
+
+  return `#${newR}${newG}${newB}`;
+}
+
+type DistrictHoverZonesProps = {
+  listings: ListingRecord[];
+  zoningDistricts: ZoningDistrictMap;
+  onDistrictHover?: (districtName: string | null) => void;
+};
+
+function DistrictHoverZones({ 
+  listings, 
+  zoningDistricts,
+  onDistrictHover,
+}: DistrictHoverZonesProps): null {
+  const map = useMap();
+  const zonesLayerRef = useRef<L.LayerGroup | null>(null);
+
+  useEffect(() => {
+    if (!zonesLayerRef.current) {
+      zonesLayerRef.current = L.layerGroup().addTo(map);
+      zonesLayerRef.current.getPane()!.style.zIndex = '450'; // Between blur and markers
+    }
+    
+    const zonesGroup = zonesLayerRef.current;
+    zonesGroup.clearLayers();
+
+    if (zoningDistricts.size === 0) {
+      return;
+    }
+
+    // Group listings by district
+    const listingsByDistrict = new Map<string, ListingRecord[]>();
+    listings.forEach((listing) => {
+      if (listing.latitude !== null && listing.longitude !== null && listing.zoningDistrict) {
+        const districtInfo = zoningDistricts.get(listing.zoningDistrict);
+        if (districtInfo) {
+          if (!listingsByDistrict.has(listing.zoningDistrict)) {
+            listingsByDistrict.set(listing.zoningDistrict, []);
+          }
+          listingsByDistrict.get(listing.zoningDistrict)!.push(listing);
+        }
+      }
+    });
+
+    // Create invisible hover zones for each district property
+    listingsByDistrict.forEach((districtListings, districtName) => {
+      districtListings.forEach((listing) => {
+        if (listing.latitude === null || listing.longitude === null) {
+          return;
+        }
+
+        // Create invisible hover zone
+        const hoverZone = L.circle([listing.latitude, listing.longitude], {
+          radius: 30, // Match blur radius
+          color: 'transparent',
+          weight: 0,
+          fillColor: 'transparent',
+          fillOpacity: 0,
+          interactive: true,
+        });
+
+        hoverZone.on('mouseover', (event: L.LeafletMouseEvent) => {
+          // Check if mouse is actually over the marker (within 20px)
+          const marker = event.target as L.Circle;
+          const markerLatLng = marker.getLatLng();
+          const mousePoint = map.latLngToContainerPoint(event.latlng);
+          const markerPoint = map.latLngToContainerPoint(markerLatLng);
+          
+          const distance = Math.sqrt(
+            Math.pow(mousePoint.x - markerPoint.x, 2) + 
+            Math.pow(mousePoint.y - markerPoint.y, 2)
+          );
+
+          // If within 20px (marker hitbox), don't trigger district hover
+          if (distance <= 20) {
+            return;
+          }
+
+          onDistrictHover?.(districtName);
+        });
+
+        hoverZone.on('mouseout', () => {
+          onDistrictHover?.(null);
+        });
+
+        hoverZone.addTo(zonesGroup);
+      });
+    });
+  }, [listings, map, onDistrictHover, zoningDistricts]);
+
+  useEffect(() => {
+    return () => {
+      if (zonesLayerRef.current) {
+        zonesLayerRef.current.removeFrom(map);
+        zonesLayerRef.current = null;
       }
     };
   }, [map]);
@@ -1207,6 +1510,7 @@ function RegionMap({
   const subtitle = 'Use the toolbar to draw polygons or circles and focus on specific areas.';
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
+  const [hoveredDistrict, setHoveredDistrict] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
 
   const displayedListings = useMemo(() => {
@@ -1214,6 +1518,11 @@ function RegionMap({
     // Otherwise show region-filtered listings (or all if no regions)
     return showAllProperties && regions.length > 0 ? allListings : listings;
   }, [showAllProperties, regions.length, allListings, listings]);
+
+  // Compute top zoning districts from all listings (not just displayed)
+  const zoningDistricts = useMemo(() => {
+    return computeTopZoningDistricts(allListings.length > 0 ? allListings : listings);
+  }, [allListings, listings]);
 
   useEffect(() => {
     if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
@@ -1252,6 +1561,18 @@ function RegionMap({
 
   const handleMarkerHover = useCallback((listingId: string | null) => {
     setHoveredListingId(listingId);
+    // Clear district hover when hovering a property
+    if (listingId) {
+      setHoveredDistrict(null);
+    }
+  }, []);
+
+  const handleDistrictHover = useCallback((districtName: string | null) => {
+    setHoveredDistrict(districtName);
+    // Clear property hover when hovering a district
+    if (districtName) {
+      setHoveredListingId(null);
+    }
   }, []);
 
   const handleToggleShowAll = useCallback(() => {
@@ -1275,6 +1596,8 @@ function RegionMap({
           listing={activeListing}
           hasListings={displayedListings.length > 0}
           totalListingCount={totalListingCount}
+          hoveredDistrict={hoveredDistrict}
+          zoningDistricts={zoningDistricts}
         />
       </div>
       <MapContainer
@@ -1292,13 +1615,22 @@ function RegionMap({
           onToggleShowAll={handleToggleShowAll}
         />
         {displayedListings.length ? (
-          <ListingMarkers
-            listings={displayedListings}
-            onListingSelect={handleMarkerSelect}
-            selectedListingId={selectedListingId}
-            hoveredListingId={hoveredListingId}
-            onListingHover={handleMarkerHover}
-          />
+          <>
+            <DistrictHoverZones
+              listings={displayedListings}
+              zoningDistricts={zoningDistricts}
+              onDistrictHover={handleDistrictHover}
+            />
+            <ListingMarkers
+              listings={displayedListings}
+              onListingSelect={handleMarkerSelect}
+              selectedListingId={selectedListingId}
+              hoveredListingId={hoveredListingId}
+              onListingHover={handleMarkerHover}
+              zoningDistricts={zoningDistricts}
+              hoveredDistrict={hoveredDistrict}
+            />
+          </>
         ) : null}
       </MapContainer>
     </section>
