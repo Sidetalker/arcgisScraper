@@ -190,16 +190,6 @@ function HomePage(): JSX.Element {
     }
   }, [filteredListings, highlightedListingId]);
 
-  const subdivisionOptions = useMemo(() => {
-    const values = new Set<string>();
-    listings.forEach((listing) => {
-      if (listing.subdivision) {
-        values.add(listing.subdivision);
-      }
-    });
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [listings]);
-
   const statusMessage = useMemo(() => {
     if (loading) {
       return 'Refreshing listings from ArcGIS…';
@@ -253,7 +243,6 @@ function HomePage(): JSX.Element {
       <FilterPanel
         filters={filters}
         onChange={handleFiltersChange}
-        subdivisionOptions={subdivisionOptions}
         disabled={loading}
         onReset={handleResetFilters}
         onDropPinRequest={handleDropPinRequest}

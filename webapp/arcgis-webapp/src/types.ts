@@ -69,8 +69,6 @@ export interface ListingRecord {
 
 export interface ListingFilters {
   searchTerm: string;
-  scheduleNumber: string;
-  subdivision: string | null;
   complex: string;
   owner: string;
   pinRadiusMeters: string;

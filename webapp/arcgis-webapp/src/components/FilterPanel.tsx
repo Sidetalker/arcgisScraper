@@ -1,13 +1,12 @@
 import './FilterPanel.css';
 
-import { ChangeEvent, useMemo } from 'react';
+import { ChangeEvent } from 'react';
 
 import type { ListingFilters } from '@/types';
 
 interface FilterPanelProps {
   filters: ListingFilters;
   onChange: (filters: ListingFilters) => void;
-  subdivisionOptions: string[];
   disabled?: boolean;
   onReset: () => void;
   onDropPinRequest: () => void;
@@ -20,7 +19,6 @@ interface FilterPanelProps {
 export function FilterPanel({
   filters,
   onChange,
-  subdivisionOptions,
   disabled = false,
   onReset,
   onDropPinRequest,
@@ -29,16 +27,10 @@ export function FilterPanel({
   hasPinnedRegion,
   onClearPinRegion,
 }: FilterPanelProps) {
-  const sortedSubdivisions = useMemo(() => {
-    return [...subdivisionOptions].sort((a, b) => a.localeCompare(b));
-  }, [subdivisionOptions]);
-
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     if (name === 'searchTerm') {
       onChange({ ...filters, searchTerm: value });
-    } else if (name === 'scheduleNumber') {
-      onChange({ ...filters, scheduleNumber: value });
     } else if (name === 'complex') {
       onChange({ ...filters, complex: value });
     } else if (name === 'owner') {
@@ -46,11 +38,6 @@ export function FilterPanel({
     } else if (name === 'pinRadiusMeters') {
       onChange({ ...filters, pinRadiusMeters: value });
     }
-  };
-
-  const handleSubdivisionChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const { value } = event.target;
-    onChange({ ...filters, subdivision: value || null });
   };
 
   const handleReset = () => {
@@ -112,39 +99,6 @@ export function FilterPanel({
           disabled={disabled}
           title="Only show listings whose owner names contain this text"
         />
-      </div>
-
-      <div className="filters__group">
-        <label htmlFor="scheduleNumber">Schedule number</label>
-        <input
-          id="scheduleNumber"
-          name="scheduleNumber"
-          type="search"
-          value={filters.scheduleNumber}
-          onChange={handleInputChange}
-          placeholder="e.g. 123456"
-          disabled={disabled}
-          title="Filter listings whose schedule number contains this value"
-        />
-      </div>
-
-      <div className="filters__group">
-        <label htmlFor="subdivision">Subdivision</label>
-        <select
-          id="subdivision"
-          name="subdivision"
-          value={filters.subdivision ?? ''}
-          onChange={handleSubdivisionChange}
-          disabled={disabled || sortedSubdivisions.length === 0}
-          title="Filter by the subdivision reported in ArcGIS"
-        >
-          <option value="">All subdivisions</option>
-          {sortedSubdivisions.map((subdivision) => (
-            <option key={subdivision} value={subdivision}>
-              {subdivision}
-            </option>
-          ))}
-        </select>
       </div>
 
       <fieldset className="filters__group filters__pin" disabled={disabled}>
