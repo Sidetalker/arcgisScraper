@@ -5,6 +5,7 @@ import FilterPanel from '@/components/FilterPanel';
 import ListingTable from '@/components/ListingTable';
 import RegionMap from '@/components/RegionMap';
 import ConfigurationProfiles from '@/components/ConfigurationProfiles';
+import ListingInsights from '@/components/ListingInsights';
 import { type LayoutOutletContext } from '@/App';
 import { DEFAULT_FILTERS, DEFAULT_PAGE_SIZE } from '@/constants/listings';
 import {
@@ -15,10 +16,6 @@ import {
 } from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
 import { applyFilters } from '@/services/listingTransformer';
-import {
-  createMailingListCsvBlob,
-  createMailingListFileBasename,
-} from '@/services/mailingListExport';
 import {
   fetchConfigurationProfiles,
   saveConfigurationProfile,
@@ -41,11 +38,40 @@ interface StoredLocalProfile {
   table?: Partial<ListingTableState> | null;
 }
 
+function normaliseStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Set<string>();
+  const result: string[] = [];
+  value.forEach((entry) => {
+    if (typeof entry !== 'string') {
+      return;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      return;
+    }
+    const key = trimmed.toLowerCase();
+    if (deduped.has(key)) {
+      return;
+    }
+    deduped.add(key);
+    result.push(trimmed);
+  });
+  return result;
+}
+
 function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): ListingFilters {
   return {
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
     owner: typeof filters?.owner === 'string' ? filters.owner : '',
+    subdivisions: normaliseStringList(filters?.subdivisions),
+    renewalCategories: normaliseStringList(filters?.renewalCategories),
+    renewalMethods: normaliseStringList(filters?.renewalMethods),
+    renewalMonths: normaliseStringList(filters?.renewalMonths),
   };
 }
 
@@ -73,8 +99,31 @@ function normaliseRegions(regions: RegionCircle[] | null | undefined): RegionCir
     }));
 }
 
+function stringSetsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  const normalise = (list: string[]) =>
+    list
+      .map((value) => value.toLowerCase())
+      .sort((first, second) => first.localeCompare(second));
+
+  const normalisedA = normalise(a);
+  const normalisedB = normalise(b);
+  return normalisedA.every((value, index) => value === normalisedB[index]);
+}
+
 function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
-  return a.searchTerm === b.searchTerm && a.complex === b.complex && a.owner === b.owner;
+  return (
+    a.searchTerm === b.searchTerm &&
+    a.complex === b.complex &&
+    a.owner === b.owner &&
+    stringSetsEqual(a.subdivisions, b.subdivisions) &&
+    stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
+    stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
+    stringSetsEqual(a.renewalMonths, b.renewalMonths)
+  );
 }
 
 function regionsEqual(a: RegionCircle[], b: RegionCircle[]): boolean {
@@ -138,13 +187,6 @@ function HomePage(): JSX.Element {
   const [localProfileId, setLocalProfileId] = useState<string | null>(null);
   const [localProfileName, setLocalProfileName] = useState(DEFAULT_PROFILE_NAME);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportLinks, setExportLinks] = useState<{
-    csvUrl: string;
-    basename: string;
-  } | null>(null);
-  const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
   const supabaseAvailable = Boolean(supabase);
 
@@ -306,18 +348,6 @@ function HomePage(): JSX.Element {
       console.warn('Unable to persist configuration profile to localStorage.', storageError);
     }
   }, [filters, regions, tableState, localProfileId, localProfileName]);
-
-  useEffect(() => {
-    const currentLinks = exportLinks;
-    return () => {
-      if (!currentLinks || typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
-        return;
-      }
-      if (currentLinks.csvUrl) {
-        URL.revokeObjectURL(currentLinks.csvUrl);
-      }
-    };
-  }, [exportLinks]);
 
   const statusMessage = useMemo(() => {
     if (loading) {
@@ -495,122 +525,6 @@ function HomePage(): JSX.Element {
     void loadProfiles();
   }, [loadProfiles]);
 
-  const handleExportMailingList = useCallback(() => {
-    if (filteredListings.length === 0) {
-      setExportError('No listings match the current filters and map region.');
-      setExportLinks(null);
-      setLastExportCount(null);
-      return;
-    }
-
-    setExporting(true);
-    setExportError(null);
-    setExportLinks(null);
-    setLastExportCount(null);
-
-    try {
-      const csvBlob = createMailingListCsvBlob(filteredListings);
-      if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
-        throw new Error('Browser does not support generating download URLs.');
-      }
-
-      const basename = createMailingListFileBasename(new Date());
-      const csvUrl = URL.createObjectURL(csvBlob);
-
-      setExportLinks({ csvUrl, basename });
-      setLastExportCount(filteredListings.length);
-
-      if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-        const triggerDownload = (url: string, extension: string) => {
-          const anchor = window.document.createElement('a');
-          anchor.href = url;
-          anchor.download = `${basename}.${extension}`;
-          anchor.rel = 'noopener noreferrer';
-          window.document.body.appendChild(anchor);
-          anchor.click();
-          window.document.body.removeChild(anchor);
-        };
-
-        triggerDownload(csvUrl, 'csv');
-      }
-    } catch (exportErr) {
-      console.error('Failed to generate mailing list export.', exportErr);
-      setExportError(
-        exportErr instanceof Error
-          ? exportErr.message
-          : 'Unable to generate mailing list export.',
-      );
-      setExportLinks(null);
-      setLastExportCount(null);
-    } finally {
-      setExporting(false);
-    }
-  }, [filteredListings]);
-
-  const exportButtonLabel = exporting ? 'Preparing export…' : 'Export mailing list';
-  const exportButtonDisabled = exporting || filteredListings.length === 0;
-  const exportCsvUrl = exportLinks?.csvUrl ?? null;
-  const exportBasename = exportLinks?.basename ?? 'mailing-list';
-
-  let exportHelperMessage: string | null = null;
-  let exportHelperVariant: 'error' | 'success' | 'info' = 'info';
-
-  if (filteredListings.length === 0) {
-    exportHelperMessage = 'No listings match the current filters and map region yet. Draw a circle or adjust filters to enable exports.';
-  } else if (exportError) {
-    exportHelperMessage = exportError;
-    exportHelperVariant = 'error';
-  } else if (exporting) {
-    exportHelperMessage = 'Preparing export…';
-  } else if (exportLinks) {
-    const countMessage =
-      lastExportCount !== null
-        ? `${lastExportCount.toLocaleString()} listings exported. `
-        : '';
-    exportHelperMessage =
-      `${countMessage}Download should begin automatically. The link remains available while this page stays open.`;
-    exportHelperVariant = 'success';
-  } else {
-    exportHelperMessage = 'Generate a CSV mailing list for the current filters and map region.';
-  }
-
-  const exportHelperClassName = `listing-table__actions-message${
-    exportHelperVariant === 'error'
-      ? ' listing-table__actions-message--error'
-      : exportHelperVariant === 'success'
-        ? ' listing-table__actions-message--success'
-        : ''
-  }`;
-
-  const exportActions = (
-    <>
-      <button
-        type="button"
-        className="listing-table__actions-button"
-        onClick={handleExportMailingList}
-        disabled={exportButtonDisabled}
-      >
-        {exportButtonLabel}
-      </button>
-      {exportCsvUrl ? (
-        <div className="listing-table__actions-links">
-          {exportCsvUrl ? (
-            <a
-              href={exportCsvUrl}
-              download={`${exportBasename}.csv`}
-              className="listing-table__actions-link"
-            >
-              Download CSV
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-      {exportHelperMessage ? (
-        <p className={exportHelperClassName}>{exportHelperMessage}</p>
-      ) : null}
-    </>
-  );
-
   const handleListingFocus = useCallback(
     (listingId: string) => {
       const index = filteredListings.findIndex((listing) => listing.id === listingId);
@@ -638,6 +552,11 @@ function HomePage(): JSX.Element {
         listings={circleListings}
         onListingSelect={handleListingFocus}
         totalListingCount={filteredListings.length}
+      />
+      <ListingInsights
+        supabaseAvailable={supabaseAvailable}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
       />
       <div className="app__listings">
         <ConfigurationProfiles
@@ -672,7 +591,6 @@ function HomePage(): JSX.Element {
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
-          actions={exportActions}
         />
       </div>
     </>

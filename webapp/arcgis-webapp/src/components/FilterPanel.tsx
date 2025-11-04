@@ -32,6 +32,30 @@ export function FilterPanel({
     onReset();
   };
 
+  const removeFilterValue = (key: keyof Pick<
+    ListingFilters,
+    'subdivisions' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
+  >, value: string) => {
+    const nextValues = filters[key].filter((item) => item.toLowerCase() !== value.toLowerCase());
+    onChange({ ...filters, [key]: nextValues });
+  };
+
+  const handleClearInsightFilters = () => {
+    onChange({
+      ...filters,
+      subdivisions: [],
+      renewalCategories: [],
+      renewalMethods: [],
+      renewalMonths: [],
+    });
+  };
+
+  const hasInsightFilters =
+    filters.subdivisions.length > 0 ||
+    filters.renewalCategories.length > 0 ||
+    filters.renewalMethods.length > 0 ||
+    filters.renewalMonths.length > 0;
+
   return (
     <aside className="filters" aria-label="Filters">
       <div className="filters__header">
@@ -46,6 +70,92 @@ export function FilterPanel({
           Clear all
         </button>
       </div>
+
+      {hasInsightFilters ? (
+        <div className="filters__group">
+          <div className="filters__group-header">
+            <span className="filters__group-title">Insight filters</span>
+            <button
+              type="button"
+              className="filters__chip-clear"
+              onClick={handleClearInsightFilters}
+              disabled={disabled}
+            >
+              Clear insight filters
+            </button>
+          </div>
+          <div className="filters__chips" role="list">
+            {filters.subdivisions.map((value) => (
+              <button
+                key={`subdivision-${value}`}
+                type="button"
+                className="filters__chip"
+                onClick={() => removeFilterValue('subdivisions', value)}
+                disabled={disabled}
+                role="listitem"
+              >
+                <span className="filters__chip-label">Subdivision</span>
+                <span className="filters__chip-value">{value}</span>
+                <span aria-hidden="true" className="filters__chip-remove">
+                  ×
+                </span>
+                <span className="filters__chip-sr">Remove subdivision filter</span>
+              </button>
+            ))}
+            {filters.renewalCategories.map((value) => (
+              <button
+                key={`renewal-category-${value}`}
+                type="button"
+                className="filters__chip"
+                onClick={() => removeFilterValue('renewalCategories', value)}
+                disabled={disabled}
+                role="listitem"
+              >
+                <span className="filters__chip-label">Renewal urgency</span>
+                <span className="filters__chip-value">{value}</span>
+                <span aria-hidden="true" className="filters__chip-remove">
+                  ×
+                </span>
+                <span className="filters__chip-sr">Remove renewal urgency filter</span>
+              </button>
+            ))}
+            {filters.renewalMethods.map((value) => (
+              <button
+                key={`renewal-method-${value}`}
+                type="button"
+                className="filters__chip"
+                onClick={() => removeFilterValue('renewalMethods', value)}
+                disabled={disabled}
+                role="listitem"
+              >
+                <span className="filters__chip-label">Renewal signal</span>
+                <span className="filters__chip-value">{value}</span>
+                <span aria-hidden="true" className="filters__chip-remove">
+                  ×
+                </span>
+                <span className="filters__chip-sr">Remove renewal signal filter</span>
+              </button>
+            ))}
+            {filters.renewalMonths.map((value) => (
+              <button
+                key={`renewal-month-${value}`}
+                type="button"
+                className="filters__chip"
+                onClick={() => removeFilterValue('renewalMonths', value)}
+                disabled={disabled}
+                role="listitem"
+              >
+                <span className="filters__chip-label">Renewal month</span>
+                <span className="filters__chip-value">{value}</span>
+                <span aria-hidden="true" className="filters__chip-remove">
+                  ×
+                </span>
+                <span className="filters__chip-sr">Remove renewal month filter</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="filters__group">
         <label htmlFor="searchTerm">Search listings</label>
