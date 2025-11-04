@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
+import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';
 
 type LeafletEditTooltip = {
   updateContent: (content: { text: string; subtext: string }) => void;
@@ -214,6 +215,7 @@ if (drawLocal) {
 }
 
 import type { ListingRecord, RegionShape } from '@/types';
+import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
 import { getEvStations } from '@/services/evChargingStations';
 
 import './RegionMap.css';
@@ -222,12 +224,189 @@ type RegionMapProps = {
   regions: RegionShape[];
   onRegionsChange: (regions: RegionShape[]) => void;
   listings?: ListingRecord[];
+  allListings?: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
   totalListingCount?: number;
 };
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
+
+type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
+
+type SummitCountyBoundaryProperties = {
+  geoid?: string;
+  GEOID?: string;
+  name?: string;
+  boundarySource?: string;
+  [key: string]: unknown;
+};
+
+type SummitCountyFeature = SummitCountyFeatureCollection['features'][number] & {
+  properties?: SummitCountyBoundaryProperties;
+};
+
+const SUMMIT_COUNTY_FIPS = '08117';
+const SUMMIT_BOUNDARY_SOURCE_URL =
+  'https://cdn.jsdelivr.net/gh/plotly/datasets@master/geojson-counties-fips.json';
+
+const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
+  color: '#1f78b4',
+  weight: 2,
+  fillColor: '#1f78b4',
+  fillOpacity: 0.2,
+};
+
+const LOCAL_SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
+  try {
+    const geometry = JSON.parse(summitCountyGeoJsonRaw) as SummitCountyFeatureCollection;
+    return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- surface parsing issues for the bundled fallback asset
+      console.warn('Failed to parse local Summit County boundary GeoJSON', error);
+    }
+    return null;
+  }
+})();
+
+function useSummitCountyBoundary(): SummitCountyFeatureCollection | null {
+  const [boundary, setBoundary] = useState<SummitCountyFeatureCollection | null>(
+    LOCAL_SUMMIT_COUNTY_OVERLAY,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBoundary(): Promise<void> {
+      try {
+        const response = await fetch(SUMMIT_BOUNDARY_SOURCE_URL, {
+          cache: 'force-cache',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch county boundaries: ${response.status}`);
+        }
+
+        const dataset = (await response.json()) as FeatureCollection<Polygon | MultiPolygon> & {
+          features: SummitCountyFeature[];
+        };
+
+        const summitFeature = dataset.features.find((feature) => {
+          if (!feature) {
+            return false;
+          }
+
+          if (feature.id === SUMMIT_COUNTY_FIPS) {
+            return true;
+          }
+
+          const properties = feature.properties ?? {};
+          const candidateGeoid =
+            typeof properties.geoid === 'string'
+              ? properties.geoid
+              : typeof properties.GEOID === 'string'
+                ? properties.GEOID
+                : undefined;
+
+          return candidateGeoid === SUMMIT_COUNTY_FIPS;
+        });
+
+        if (!summitFeature?.geometry || cancelled) {
+          return;
+        }
+
+        const nextBoundary: SummitCountyFeatureCollection = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                name: 'Summit County',
+                geoid: SUMMIT_COUNTY_FIPS,
+                boundarySource: 'remote',
+                ...(summitFeature.properties ?? {}),
+              },
+              geometry: summitFeature.geometry,
+            },
+          ],
+        };
+
+        if (!cancelled) {
+          setBoundary(nextBoundary);
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- surface network issues in development only
+          console.warn('Failed to load Summit County boundary overlay', error);
+        }
+      }
+    }
+
+    void loadBoundary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return boundary;
+}
+
+function SummitCountyOverlay(): JSX.Element | null {
+  const overlayGeometry = useSummitCountyBoundary();
+  const overlayRef = useRef<L.GeoJSON | null>(null);
+  const map = useMap();
+  const fittedSourceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!overlayGeometry || !overlayRef.current) {
+      return;
+    }
+
+    const bounds = overlayRef.current.getBounds();
+    if (!bounds.isValid()) {
+      return;
+    }
+
+    const overlaySource =
+      overlayGeometry.features[0]?.properties &&
+      typeof overlayGeometry.features[0].properties === 'object'
+        ? (overlayGeometry.features[0].properties as SummitCountyBoundaryProperties)
+            .boundarySource ?? 'unknown'
+        : 'unknown';
+
+    if (fittedSourceRef.current === overlaySource) {
+      return;
+    }
+
+    const mapSize = map.getSize();
+    const paddingFraction = 0.15;
+    const paddingValue = Math.round(Math.min(mapSize.x, mapSize.y) * paddingFraction);
+
+    map.fitBounds(bounds, {
+      padding: [paddingValue, paddingValue],
+    });
+
+    overlayRef.current.bringToBack();
+    fittedSourceRef.current = overlaySource;
+  }, [map, overlayGeometry]);
+
+  if (!overlayGeometry) {
+    return null;
+  }
+
+  return (
+    <GeoJSON
+      data={overlayGeometry}
+      ref={(instance) => {
+        overlayRef.current = instance;
+      }}
+      style={() => SUMMIT_OVERLAY_STYLE}
+      interactive={false}
+    />
+  );
+}
 
 const REGION_STYLE: L.PathOptions = {
   color: '#2563eb',
@@ -453,6 +632,8 @@ ListingSelectionPanel.displayName = 'ListingSelectionPanel';
 type DrawManagerProps = {
   regions: RegionShape[];
   onRegionsChange: (regions: RegionShape[]) => void;
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
 };
 
 type MapToolbarProps = {
@@ -462,6 +643,8 @@ type MapToolbarProps = {
   onFitRegions: () => void;
   hasRegions: boolean;
   activeTool: 'polygon' | 'circle' | null;
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
 };
 
 function MapToolbar({
@@ -471,6 +654,8 @@ function MapToolbar({
   onFitRegions,
   hasRegions,
   activeTool,
+  showAllProperties,
+  onToggleShowAll,
 }: MapToolbarProps): null {
   const map = useMap();
   const buttonRefs = useRef<
@@ -479,6 +664,7 @@ function MapToolbar({
         fitButton?: HTMLButtonElement;
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
+        toggleAllButton?: HTMLButtonElement;
       }
     | null
   >(null);
@@ -550,6 +736,24 @@ function MapToolbar({
         }
       });
 
+      const toggleAllButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      toggleAllButton.type = 'button';
+      toggleAllButton.title = 'Show all properties or only those within regions';
+      toggleAllButton.textContent = 'Show all properties';
+      toggleAllButton.dataset.action = 'toggle-all';
+      toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+      if (showAllProperties) {
+        toggleAllButton.classList.add('region-map__toolbar-button--active');
+      }
+      toggleAllButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggleShowAll();
+      });
+
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
 
@@ -559,7 +763,7 @@ function MapToolbar({
         button.classList.add('region-map__toolbar-button--disabled');
       });
 
-      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton };
+      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton, toggleAllButton };
 
       return container;
     };
@@ -570,7 +774,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -589,6 +793,16 @@ function MapToolbar({
       button.classList.toggle('region-map__toolbar-button--disabled', disabled);
     });
   }, [hasRegions]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs || !refs.toggleAllButton) {
+      return;
+    }
+
+    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
+    refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+  }, [showAllProperties]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -614,6 +828,8 @@ function MapToolbar({
 function DrawManager({
   regions,
   onRegionsChange,
+  showAllProperties,
+  onToggleShowAll,
 }: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
@@ -828,6 +1044,8 @@ function DrawManager({
       onFitRegions={fitRegions}
       hasRegions={regions.length > 0}
       activeTool={activeTool}
+      showAllProperties={showAllProperties}
+      onToggleShowAll={onToggleShowAll}
     />
   );
 }
@@ -951,6 +1169,7 @@ function RegionMap({
   regions,
   onRegionsChange,
   listings = [],
+  allListings = [],
   onListingSelect,
   totalListingCount = 0,
 }: RegionMapProps): JSX.Element {
@@ -958,24 +1177,31 @@ function RegionMap({
   const subtitle = 'Use the toolbar to draw polygons or circles and focus on specific areas.';
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
+  const [showAllProperties, setShowAllProperties] = useState(false);
+
+  const displayedListings = useMemo(() => {
+    // When toggle is on and regions exist, show all filtered listings
+    // Otherwise show region-filtered listings (or all if no regions)
+    return showAllProperties && regions.length > 0 ? allListings : listings;
+  }, [showAllProperties, regions.length, allListings, listings]);
 
   useEffect(() => {
-    if (selectedListingId && !listings.some((listing) => listing.id === selectedListingId)) {
+    if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
       setSelectedListingId(null);
     }
-  }, [listings, selectedListingId]);
+  }, [displayedListings, selectedListingId]);
 
   useEffect(() => {
-    if (hoveredListingId && !listings.some((listing) => listing.id === hoveredListingId)) {
+    if (hoveredListingId && !displayedListings.some((listing) => listing.id === hoveredListingId)) {
       setHoveredListingId(null);
     }
-  }, [hoveredListingId, listings]);
+  }, [hoveredListingId, displayedListings]);
 
   useEffect(() => {
-    if (!selectedListingId && listings.length === 1) {
-      setSelectedListingId(listings[0]?.id ?? null);
+    if (!selectedListingId && displayedListings.length === 1) {
+      setSelectedListingId(displayedListings[0]?.id ?? null);
     }
-  }, [listings, selectedListingId]);
+  }, [displayedListings, selectedListingId]);
 
   const activeListingId = hoveredListingId ?? selectedListingId;
 
@@ -983,8 +1209,8 @@ function RegionMap({
     if (!activeListingId) {
       return null;
     }
-    return listings.find((listing) => listing.id === activeListingId) ?? null;
-  }, [activeListingId, listings]);
+    return displayedListings.find((listing) => listing.id === activeListingId) ?? null;
+  }, [activeListingId, displayedListings]);
 
   const handleMarkerSelect = useCallback(
     (listingId: string) => {
@@ -996,6 +1222,10 @@ function RegionMap({
 
   const handleMarkerHover = useCallback((listingId: string | null) => {
     setHoveredListingId(listingId);
+  }, []);
+
+  const handleToggleShowAll = useCallback(() => {
+    setShowAllProperties((prev) => !prev);
   }, []);
 
   return (
@@ -1013,7 +1243,7 @@ function RegionMap({
       <div className="region-map__selection-wrapper">
         <ListingSelectionPanel
           listing={activeListing}
-          hasListings={listings.length > 0}
+          hasListings={displayedListings.length > 0}
           totalListingCount={totalListingCount}
         />
       </div>
@@ -1024,14 +1254,17 @@ function RegionMap({
         scrollWheelZoom
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+        <SummitCountyOverlay />
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
+          showAllProperties={showAllProperties}
+          onToggleShowAll={handleToggleShowAll}
         />
         <EvStationMarkers />
-        {listings.length ? (
+        {displayedListings.length ? (
           <ListingMarkers
-            listings={listings}
+            listings={displayedListings}
             onListingSelect={handleMarkerSelect}
             selectedListingId={selectedListingId}
             hoveredListingId={hoveredListingId}

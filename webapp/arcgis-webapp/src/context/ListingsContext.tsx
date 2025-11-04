@@ -12,7 +12,11 @@ import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
-import { normaliseRegionList, regionsAreEqual, cloneRegionShape } from '@/services/regionShapes';
+import {
+  cloneRegionShape,
+  normaliseRegionList,
+  regionsAreEqual,
+} from '@/services/regionShapes';
 import type { ListingRecord, RegionShape } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
@@ -57,14 +61,9 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       }
 
       const parsed = JSON.parse(stored);
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
       const normalised = normaliseRegionList(parsed);
-
       if (normalised.length) {
-        setRegions(normalised);
+        setRegions(normalised.map((region) => cloneRegionShape(region)));
       }
     } catch (storageError) {
       console.warn('Unable to restore saved regions from localStorage.', storageError);

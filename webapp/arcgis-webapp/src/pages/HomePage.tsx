@@ -499,6 +499,7 @@ function HomePage(): JSX.Element {
         regions={regions}
         onRegionsChange={handleRegionsChange}
         listings={regionListings}
+        allListings={filteredListings}
         onListingSelect={handleListingFocus}
         totalListingCount={filteredListings.length}
       />
