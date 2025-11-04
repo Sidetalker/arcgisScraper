@@ -41,6 +41,7 @@
 }
 
 .listing-table__viewport {
+  position: relative;
   border-radius: 1.25rem;
   background-color: rgba(255, 255, 255, 0.93);
   border: 1px solid rgba(148, 163, 184, 0.25);
@@ -48,10 +49,55 @@
   overflow: hidden;
 }
 
+.listing-table__viewport::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 3.5rem;
+  background: linear-gradient(to left, rgba(241, 245, 249, 0.95), rgba(241, 245, 249, 0));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.listing-table__viewport--scrollable-right::after {
+  opacity: 1;
+}
+
 .listing-table__scroll {
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.listing-table__scroll-indicator {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: rgba(241, 245, 249, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 14px 26px -18px rgba(37, 99, 235, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 2;
+}
+
+.listing-table__scroll-indicator--active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.listing-table__scroll-indicator-arrow {
+  font-size: 1rem;
 }
 
 .listing-table table {

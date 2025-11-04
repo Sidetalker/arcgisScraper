@@ -231,6 +231,57 @@ export function ListingTable({
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(() => createInitialFilters());
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const autoScrollIntervalRef = useRef<number | null>(null);
+
+  const updateScrollIndicators = useCallback(() => {
+    const element = scrollContainerRef.current;
+    if (!element) {
+      setCanScrollRight(false);
+      return;
+    }
+    const canScroll =
+      element.scrollLeft + element.clientWidth + 1 < element.scrollWidth;
+    setCanScrollRight(canScroll);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    updateScrollIndicators();
+  }, [updateScrollIndicators]);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollIntervalRef.current !== null) {
+      window.clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+  }, []);
+
+  const startAutoScroll = useCallback(
+    (direction: 'left' | 'right') => {
+      const element = scrollContainerRef.current;
+      if (!element) {
+        return;
+      }
+
+      stopAutoScroll();
+      autoScrollIntervalRef.current = window.setInterval(() => {
+        const delta = direction === 'left' ? -20 : 20;
+        element.scrollLeft += delta;
+      }, 16);
+    },
+    [stopAutoScroll],
+  );
+
+  const scheduleScrollIndicatorUpdate = useCallback(() => {
+    if (typeof window === 'undefined') {
+      updateScrollIndicators();
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      updateScrollIndicators();
+    });
+  }, [updateScrollIndicators]);
 
   const columnDefinitionMap = useMemo(() => {
     return new Map<ColumnKey, ColumnDefinition>(
@@ -283,6 +334,29 @@ export function ListingTable({
   const columnCount = Math.max(1, visibleColumns.length);
 
   useEffect(() => {
+    const element = scrollContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    updateScrollIndicators();
+    element.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      element.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      stopAutoScroll();
+    };
+  }, [handleScroll, updateScrollIndicators, visibleColumns.length, filteredListings.length, stopAutoScroll]);
+
+  useEffect(() => {
+    return () => {
+      stopAutoScroll();
+    };
+  }, [stopAutoScroll]);
+
+  useEffect(() => {
     if (safePage !== requestedPage) {
       onPageChange(safePage);
     }
@@ -321,28 +395,62 @@ export function ListingTable({
         }
         return { ...previous, [columnKey]: '' };
       });
+      scheduleScrollIndicatorUpdate();
     },
-    [],
+    [scheduleScrollIndicatorUpdate],
   );
 
-  const handleUnhideColumn = useCallback((columnKey: ColumnKey) => {
-    setHiddenColumns((previous) => previous.filter((key) => key !== columnKey));
-  }, []);
+  const handleUnhideColumn = useCallback(
+    (columnKey: ColumnKey) => {
+      setHiddenColumns((previous) => previous.filter((key) => key !== columnKey));
+      scheduleScrollIndicatorUpdate();
+    },
+    [scheduleScrollIndicatorUpdate],
+  );
 
-  const handleDragStart = useCallback((columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
-    dragSource.current = columnKey;
-    setDragTarget(columnKey);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', columnKey);
-  }, []);
-
-  const handleDragOver = useCallback((columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
-    event.preventDefault();
-    if (dragTarget !== columnKey) {
+  const handleDragStart = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
+      stopAutoScroll();
+      dragSource.current = columnKey;
       setDragTarget(columnKey);
-    }
-    event.dataTransfer.dropEffect = 'move';
-  }, [dragTarget]);
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', columnKey);
+    },
+    [stopAutoScroll],
+  );
+
+  const handleDragOver = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+      event.preventDefault();
+      if (dragTarget !== columnKey) {
+        setDragTarget(columnKey);
+      }
+      event.dataTransfer.dropEffect = 'move';
+
+      const scrollElement = scrollContainerRef.current;
+      if (!scrollElement) {
+        stopAutoScroll();
+        return;
+      }
+
+      const rect = scrollElement.getBoundingClientRect();
+      const edgeThreshold = 48;
+      const offsetLeft = event.clientX - rect.left;
+      const offsetRight = rect.right - event.clientX;
+      const canScrollLeft = scrollElement.scrollLeft > 0;
+      const canScrollRightNow =
+        scrollElement.scrollLeft + scrollElement.clientWidth < scrollElement.scrollWidth;
+
+      if (offsetLeft < edgeThreshold && canScrollLeft) {
+        startAutoScroll('left');
+      } else if (offsetRight < edgeThreshold && canScrollRightNow) {
+        startAutoScroll('right');
+      } else {
+        stopAutoScroll();
+      }
+    },
+    [dragTarget, startAutoScroll, stopAutoScroll],
+  );
 
   const handleDragLeave = useCallback(
     (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
@@ -353,34 +461,41 @@ export function ListingTable({
       if (dragTarget === columnKey) {
         setDragTarget(null);
       }
+      stopAutoScroll();
     },
-    [dragTarget],
+    [dragTarget, stopAutoScroll],
   );
 
-  const handleDrop = useCallback((columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
-    event.preventDefault();
-    const sourceColumn = dragSource.current;
-    setDragTarget(null);
-    dragSource.current = null;
-    if (!sourceColumn || sourceColumn === columnKey) {
-      return;
-    }
-
-    setColumnOrder((previous) => {
-      const nextOrder = previous.filter((key) => key !== sourceColumn);
-      const insertIndex = nextOrder.indexOf(columnKey);
-      if (insertIndex === -1) {
-        return previous;
+  const handleDrop = useCallback(
+    (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+      event.preventDefault();
+      stopAutoScroll();
+      const sourceColumn = dragSource.current;
+      setDragTarget(null);
+      dragSource.current = null;
+      if (!sourceColumn || sourceColumn === columnKey) {
+        return;
       }
-      nextOrder.splice(insertIndex, 0, sourceColumn);
-      return [...nextOrder];
-    });
-  }, []);
+
+      setColumnOrder((previous) => {
+        const nextOrder = previous.filter((key) => key !== sourceColumn);
+        const insertIndex = nextOrder.indexOf(columnKey);
+        if (insertIndex === -1) {
+          return previous;
+        }
+        nextOrder.splice(insertIndex, 0, sourceColumn);
+        return [...nextOrder];
+      });
+      scheduleScrollIndicatorUpdate();
+    },
+    [scheduleScrollIndicatorUpdate, stopAutoScroll],
+  );
 
   const handleDragEnd = useCallback(() => {
     dragSource.current = null;
     setDragTarget(null);
-  }, []);
+    stopAutoScroll();
+  }, [stopAutoScroll]);
 
   const rowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
   const registerRow = (id: string) => (element: HTMLTableRowElement | null) => {
@@ -462,13 +577,15 @@ export function ListingTable({
       ) : null}
 
       <div
-        className="listing-table__viewport"
+        className={`listing-table__viewport${
+          canScrollRight ? ' listing-table__viewport--scrollable-right' : ''
+        }`}
         role="region"
         aria-live="polite"
         aria-busy={isLoading}
         title="Tabular summary of listings that match the current filters and map region"
       >
-        <div className="listing-table__scroll">
+        <div className="listing-table__scroll" ref={scrollContainerRef}>
           <table>
             <thead>
               <tr>
@@ -557,6 +674,17 @@ export function ListingTable({
             )}
           </tbody>
           </table>
+        </div>
+        <div
+          className={`listing-table__scroll-indicator${
+            canScrollRight ? ' listing-table__scroll-indicator--active' : ''
+          }`}
+          aria-hidden="true"
+        >
+          <span>Scroll</span>
+          <span className="listing-table__scroll-indicator-arrow" aria-hidden="true">
+            →
+          </span>
         </div>
       </div>
 
