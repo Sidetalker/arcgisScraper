@@ -6,6 +6,7 @@ create table if not exists public.configuration_profiles (
   name text not null,
   filters jsonb not null default '{}'::jsonb,
   regions jsonb not null default '[]'::jsonb,
+  table_state jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
