@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import nonPersonOwnerNames from '@/data/nonPersonOwnerNames.json';
+import {
+  RESIDENTIAL_ZONES,
+  findResidentialZoneDefinition,
+  type ResidentialZoneDefinition,
+} from '@/data/residentialZones';
 
 import {
   deriveLatestMetricsTimestamp,
@@ -85,7 +90,6 @@ const SUMMARY_DESCRIPTORS: Record<
 
 const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
 const LAND_BARON_SECTION_SIZE = 5;
-const ZONE_LIMIT = 10;
 
 const MANUAL_NON_PERSON_NAMES = new Set(
   (nonPersonOwnerNames as string[]).map((value) => value.toUpperCase()),
@@ -175,6 +179,15 @@ function resolveMethodDescriptor(method: string) {
 
 type DisplaySubdivisionMetric = SubdivisionMetric & { synthetic?: boolean };
 
+type ZoneMetric = ListingMetrics['zones'][number];
+
+interface ZoneOverviewRow {
+  definition: ResidentialZoneDefinition;
+  metric: ZoneMetric | null;
+  filterValue: string;
+  fallback: boolean;
+}
+
 function buildSubdivisionDisplay(
   subdivisions: SubdivisionMetric[],
   limit: number,
@@ -248,6 +261,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [lastSupabaseRunAt, setLastSupabaseRunAt] = useState<Date | null>(null);
   const [subdivisionLimit, setSubdivisionLimit] = useState<number>(8);
+  const [expandedStaticZones, setExpandedStaticZones] = useState<string[]>([]);
 
   const loadMetrics = useCallback(async () => {
     if (!supabaseAvailable) {
@@ -335,11 +349,49 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
   }, [metrics, subdivisionLimit]);
 
-  const zoneRows = useMemo(() => {
-    if (!metrics) {
-      return [] as ListingMetrics['zones'];
-    }
-    return metrics.zones.slice(0, ZONE_LIMIT);
+  const zoneRows = useMemo<ZoneOverviewRow[]>(() => {
+    const metricsList: ZoneMetric[] = metrics?.zones ?? [];
+    const usedMetricIndexes = new Set<number>();
+
+    const rows = RESIDENTIAL_ZONES.map((definition) => {
+      const metricIndex = metricsList.findIndex((metric) => {
+        const match = findResidentialZoneDefinition(metric.zone);
+        return match?.code === definition.code;
+      });
+      const metric = metricIndex === -1 ? null : metricsList[metricIndex];
+      if (metricIndex !== -1) {
+        usedMetricIndexes.add(metricIndex);
+      }
+      return {
+        definition,
+        metric,
+        filterValue: metric ? metric.zone : definition.code,
+        fallback: false,
+      } satisfies ZoneOverviewRow;
+    });
+
+    metricsList.forEach((metric, index) => {
+      if (usedMetricIndexes.has(index)) {
+        return;
+      }
+      const fallbackDefinition: ResidentialZoneDefinition = {
+        code: metric.zone,
+        name: 'Uncataloged residential zone',
+        densityRange: 'Not cataloged',
+        jurisdictions: ['Summit County'],
+        description:
+          'This zoning designation appears in the Supabase cache but is not yet summarised in the residential zoning reference.',
+        notes: 'Use the filter to investigate listings while documentation is updated.',
+      };
+      rows.push({
+        definition: fallbackDefinition,
+        metric,
+        filterValue: metric.zone,
+        fallback: true,
+      });
+    });
+
+    return rows;
   }, [metrics]);
 
   const landBaronEntries = useMemo(() => {
@@ -402,7 +454,10 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
   }, [subdivisionRows]);
 
   const maxZoneListings = useMemo(() => {
-    return zoneRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+    return zoneRows.reduce((max, item) => {
+      const total = item.metric?.totalListings ?? 0;
+      return Math.max(max, total);
+    }, 0);
   }, [zoneRows]);
 
   const maxLandBaronProperties = useMemo(() => {
@@ -421,6 +476,18 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
   }, [timelinePoints]);
 
   const totalLandBarons = metrics?.landBarons.length ?? 0;
+
+  const handleZoneTileToggle = useCallback(
+    (definitionCode: string, filterValue: string, filterable: boolean) => {
+      if (!filterable) {
+        setExpandedStaticZones((previous) => toggleStringValue(previous, definitionCode));
+        return;
+      }
+      const next = toggleStringValue(filters.zones, filterValue);
+      onFiltersChange({ ...filters, zones: next });
+    },
+    [filters, onFiltersChange],
+  );
 
   const handleSubdivisionToggle = useCallback(
     (subdivision: string, synthetic?: boolean) => {
@@ -593,47 +660,96 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
         <article className="insight-card insight-card--zones" aria-labelledby="insights-top-zones">
           <div className="insight-card__header">
             <div>
-              <h3 id="insights-top-zones">Zoning hotspots</h3>
+              <h3 id="insights-top-zones">Residential zoning overview</h3>
               <p className="insight-card__description">
-                Most common zoning designations among cached Summit County listings.
+                Click a tile to reveal zoning guidance. Filterable zones also narrow the listings table when Supabase counts are
+                available.
               </p>
             </div>
           </div>
-          {zoneRows.length === 0 ? (
-            <p className="insight-card__empty">No zoning data available.</p>
-          ) : (
-            <ul className="insight-card__list">
-              {zoneRows.map((item) => {
-                const percentage = maxZoneListings
-                  ? Math.max(12, Math.round((item.totalListings / maxZoneListings) * 100))
-                  : 0;
-                const businessShare = item.totalListings
-                  ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
-                  : 0;
-                return (
-                  <li key={item.zone}>
-                    <div className="insight-card__list-item insight-card__list-item--static">
-                      <div className="insight-card__list-line">
-                        <span className="insight-card__list-label">{item.zone}</span>
-                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
-                      </div>
-                      <div className="insight-card__bar" aria-hidden="true">
-                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
-                      </div>
-                      <div className="insight-card__list-meta">
-                        <span className="insight-card__badge">{businessShare}% business-owned</span>
-                        <span className="insight-card__badge insight-card__badge--muted">
-                          {item.individualOwnerCount.toLocaleString()} individual owners
-                        </span>
-                      </div>
+          <ul className="insight-card__zone-grid">
+            {zoneRows.map((row) => {
+              const filterable = row.definition.filterable !== false;
+              const isActive = filterable
+                ? isStringActive(filters.zones, row.filterValue)
+                : isStringActive(expandedStaticZones, row.definition.code);
+              const totalListings = row.metric?.totalListings ?? 0;
+              const businessShare = totalListings
+                ? Math.round(((row.metric?.businessOwnerCount ?? 0) / totalListings) * 100)
+                : 0;
+              const individualOwners = row.metric?.individualOwnerCount ?? 0;
+              const percentage = maxZoneListings
+                ? Math.max(10, Math.round((totalListings / maxZoneListings) * 100))
+                : 0;
+              const classes = [
+                'insight-card__zone-tile',
+                filterable && isActive ? 'insight-card__zone-tile--active' : '',
+                !filterable ? 'insight-card__zone-tile--reference' : '',
+                row.fallback ? 'insight-card__zone-tile--fallback' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <li key={`${row.definition.code}-${row.filterValue}`}>
+                  <button
+                    type="button"
+                    className={classes}
+                    onClick={() => handleZoneTileToggle(row.definition.code, row.filterValue, filterable)}
+                    aria-pressed={filterable ? isActive : undefined}
+                    aria-expanded={isActive}
+                    title={
+                      filterable
+                        ? `Toggle filter for ${row.definition.code}`
+                        : `Show guidance for ${row.definition.code}`
+                    }
+                  >
+                    <div className="insight-card__zone-header">
+                      <span className="insight-card__zone-code">{row.definition.code}</span>
+                      <span className="insight-card__zone-name">{row.definition.name}</span>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                    <p className="insight-card__zone-density">{row.definition.densityRange}</p>
+                    <p className="insight-card__zone-jurisdictions">
+                      {row.definition.jurisdictions.join(' · ')}
+                    </p>
+                    {maxZoneListings > 0 && totalListings > 0 ? (
+                      <div className="insight-card__zone-progress" aria-hidden="true">
+                        <span
+                          className="insight-card__zone-progress-fill"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    ) : null}
+                    <div className="insight-card__zone-counts">
+                      <span>
+                        {row.metric
+                          ? `${totalListings.toLocaleString()} cached listings`
+                          : 'No cached listings yet'}
+                      </span>
+                      {row.metric && totalListings > 0 ? (
+                        <>
+                          <span>{businessShare}% business-owned</span>
+                          <span>{individualOwners.toLocaleString()} individual owners</span>
+                        </>
+                      ) : null}
+                    </div>
+                    {!filterable ? (
+                      <span className="insight-card__zone-badge">Reference</span>
+                    ) : null}
+                    {isActive ? (
+                      <>
+                        <p className="insight-card__zone-detail">{row.definition.description}</p>
+                        {row.definition.notes ? (
+                          <p className="insight-card__zone-note">{row.definition.notes}</p>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
           <p className="insight-card__hint">
-            Zoning counts highlight where Summit County permits cluster by land use.
+            Tiles highlighted in blue filter the listings table; dashed tiles surface metrics that need zoning research.
           </p>
         </article>
 
