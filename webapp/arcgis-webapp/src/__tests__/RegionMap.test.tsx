@@ -15,7 +15,7 @@ describe('RegionMap displayedListings logic', () => {
     const showAllProperties = true;
     const allListings = [{ id: '1' }, { id: '2' }, { id: '3' }];
     const listings = [{ id: '1' }]; // region-filtered subset
-    const regions = [{ type: 'circle' as const, lat: 0, lng: 0, radius: 1000 }];
+    const _regions = [{ type: 'circle' as const, lat: 0, lng: 0, radius: 1000 }];
 
     // Simulate the displayedListings logic
     const displayedListings = showAllProperties ? allListings : listings;
@@ -28,7 +28,7 @@ describe('RegionMap displayedListings logic', () => {
     const showAllProperties = true;
     const allListings = [{ id: '1' }, { id: '2' }, { id: '3' }];
     const listings: typeof allListings = []; // HomePage passes empty array when no regions defined
-    const regions: Array<{ type: 'circle'; lat: number; lng: number; radius: number }> = [];
+    const _regions: Array<{ type: 'circle'; lat: number; lng: number; radius: number }> = [];
 
     // Simulate the displayedListings logic
     const displayedListings = showAllProperties ? allListings : listings;
@@ -41,7 +41,7 @@ describe('RegionMap displayedListings logic', () => {
     const showAllProperties = false;
     const allListings = [{ id: '1' }, { id: '2' }, { id: '3' }];
     const listings = [{ id: '1' }]; // region-filtered subset
-    const regions = [{ type: 'circle' as const, lat: 0, lng: 0, radius: 1000 }];
+    const _regions = [{ type: 'circle' as const, lat: 0, lng: 0, radius: 1000 }];
 
     // Simulate the displayedListings logic
     const displayedListings = showAllProperties ? allListings : listings;
@@ -54,7 +54,7 @@ describe('RegionMap displayedListings logic', () => {
     const showAllProperties = false;
     const allListings = [{ id: '1' }, { id: '2' }, { id: '3' }];
     const listings: typeof allListings = []; // HomePage passes empty array when no regions defined
-    const regions: Array<{ type: 'circle'; lat: number; lng: number; radius: number }> = [];
+    const _regions: Array<{ type: 'circle'; lat: number; lng: number; radius: number }> = [];
 
     // Simulate the displayedListings logic
     const displayedListings = showAllProperties ? allListings : listings;
