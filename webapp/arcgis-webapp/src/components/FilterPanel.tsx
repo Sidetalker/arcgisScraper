@@ -25,12 +25,6 @@ export function FilterPanel({
       onChange({ ...filters, complex: value });
     } else if (name === 'owner') {
       onChange({ ...filters, owner: value });
-    } else if (name === 'maxEvDistanceMiles') {
-      const numValue = value.trim() === '' ? null : parseFloat(value);
-      onChange({ 
-        ...filters, 
-        maxEvDistanceMiles: numValue !== null && isFinite(numValue) && numValue > 0 ? numValue : null 
-      });
     }
   };
 
@@ -40,8 +34,9 @@ export function FilterPanel({
 
   const removeFilterValue = (key: keyof Pick<
     ListingFilters,
-    'subdivisions' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
-  >, value: string) => {
+    'zones' | 'subdivisions' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
+  >,
+  value: string) => {
     const nextValues = filters[key].filter((item) => item.toLowerCase() !== value.toLowerCase());
     onChange({ ...filters, [key]: nextValues });
   };
@@ -49,6 +44,7 @@ export function FilterPanel({
   const handleClearInsightFilters = () => {
     onChange({
       ...filters,
+      zones: [],
       subdivisions: [],
       renewalCategories: [],
       renewalMethods: [],
@@ -57,6 +53,7 @@ export function FilterPanel({
   };
 
   const hasInsightFilters =
+    filters.zones.length > 0 ||
     filters.subdivisions.length > 0 ||
     filters.renewalCategories.length > 0 ||
     filters.renewalMethods.length > 0 ||
@@ -91,6 +88,22 @@ export function FilterPanel({
             </button>
           </div>
           <div className="filters__chips" role="list">
+            {filters.zones.map((value) => (
+              <button
+                key={`zone-${value}`}
+                type="button"
+                className="filters__chip"
+                onClick={() => removeFilterValue('zones', value)}
+                disabled={disabled}
+              >
+                <span className="filters__chip-label">Zone</span>
+                <span className="filters__chip-value">{value}</span>
+                <span aria-hidden="true" className="filters__chip-remove">
+                  ×
+                </span>
+                <span className="filters__chip-sr">Remove zone filter</span>
+              </button>
+            ))}
             {filters.subdivisions.map((value) => (
               <button
                 key={`subdivision-${value}`}
@@ -201,21 +214,6 @@ export function FilterPanel({
         />
       </div>
 
-      <div className="filters__group">
-        <label htmlFor="maxEvDistanceMiles">Max distance to EV station (miles)</label>
-        <input
-          id="maxEvDistanceMiles"
-          name="maxEvDistanceMiles"
-          type="number"
-          min="0"
-          step="0.1"
-          value={filters.maxEvDistanceMiles ?? ''}
-          onChange={handleInputChange}
-          placeholder="e.g. 5"
-          disabled={disabled}
-          title="Only show listings within this distance to an EV charging station"
-        />
-      </div>
     </aside>
   );
 }

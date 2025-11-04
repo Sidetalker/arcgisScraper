@@ -6,9 +6,9 @@ export const DEFAULT_FILTERS: ListingFilters = {
   searchTerm: '',
   complex: '',
   owner: '',
+  zones: [],
   subdivisions: [],
   renewalCategories: [],
   renewalMethods: [],
   renewalMonths: [],
-  maxEvDistanceMiles: null,
 };
