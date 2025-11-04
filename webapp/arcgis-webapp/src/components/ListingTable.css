@@ -1,0 +1,139 @@
+.listing-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  flex: 1 1 auto;
+}
+
+.listing-table__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.listing-table__header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.65rem;
+  color: #0f172a;
+}
+
+.listing-table__header p {
+  margin: 0;
+  color: #475569;
+}
+
+.listing-table__summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.listing-table__error {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.listing-table__viewport {
+  border-radius: 1.25rem;
+  background-color: rgba(255, 255, 255, 0.93);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 20px 35px -28px rgba(15, 23, 42, 0.5);
+  overflow: hidden;
+}
+
+.listing-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.listing-table thead {
+  background: linear-gradient(120deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.1));
+  color: #0f172a;
+}
+
+.listing-table th,
+.listing-table td {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.75);
+  font-size: 0.95rem;
+}
+
+.listing-table th {
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.listing-table tbody tr:nth-of-type(even) {
+  background-color: rgba(248, 250, 252, 0.65);
+}
+
+.listing-table__address {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.listing-table__loading,
+.listing-table__empty {
+  text-align: center;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.listing-table__pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.listing-table__pagination button {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: white;
+  padding: 0.45rem 0.95rem;
+  font-weight: 600;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.listing-table__pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 1024px) {
+  .listing-table__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .listing-table__summary {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .listing-table__viewport {
+    overflow-x: auto;
+  }
+
+  .listing-table table {
+    min-width: 600px;
+  }
+
+  .listing-table__pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
