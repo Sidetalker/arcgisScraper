@@ -1584,57 +1584,7 @@ function ListingMarkers({
   return null;
 }
 
-function EvStationMarkers(): null {
-  const map = useMap();
-  const layerRef = useRef<L.LayerGroup | null>(null);
 
-  useEffect(() => {
-    if (IS_TEST_ENV) {
-      return;
-    }
-
-    if (!layerRef.current) {
-      layerRef.current = L.layerGroup().addTo(map);
-    }
-    const layerGroup = layerRef.current;
-    layerGroup.clearLayers();
-
-    const stations = getEvStations();
-
-    stations.forEach((station) => {
-      const marker = L.circleMarker([station.latitude, station.longitude], {
-        radius: 4,
-        color: '#059669',
-        weight: 1,
-        fillColor: '#10b981',
-        fillOpacity: 0.7,
-        pane: 'markerPane',
-      });
-
-      const popupContent = `
-        <div style="font-family: system-ui, sans-serif; line-height: 1.4;">
-          <strong style="display: block; margin-bottom: 4px;">${station.name || 'EV Charging Station'}</strong>
-          ${station.address ? `<div style="font-size: 0.9em; color: #666;">${station.address}</div>` : ''}
-          ${station.chargerType ? `<div style="font-size: 0.85em; color: #888; margin-top: 4px;">Type: ${station.chargerType}</div>` : ''}
-        </div>
-      `;
-
-      marker.bindPopup(popupContent);
-      marker.addTo(layerGroup);
-    });
-  }, [map]);
-
-  useEffect(() => {
-    return () => {
-      if (layerRef.current) {
-        layerRef.current.removeFrom(map);
-        layerRef.current = null;
-      }
-    };
-  }, [map]);
-
-  return null;
-}
 
 type ZoningDistrictHighlightsProps = {
   listings: ListingRecord[];
@@ -1848,6 +1798,7 @@ function RegionMap({
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
 
   useEffect(() => {
@@ -1972,6 +1923,10 @@ function RegionMap({
     setShowAllProperties((prev) => !prev);
   }, []);
 
+  const handleLayerChange = useCallback((layer: MapLayerType) => {
+    setCurrentLayer(layer);
+  }, []);
+
   const handleZoneHover = useCallback((zone: ZoningDistrictSummary | null) => {
     if (zone) {
       setHoveredListingId(null);
@@ -1980,6 +1935,8 @@ function RegionMap({
   }, []);
 
   const zoneDetailHighlight = hoveredZone && !hoveredListingId ? hoveredZone : null;
+
+  const currentLayerConfig = MAP_LAYERS[currentLayer];
 
   return (
     <section
