@@ -74,8 +74,185 @@
 
 .listing-table__scroll-indicator-container {
   display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: 0.75rem 1rem 0;
+}
+
+.listing-table__export-controls {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.listing-table__export-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.listing-table__export-button {
+  border: none;
+  background: linear-gradient(120deg, #2563eb, #0ea5e9);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 12px 28px -18px rgba(37, 99, 235, 0.9);
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.listing-table__export-button:hover,
+.listing-table__export-button:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px -20px rgba(37, 99, 235, 0.75);
+  filter: brightness(1.05);
+}
+
+.listing-table__export-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.listing-table__export-button--secondary {
+  background: #1e293b;
+  box-shadow: none;
+}
+
+.listing-table__columns-button {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(241, 245, 249, 0.95);
+  color: #1e293b;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.listing-table__columns-button:hover,
+.listing-table__columns-button:focus {
+  background: rgba(226, 232, 240, 0.95);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.listing-table__column-panel {
+  position: absolute;
+  top: 2.75rem;
+  left: 0;
+  width: min(340px, calc(100vw - 4rem));
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  border-radius: 1rem;
+  padding: 1.1rem;
+  box-shadow: 0 24px 44px -30px rgba(15, 23, 42, 0.75);
+  z-index: 5;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.listing-table__column-panel-description {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.listing-table__column-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.2rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.listing-table__column-panel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: rgba(30, 41, 59, 0.85);
+  border-radius: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid transparent;
+  transition: border-color 160ms ease, background-color 160ms ease;
+  cursor: grab;
+}
+
+.listing-table__column-panel-item[data-hidden='true'] {
+  opacity: 0.65;
+}
+
+.listing-table__column-panel-item[data-drop-target='true'] {
+  border-color: rgba(14, 165, 233, 0.75);
+  background: rgba(14, 165, 233, 0.18);
+}
+
+.listing-table__column-panel-item[data-dragging='true'] {
+  border-color: rgba(14, 165, 233, 0.85);
+  background: rgba(14, 165, 233, 0.24);
+  box-shadow: 0 18px 32px -24px rgba(14, 165, 233, 0.65);
+  cursor: grabbing;
+}
+
+.listing-table__column-panel-item[data-dragging='true'] * {
+  cursor: grabbing;
+}
+
+.listing-table__column-panel-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+}
+
+.listing-table__column-panel-label input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: #38bdf8;
+}
+
+.listing-table__column-panel-label input[type='checkbox']:disabled {
+  accent-color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.listing-table__column-panel-drag-handle {
+  border: none;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.85);
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+.listing-table__column-panel-drag-handle:active {
+  cursor: grabbing;
+}
+
+.listing-table__column-panel-drag-image {
+  pointer-events: none;
+  border-radius: 0.85rem;
+  box-shadow: 0 24px 44px -28px rgba(14, 165, 233, 0.55);
+}
+
+.listing-table__column-panel-actions {
+  display: flex;
   justify-content: flex-end;
-  padding: 0.75rem 0.75rem 0;
+  margin-top: 0.85rem;
+  width: 100%;
 }
 
 .listing-table__scroll-indicator {

@@ -1,5 +1,13 @@
 -- Aggregated metrics for listings
 
+-- Drop existing tables to rebuild from scratch.
+drop table if exists public.listing_subdivision_metrics cascade;
+drop table if exists public.listing_zone_metrics cascade;
+drop table if exists public.listing_renewal_metrics cascade;
+drop table if exists public.listing_renewal_summary cascade;
+drop table if exists public.listing_renewal_method_summary cascade;
+drop table if exists public.land_baron_leaderboard cascade;
+
 -- Subdivision metrics store the latest counts per subdivision and allow the
 -- frontend to highlight neighbourhood saturation.
 create table if not exists public.listing_subdivision_metrics (
@@ -44,7 +52,6 @@ create table if not exists public.listing_renewal_method_summary (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
--- Land Baron Leaderboard tracks owners with the highest property counts.
 create table if not exists public.land_baron_leaderboard (
   owner_name text primary key,
   property_count integer not null,
