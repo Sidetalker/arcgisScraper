@@ -90,6 +90,9 @@ const SUMMARY_DESCRIPTORS: Record<
 
 const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
 const LAND_BARON_SECTION_SIZE = 5;
+const MAX_ZONE_OVERVIEW_ROWS = 5;
+// Treat zones with fewer than five cached listings as noise so the overview stays focused.
+const MIN_ZONE_LISTING_THRESHOLD = 5;
 
 const MANUAL_NON_PERSON_NAMES = new Set(
   (nonPersonOwnerNames as string[]).map((value) => value.toUpperCase()),
@@ -391,7 +394,31 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       });
     });
 
-    return rows;
+    const filtered = rows.filter((row) => {
+      if (!row.metric) {
+        return false;
+      }
+      const totalListings = row.metric.totalListings;
+      if (typeof totalListings !== 'number') {
+        return false;
+      }
+      return totalListings >= MIN_ZONE_LISTING_THRESHOLD;
+    });
+
+    filtered.sort((a, b) => {
+      const totalA = a.metric?.totalListings ?? 0;
+      const totalB = b.metric?.totalListings ?? 0;
+      if (totalA === totalB) {
+        return a.definition.code.localeCompare(b.definition.code, undefined, { sensitivity: 'base' });
+      }
+      return totalB - totalA;
+    });
+
+    if (filtered.length <= MAX_ZONE_OVERVIEW_ROWS) {
+      return filtered;
+    }
+
+    return filtered.slice(0, MAX_ZONE_OVERVIEW_ROWS);
   }, [metrics]);
 
   const landBaronEntries = useMemo(() => {
