@@ -165,9 +165,9 @@ function parseOwnerAddress(raw: unknown): {
 
   if (cityState) {
     if (cityState.includes(',')) {
-      const [cityPart, rest] = cityState.split(',', 1);
+      const [cityPart, ...restParts] = cityState.split(',');
       city = titleCase(cityPart.trim());
-      const remainder = rest.trim();
+      const remainder = restParts.join(',').trim();
       if (remainder) {
         const tokens = remainder.split(/\s+/).filter(Boolean);
         if (tokens.length > 0) {
