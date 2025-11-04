@@ -102,7 +102,7 @@
   background: transparent;
   color: #cbd5f5;
   font-size: 0.78rem;
-  padding: 0.55rem 0.45rem;
+  padding: 0.55rem 0.95rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -140,8 +140,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .region-map__layer-button-icon {
