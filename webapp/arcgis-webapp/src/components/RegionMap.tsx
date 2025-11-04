@@ -38,6 +38,12 @@ const leafletWithDraw = L as typeof L & {
       useFeet?: boolean,
       useNautic?: boolean,
     ) => string;
+    readableArea?: (
+      area: number,
+      isMetric?: boolean | string | string[],
+      precision?: Record<string, number | undefined>,
+    ) => string;
+    formattedNumber?: (value: number, precision?: number | { decimals?: number }) => string;
   };
   Draw?: {
     Event: {
@@ -121,6 +127,67 @@ if (circleEditPrototype) {
     this._map.fire(leafletWithDraw.Draw?.Event.EDITRESIZE ?? 'draw:editresize', {
       layer: this._shape,
     });
+  };
+}
+
+const geometryUtil = leafletWithDraw.GeometryUtil;
+
+if (geometryUtil) {
+  type AreaPrecision = Record<string, number | undefined>;
+
+  const defaultPrecision: AreaPrecision = {
+    km: 2,
+    ha: 2,
+    m: 0,
+    acres: 2,
+  };
+
+  const formatNumber =
+    geometryUtil.formattedNumber?.bind(geometryUtil) ??
+    ((value: number, precision?: number | { decimals?: number }) => {
+      if (typeof precision === 'number') {
+        return value.toFixed(precision);
+      }
+
+      if (precision && typeof (precision as { decimals?: number }).decimals === 'number') {
+        return value.toFixed((precision as { decimals?: number }).decimals ?? 0);
+      }
+
+      return value.toString();
+    });
+
+  geometryUtil.readableArea = (area, metricOrUnits = true, precisionOverrides) => {
+    const precision = L.Util.extend(
+      {},
+      defaultPrecision,
+      (precisionOverrides ?? {}) as AreaPrecision,
+    ) as AreaPrecision;
+
+    const format = (value: number, digits: number | undefined, suffix: string) =>
+      `${formatNumber(value, digits)} ${suffix}`;
+
+    if (metricOrUnits) {
+      let units: string[] = ['ha', 'm'];
+
+      if (typeof metricOrUnits === 'string') {
+        units = [metricOrUnits];
+      } else if (Array.isArray(metricOrUnits)) {
+        units = metricOrUnits;
+      }
+
+      if (area >= 1_000_000 && units.includes('km')) {
+        return format(area * 1e-6, precision.km, 'km²');
+      }
+
+      if (area >= 10_000 && units.includes('ha')) {
+        return format(area * 1e-4, precision.ha, 'ha');
+      }
+
+      return format(area, precision.m, 'm²');
+    }
+
+    const acresPrecision = precision.acres ?? precision.ac;
+    return format(area * 0.000247105, acresPrecision, 'acres');
   };
 }
 
