@@ -59,7 +59,13 @@ export function ListingTable({
         </p>
       ) : null}
 
-      <div className="listing-table__viewport" role="region" aria-live="polite">
+      <div
+        className="listing-table__viewport"
+        role="region"
+        aria-live="polite"
+        aria-busy={isLoading}
+        title="Tabular summary of listings that match the current filters and map region"
+      >
         <table>
           <thead>
             <tr>

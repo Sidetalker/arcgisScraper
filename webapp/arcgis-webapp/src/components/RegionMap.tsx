@@ -175,7 +175,11 @@ function RegionMap({ regions, onRegionsChange }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
 
   return (
-    <section className="region-map" aria-label="Draw regions to filter listings">
+    <section
+      className="region-map"
+      aria-label="Draw regions to filter listings"
+      title="Draw circles to focus the ArcGIS search on specific areas"
+    >
       <div>
         <h2 className="region-map__title">Search Regions</h2>
         <p className="region-map__subtitle">

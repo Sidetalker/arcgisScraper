@@ -157,6 +157,38 @@ Run `python scrape_arcgis.py --help` for the full list of supported flags.
 The script prints the combined JSON response to stdout and optionally writes it
 to the path specified by `--output`.
 
+## Interactive web app
+
+The repository also ships with a React + Vite single-page app that visualises
+Summit County listings on top of an interactive map. The UI combines the region
+builder, filter controls, and listing table in a single workspace and keeps the
+results in sync as you draw, tweak filters, or refresh cached data.
+
+### Web app setup
+
+```bash
+cd webapp/arcgis-webapp
+npm install
+npm run dev
+```
+
+Open the printed localhost URL to start exploring listings. The layout provides
+three coordinated panels:
+
+* **Search Regions** – draw circular regions on the Leaflet map. The geometry is
+  persisted to `localStorage`, so a browser refresh restores the areas you were
+  analysing.
+* **Filter Listings** – adjust price, bedroom/bathroom counts, license status,
+  or search by address. Filters apply instantly without reloading the page.
+* **Listings table** – shows the rows that match the current geometry and
+  filters, complete with pagination, loading states, and inline error handling
+  if an ArcGIS request fails.
+
+A status banner summarises the most recent fetch and whether results are being
+served from cache. Use the **Refresh data** button to clear both the in-memory
+ArcGIS client cache and the persisted browser cache; the app immediately
+recomputes the query so you always know the data is fresh.
+
 ## Troubleshooting
 
 Some corporate networks block anonymous requests to ArcGIS Online services. If

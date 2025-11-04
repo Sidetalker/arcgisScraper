@@ -4,8 +4,9 @@ import './App.css';
 import FilterPanel from './components/FilterPanel';
 import RegionMap from './components/RegionMap';
 import ListingTable from './components/ListingTable';
-import { fetchListings } from './services/arcgisClient';
+import { clearArcgisCaches, fetchListings } from './services/arcgisClient';
 import { circlesToPolygonGeometry } from './services/regionGeometry';
+import { useCache } from './context/CacheContext';
 import type {
   ArcgisFeature,
   ListingAttributes,
@@ -34,6 +35,7 @@ const STATUS_KEYS = ['STATUS', 'Status', 'LICENSESTATUS', 'LicenseStatus'];
 const OCCUPANCY_KEYS = ['Occupancy', 'OCCUPANCY', 'MaxOccupancy', 'MAXOCCUPANCY'];
 const ID_KEYS = ['OBJECTID', 'OBJECTID_1', 'GlobalID', 'GLOBALID', 'License', 'LICENSE'];
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
+const LISTINGS_CACHE_KEY = 'arcgis:listings';
 
 function pickString(attributes: ListingAttributes, keys: string[]): string | null {
   for (const key of keys) {
@@ -132,6 +134,8 @@ function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [regions, setRegions] = useState<RegionCircle[]>([]);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+  const { entries, get: getCache, set: setCache, clear: clearPersistentCache } = useCache();
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -212,8 +216,27 @@ function App(): JSX.Element {
   }, []);
 
   const queryGeometry = useMemo(() => circlesToPolygonGeometry(regions), [regions]);
+  const geometrySignature = useMemo(() => JSON.stringify(queryGeometry ?? null), [queryGeometry]);
+  const listingCacheEntry = useMemo(() => {
+    return entries.find((entry) => entry.key === LISTINGS_CACHE_KEY && entry.dependencies?.[0] === geometrySignature);
+  }, [entries, geometrySignature]);
+  const cachedAt = useMemo(() => {
+    if (!listingCacheEntry) {
+      return null;
+    }
+    return new Date(listingCacheEntry.storedAt);
+  }, [listingCacheEntry]);
 
   useEffect(() => {
+    const dependencies = [geometrySignature] as const;
+    const cached = getCache<ListingRecord[]>(LISTINGS_CACHE_KEY, { dependencies });
+    if (cached) {
+      setListings(cached);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -227,6 +250,10 @@ function App(): JSX.Element {
         const features = featureSet.features ?? [];
         const mapped = features.map((feature, index) => toListingRecord(feature, index));
         setListings(mapped);
+        setCache(LISTINGS_CACHE_KEY, mapped, {
+          dependencies,
+          ttl: 1000 * 60 * 15,
+        });
       })
       .catch((fetchError) => {
         if (controller.signal.aborted) {
@@ -245,7 +272,7 @@ function App(): JSX.Element {
     return () => {
       controller.abort();
     };
-  }, [queryGeometry]);
+  }, [geometrySignature, getCache, queryGeometry, refreshCounter, setCache]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -265,6 +292,43 @@ function App(): JSX.Element {
     return Array.from(statuses);
   }, [listings]);
 
+  const handleRefresh = useCallback(() => {
+    clearPersistentCache(LISTINGS_CACHE_KEY);
+    clearArcgisCaches();
+    setRefreshCounter((current) => current + 1);
+  }, [clearPersistentCache]);
+
+  const cacheSummary = useMemo(() => {
+    if (!cachedAt) {
+      return 'No cached results';
+    }
+    return `Cached ${cachedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  }, [cachedAt]);
+
+  const filteredCount = filteredListings.length;
+
+  const statusMessage = useMemo(() => {
+    if (loading) {
+      return 'Refreshing listings from ArcGIS…';
+    }
+    if (error) {
+      return `ArcGIS request failed: ${error}`;
+    }
+    if (listings.length === 0) {
+      return 'No ArcGIS listings have been loaded yet.';
+    }
+
+    const baseMessage =
+      filteredCount === listings.length
+        ? `Loaded ${listings.length.toLocaleString()} listings.`
+        : `Showing ${filteredCount.toLocaleString()} of ${listings.length.toLocaleString()} listings after filters.`;
+
+    if (cachedAt) {
+      return `${baseMessage} Cached ${cachedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.`;
+    }
+    return baseMessage;
+  }, [cachedAt, error, filteredCount, loading, listings.length]);
+
   return (
     <div className="app">
       <header className="app__header">
@@ -272,7 +336,25 @@ function App(): JSX.Element {
           <h1>ArcGIS Web App</h1>
           <p>Explore Summit County short-term rental listings with instant filtering and pagination.</p>
         </div>
+        <div className="app__actions">
+          <button
+            type="button"
+            className="app__refresh"
+            onClick={handleRefresh}
+            disabled={loading}
+            title="Clear cached ArcGIS data and request fresh results."
+          >
+            Refresh data
+          </button>
+          <span className="app__cache" title={cacheSummary}>
+            {cacheSummary}
+          </span>
+        </div>
       </header>
+
+      <section className="app__status" role="status" aria-live="polite">
+        {statusMessage}
+      </section>
 
       <main className="app__content">
         <FilterPanel
