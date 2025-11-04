@@ -6,6 +6,7 @@ import './App.css';
 import HomePage from '@/pages/HomePage';
 import ComplexDetailPage from '@/pages/ComplexDetailPage';
 import OwnerDetailPage from '@/pages/OwnerDetailPage';
+import PasswordModal from '@/components/PasswordModal';
 import { useListings } from '@/context/ListingsContext';
 
 export type LayoutOutletContext = {
@@ -24,9 +25,43 @@ function Layout(): JSX.Element {
     clearCacheAndReload,
   } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const handleStatusChange = useCallback((message: string) => {
     setStatusMessage(message || 'Ready.');
+  }, []);
+
+  const handleSyncClick = useCallback(() => {
+    setPasswordError(null);
+    setIsPasswordModalOpen(true);
+  }, []);
+
+  const handlePasswordSubmit = useCallback(
+    async (password: string) => {
+      if (password === 'kevadmin') {
+        setIsPasswordModalOpen(false);
+        setPasswordError(null);
+        setStatusMessage('Syncing dataset from ArcGIS…');
+        try {
+          await syncFromArcgis();
+          setStatusMessage('Dataset synced successfully.');
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Failed to sync listings from ArcGIS.';
+          setStatusMessage(message);
+        }
+      } else {
+        setPasswordError('Incorrect password. Please try again.');
+        setTimeout(() => setPasswordError(null), 3000);
+      }
+    },
+    [syncFromArcgis],
+  );
+
+  const handlePasswordModalClose = useCallback(() => {
+    setIsPasswordModalOpen(false);
+    setPasswordError(null);
   }, []);
 
   const contextValue = useMemo(
@@ -69,19 +104,7 @@ function Layout(): JSX.Element {
           <button
             type="button"
             className="app__refresh"
-            onClick={async () => {
-              setStatusMessage('Syncing dataset from ArcGIS…');
-              try {
-                await syncFromArcgis();
-                setStatusMessage('Dataset synced successfully.');
-              } catch (error) {
-                const message =
-                  error instanceof Error
-                    ? error.message
-                    : 'Failed to sync listings from ArcGIS.';
-                setStatusMessage(message);
-              }
-            }}
+            onClick={handleSyncClick}
             disabled={loading || syncing}
             title="Fetch fresh data from ArcGIS and replace the Supabase listings dataset."
           >
@@ -132,6 +155,18 @@ function Layout(): JSX.Element {
       <main className="app__content">
         <Outlet context={contextValue} />
       </main>
+
+      <PasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={handlePasswordModalClose}
+        onSubmit={handlePasswordSubmit}
+        title="Sync Authentication"
+        message={
+          passwordError
+            ? passwordError
+            : 'Please enter the administrator password to sync from ArcGIS.'
+        }
+      />
     </div>
   );
 }
