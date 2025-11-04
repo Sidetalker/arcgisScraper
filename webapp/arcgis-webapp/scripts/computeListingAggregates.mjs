@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -44,6 +45,16 @@ function loadEnvFile(filename, { override = false } = {}) {
 // Load the default env file first, then allow local overrides.
 loadEnvFile('.env');
 loadEnvFile('.env.local', { override: true });
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const presetPath = path.resolve(moduleDir, '../src/constants/serviceLayers.json');
+let layerPresets = {};
+try {
+  const raw = fs.readFileSync(presetPath, 'utf8');
+  layerPresets = JSON.parse(raw);
+} catch (error) {
+  console.warn('[metrics] Unable to load layer presets definition.', { presetPath, error: error instanceof Error ? error.message : String(error) });
+}
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL ||
@@ -313,6 +324,34 @@ async function main() {
   const listings = await fetchListings();
   console.info(`[metrics] Loaded ${listings.length.toLocaleString()} listing records.`);
 
+  const desiredPresetId = (process.env.LISTINGS_SOURCE_PRESET || '').trim();
+  let activeListings = listings;
+  if (desiredPresetId) {
+    const filtered = listings.filter((listing) => {
+      if (!listing || typeof listing !== 'object') {
+        return false;
+      }
+      const raw = listing.raw;
+      if (!raw || typeof raw !== 'object') {
+        return false;
+      }
+      const metadata = raw.__layerMetadata;
+      if (!metadata || typeof metadata !== 'object') {
+        return false;
+      }
+      const presetId = metadata.presetId;
+      return typeof presetId === 'string' && presetId === desiredPresetId;
+    });
+    const presetMeta = layerPresets[desiredPresetId];
+    console.info('[metrics] Filtered listings by preset.', {
+      presetId: desiredPresetId,
+      presetName: presetMeta && typeof presetMeta === 'object' ? presetMeta.name : undefined,
+      beforeCount: listings.length,
+      afterCount: filtered.length,
+    });
+    activeListings = filtered;
+  }
+
   const subdivisions = new Map();
   const renewalBuckets = new Map();
   const summary = {
@@ -339,7 +378,7 @@ async function main() {
   summary.due_90.windowEnd = formatDate(in90);
   summary.future.windowStart = formatDate(addDays(in90, 1));
 
-  listings.forEach((listing) => {
+  activeListings.forEach((listing) => {
     const subdivision = normaliseSubdivision(listing.subdivision);
     const stats = subdivisions.get(subdivision) || { total: 0, business: 0 };
     stats.total += 1;

@@ -9,13 +9,22 @@ import {
   QueryGeometry,
   SearchEnvelopeOptions,
 } from '@/types';
+import {
+  DEFAULT_LAYER_PRESET as SERVICE_DEFAULT_LAYER_PRESET,
+  LAYER_PRESETS,
+  resolveLayerPreset,
+} from '@/constants/serviceLayers';
 
-const DEFAULT_LAYER_URL =
+const FALLBACK_DEFAULT_LAYER_URL =
   'https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/PrISM_APParcelPts_View_Layer_for_Query/FeatureServer/0';
+const DEFAULT_LAYER_URL = resolveLayerPreset(SERVICE_DEFAULT_LAYER_PRESET)?.url ?? FALLBACK_DEFAULT_LAYER_URL;
 const DEFAULT_PORTAL_URL = 'https://summitcountyco.maps.arcgis.com';
 const DEFAULT_REFERER =
   'https://experience.arcgis.com/experience/706a6886322445479abadb904db00bc0/';
 const DEFAULT_PAGE_SIZE = 1000;
+
+const DEFAULT_PRESET_REFERER =
+  resolveLayerPreset(SERVICE_DEFAULT_LAYER_PRESET)?.referer ?? DEFAULT_REFERER;
 
 const layerInfoCache = new Map<string, Promise<ArcgisLayerInfo>>();
 const requestCache = new Map<string, Promise<ListingFeatureSet>>();
@@ -379,8 +388,8 @@ async function queryFeatures(
 }
 
 function createCacheKey(args: FetchListingsParams & { token?: string }): string {
-  const { geometry, filters, layerUrl, portalUrl, referer, token } = args;
-  return JSON.stringify({ geometry, filters, layerUrl, portalUrl, referer, token });
+  const { geometry, filters, layerUrl, portalUrl, referer, token, layerPresetId } = args;
+  return JSON.stringify({ geometry, filters, layerUrl, portalUrl, referer, token, layerPresetId });
 }
 
 async function resolvePageSize(
@@ -432,37 +441,64 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
     geometry,
     filters,
     authentication = {},
-    layerUrl = DEFAULT_LAYER_URL,
+    layerUrl: requestedLayerUrl,
+    layerPresetId,
     portalUrl = DEFAULT_PORTAL_URL,
-    referer = DEFAULT_REFERER,
+    referer: requestedReferer,
     signal,
     useCache = true,
   } = params;
 
-  const token = await generateToken(authentication, portalUrl, referer, signal);
-  const cacheKey = createCacheKey({ ...params, layerUrl, portalUrl, referer, token });
+  let activePresetId: string | null = null;
+  let presetMeta = layerPresetId && LAYER_PRESETS[layerPresetId] ? LAYER_PRESETS[layerPresetId] : undefined;
+  if (presetMeta) {
+    activePresetId = layerPresetId!;
+  }
+
+  const resolvedLayerUrl = requestedLayerUrl ?? presetMeta?.url ?? DEFAULT_LAYER_URL;
+  if (!activePresetId) {
+    const matchingPreset = Object.entries(LAYER_PRESETS).find(([, preset]) => preset.url === resolvedLayerUrl);
+    if (matchingPreset) {
+      activePresetId = matchingPreset[0];
+      presetMeta = matchingPreset[1];
+    }
+  }
+
+  const resolvedReferer = requestedReferer ?? presetMeta?.referer ?? DEFAULT_REFERER;
+
+  const token = await generateToken(authentication, portalUrl, resolvedReferer, signal);
+  const cacheKey = createCacheKey({
+    ...params,
+    layerUrl: resolvedLayerUrl,
+    portalUrl,
+    referer: resolvedReferer,
+    token,
+    layerPresetId: activePresetId ?? layerPresetId,
+  });
 
   if (useCache && requestCache.has(cacheKey)) {
     console.info('[ArcGIS] Returning cached listings response', {
-      layerUrl,
+      layerUrl: resolvedLayerUrl,
       portalUrl,
+      layerPresetId: activePresetId ?? layerPresetId ?? null,
     });
     return requestCache.get(cacheKey)!;
   }
 
   const promise = (async () => {
     console.info('[ArcGIS] Fetching listings', {
-      layerUrl,
+      layerUrl: resolvedLayerUrl,
       portalUrl,
       geometryType: geometry ? inferGeometryType(geometry) : 'none',
       hasFilters: Boolean(filters),
+      layerPresetId: activePresetId ?? layerPresetId ?? null,
     });
-    const pageSize = await resolvePageSize(layerUrl, referer, token, filters, signal);
+    const pageSize = await resolvePageSize(resolvedLayerUrl, resolvedReferer, token, filters, signal);
     console.info('[ArcGIS] Resolved page size', {
-      layerUrl,
+      layerUrl: resolvedLayerUrl,
       pageSize,
     });
-    const result = await queryFeatures(layerUrl, referer, {
+    const result = await queryFeatures(resolvedLayerUrl, resolvedReferer, {
       filters,
       geometry,
       pageSize,
@@ -470,7 +506,11 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
       maxRecords: filters?.maxRecords,
       signal,
     });
-    return result;
+    return {
+      ...result,
+      layerUrl: resolvedLayerUrl,
+      layerPresetId: activePresetId ?? layerPresetId ?? null,
+    } as ListingFeatureSet;
   })();
 
   if (useCache) {
@@ -485,6 +525,7 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
       console.info('[ArcGIS] Listings request complete', {
         featureCount: featureSet.features?.length ?? 0,
         exceededTransferLimit: featureSet.exceededTransferLimit ?? false,
+        layerPresetId: activePresetId ?? layerPresetId ?? null,
       });
     })
     .catch((error) => {
@@ -502,7 +543,8 @@ export function clearArcgisCaches(): void {
 }
 
 export const ArcgisDefaults = {
+  layerPresetId: SERVICE_DEFAULT_LAYER_PRESET,
   layerUrl: DEFAULT_LAYER_URL,
   portalUrl: DEFAULT_PORTAL_URL,
-  referer: DEFAULT_REFERER,
+  referer: DEFAULT_PRESET_REFERER,
 };

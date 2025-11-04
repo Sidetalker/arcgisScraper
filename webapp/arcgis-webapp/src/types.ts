@@ -44,7 +44,10 @@ export interface ArcgisFeatureSet<A = Record<string, unknown>, G = QueryGeometry
 
 export type ListingAttributes = Record<string, string | number | boolean | null>;
 
-export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
+export interface ListingFeatureSet extends ArcgisFeatureSet<ListingAttributes> {
+  layerUrl?: string;
+  layerPresetId?: string | null;
+}
 
 export interface ListingRecord {
   id: string;
@@ -67,6 +70,8 @@ export interface ListingRecord {
   latitude: number | null;
   longitude: number | null;
   raw: ListingAttributes;
+  sourceLayerUrl: string | null;
+  sourcePresetId: string | null;
 }
 
 export interface ListingFilters {
@@ -119,6 +124,7 @@ export interface FetchListingsParams {
   filters?: ArcgisQueryFilters;
   authentication?: ArcgisAuthentication;
   layerUrl?: string;
+  layerPresetId?: string;
   portalUrl?: string;
   referer?: string;
   signal?: AbortSignal;
