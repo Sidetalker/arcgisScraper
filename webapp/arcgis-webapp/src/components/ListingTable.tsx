@@ -444,16 +444,21 @@ export function ListingTable({
       return;
     }
 
+    const handleClose = () => {
+      setIsPageJumpOpen(false);
+      setPageJumpValue('');
+    };
+
     const handleClick = (event: MouseEvent) => {
       if (pageJumpContainerRef.current?.contains(event.target as Node)) {
         return;
       }
-      closePageJump();
+      handleClose();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        closePageJump();
+        handleClose();
       }
     };
 
@@ -464,7 +469,7 @@ export function ListingTable({
       document.removeEventListener('mousedown', handleClick);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isPageJumpOpen, closePageJump]);
+  }, [isPageJumpOpen]);
 
   useEffect(() => {
     if (isPageJumpOpen) {
