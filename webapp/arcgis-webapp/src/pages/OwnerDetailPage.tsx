@@ -32,6 +32,7 @@ function OwnerDetailPage(): JSX.Element {
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [tableState, setTableState] = useState(createDefaultTableState);
 
   const normalizedOwner = useMemo(() => ownerName.trim().toLowerCase(), [ownerName]);
@@ -125,9 +126,10 @@ function OwnerDetailPage(): JSX.Element {
       <div className="detail-table">
         <ListingTable
           listings={matchingListings}
-          pageSize={DEFAULT_PAGE_SIZE}
+          pageSize={pageSize}
           currentPage={currentPage}
           onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
           isLoading={loading}
           error={error}
           columnOrder={tableState.columnOrder}

@@ -118,6 +118,7 @@ function HomePage(): JSX.Element {
   const [tableState, setTableState] = useState<ListingTableState>(() => createDefaultTableState());
   const defaultTableState = useMemo(() => createDefaultTableState(), []);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [highlightedListingId, setHighlightedListingId] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<ConfigurationProfile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
@@ -478,11 +479,11 @@ function HomePage(): JSX.Element {
       if (index === -1) {
         return;
       }
-      const targetPage = Math.floor(index / DEFAULT_PAGE_SIZE) + 1;
+      const targetPage = Math.floor(index / Math.max(pageSize, 1)) + 1;
       setCurrentPage(targetPage);
       setHighlightedListingId(listingId);
     },
-    [filteredListings],
+    [filteredListings, pageSize],
   );
 
   return (
@@ -527,9 +528,10 @@ function HomePage(): JSX.Element {
         />
         <ListingTable
           listings={filteredListings}
-          pageSize={DEFAULT_PAGE_SIZE}
+          pageSize={pageSize}
           currentPage={currentPage}
           onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
           isLoading={loading}
           error={error}
           highlightedListingId={highlightedListingId ?? undefined}
