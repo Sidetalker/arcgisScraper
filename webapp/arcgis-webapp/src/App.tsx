@@ -187,6 +187,10 @@ function App(): JSX.Element {
     const dependencies = [geometrySignature] as const;
     const cached = getCache<OwnerRecord[]>(LISTINGS_CACHE_KEY, { dependencies });
     if (cached) {
+      console.info('Using cached owner listings.', {
+        geometrySignature,
+        count: cached.length,
+      });
       setListings(cached);
       setError(null);
       setLoading(false);
@@ -197,6 +201,10 @@ function App(): JSX.Element {
     setLoading(true);
     setError(null);
 
+    console.info('Requesting owner listings from ArcGIS.', {
+      geometrySignature,
+    });
+
     fetchListings({
       filters: { returnGeometry: false },
       geometry: queryGeometry,
@@ -205,6 +213,11 @@ function App(): JSX.Element {
       .then((featureSet) => {
         const features = featureSet.features ?? [];
         const mapped = formatOwnerRecords(features);
+        console.info('Received owner listings from ArcGIS.', {
+          geometrySignature,
+          features: features.length,
+          records: mapped.length,
+        });
         setListings(mapped);
         setCache(LISTINGS_CACHE_KEY, mapped, {
           dependencies,
@@ -217,6 +230,10 @@ function App(): JSX.Element {
         }
         const message =
           fetchError instanceof Error ? fetchError.message : 'Unable to load listings from ArcGIS.';
+        console.error('Failed to fetch owner listings from ArcGIS.', {
+          geometrySignature,
+          error: fetchError,
+        });
         setError(message);
       })
       .finally(() => {
