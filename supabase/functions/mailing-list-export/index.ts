@@ -34,6 +34,27 @@ const EXPORT_BUCKET = 'mailing-exports';
 const EXPORT_ROOT = 'jobs';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
+const rawAllowedOrigin =
+  Deno.env.get('MAILING_LIST_ALLOWED_ORIGIN') ??
+  Deno.env.get('MAILING_LIST_ALLOWED_ORIGINS') ??
+  '*';
+const ALLOWED_ORIGIN =
+  rawAllowedOrigin
+    .split(',')
+    .map((value) => value.trim())
+    .find((value) => value.length > 0) ?? '*';
+
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
+if (ALLOWED_ORIGIN !== '*') {
+  corsHeaders.Vary = 'Origin';
+}
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -139,6 +160,13 @@ function serialiseJob(row: MailingListExportRow, downloadUrls?: { csv?: string |
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'content-type': 'application/json' },
+  });
 }
 
 async function fetchJob(jobId: string): Promise<MailingListExportRow | null> {
@@ -344,127 +372,31 @@ async function handleCreate(filtersInput: unknown, regionsInput: unknown): Promi
   });
 
   const payload = serialiseJob(job);
-  return new Response(JSON.stringify({ job: payload }), {
-    status: 202,
-    headers: { 'content-type': 'application/json' },
-  });
+  return jsonResponse({ job: payload }, 202);
 }
 
 async function handleStatus(jobId: unknown): Promise<Response> {
   if (typeof jobId !== 'string' || jobId.length === 0) {
-    return new Response(JSON.stringify({ error: 'jobId is required.' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    });
+    return jsonResponse({ error: 'jobId is required.' }, 400);
   }
 
   const job = await fetchJob(jobId);
   if (!job) {
-    return new Response(JSON.stringify({ error: 'Job not found.' }), {
-      status: 404,
-      headers: { 'content-type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Job not found.' }, 404);
   }
 
   const signedUrls = await createSignedUrls(job.file_paths ?? null);
   const payload = serialiseJob(job, signedUrls);
-  return new Response(JSON.stringify({ job: payload }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
-const ALLOWED_ORIGIN_PATTERNS = (() => {
-  const raw = (Deno.env.get('MAILING_LIST_ALLOWED_ORIGINS') ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
-  return raw.length > 0 ? raw : ['*'];
-})();
-
-function matchesOrigin(origin: string, pattern: string): boolean {
-  if (pattern === '*') {
-    return true;
-  }
-  if (!pattern.includes('*')) {
-    return origin === pattern;
-  }
-
-  const escaped = pattern
-    .split('*')
-    .map((segment) => segment.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'))
-    .join('.*');
-  const regex = new RegExp(`^${escaped}$`);
-  return regex.test(origin);
-}
-
-function resolveAllowedOrigin(origin: string | null): string | null {
-  if (ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern === '*')) {
-    return '*';
-  }
-  if (!origin) {
-    return null;
-  }
-  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => matchesOrigin(origin, pattern)) ? origin : null;
-}
-
-function createCorsHeaders(request: Request): { headers: Headers; originAllowed: boolean } {
-  const origin = request.headers.get('origin');
-  const requestedHeaders =
-    request.headers.get('access-control-request-headers') ??
-    'authorization, x-client-info, apikey, content-type';
-  const headers = new Headers({
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': requestedHeaders,
-    'Access-Control-Max-Age': '86400',
-  });
-
-  const allowedOrigin = resolveAllowedOrigin(origin);
-  if (allowedOrigin) {
-    headers.set('Access-Control-Allow-Origin', allowedOrigin);
-    if (allowedOrigin !== '*') {
-      headers.set('Vary', 'Origin');
-    }
-  } else if (origin) {
-    headers.set('Vary', 'Origin');
-  }
-
-  return { headers, originAllowed: Boolean(allowedOrigin) };
-}
-
-function withCors(response: Response, corsHeaders: Headers): Response {
-  corsHeaders.forEach((value, key) => {
-    response.headers.set(key, value);
-  });
-  return response;
+  return jsonResponse({ job: payload }, 200);
 }
 
 serve(async (request) => {
-  const { headers: corsHeaders, originAllowed } = createCorsHeaders(request);
-
   if (request.method === 'OPTIONS') {
-    const status = originAllowed ? 204 : 403;
-    return new Response(null, { status, headers: corsHeaders });
-  }
-
-  if (!originAllowed) {
-    return withCors(
-      new Response(JSON.stringify({ error: 'Origin not allowed.' }), {
-        status: 403,
-        headers: { 'content-type': 'application/json' },
-      }),
-      corsHeaders,
-    );
+    return new Response('ok', { status: 200, headers: corsHeaders });
   }
 
   if (request.method !== 'POST') {
-    return withCors(
-      new Response(JSON.stringify({ error: 'Method not allowed.' }), {
-        status: 405,
-        headers: { 'content-type': 'application/json' },
-      }),
-      corsHeaders,
-    );
+    return jsonResponse({ error: 'Method not allowed.' }, 405);
   }
 
   let body: Record<string, unknown>;
@@ -472,30 +404,16 @@ serve(async (request) => {
     body = await request.json();
   } catch (error) {
     console.error('Invalid JSON payload received', error);
-    return withCors(
-      new Response(JSON.stringify({ error: 'Invalid JSON payload.' }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      }),
-      corsHeaders,
-    );
+    return jsonResponse({ error: 'Invalid JSON payload.' }, 400);
   }
 
   const action = body.action;
   if (action === 'create') {
-    const response = await handleCreate(body.filters, body.regions);
-    return withCors(response, corsHeaders);
+    return handleCreate(body.filters, body.regions);
   }
   if (action === 'status') {
-    const response = await handleStatus(body.jobId);
-    return withCors(response, corsHeaders);
+    return handleStatus(body.jobId);
   }
 
-  return withCors(
-    new Response(JSON.stringify({ error: 'Unsupported action.' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    }),
-    corsHeaders,
-  );
+  return jsonResponse({ error: 'Unsupported action.' }, 400);
 });
