@@ -57,6 +57,11 @@ export async function loadListingsFromCache(): Promise<
 
   const records: ListingRecord[] = (payload.records ?? []).map((record) => ({
     ...record,
+    townName: record.townName ?? '',
+    zoneName: record.zoneName ?? '',
+    zoningType: record.zoningType ?? '',
+    briefPropertyDescription: record.briefPropertyDescription ?? '',
+    situsAddressTypeDescription: record.situsAddressTypeDescription ?? '',
     raw: {},
   }));
 

@@ -66,6 +66,11 @@ export interface ListingRecord {
   scheduleNumber: string;
   publicDetailUrl: string;
   physicalAddress: string;
+  townName: string;
+  zoneName: string;
+  zoningType: string;
+  briefPropertyDescription: string;
+  situsAddressTypeDescription: string;
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;

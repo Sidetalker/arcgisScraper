@@ -20,6 +20,11 @@ export interface ListingRow {
   schedule_number: Nullable<string>;
   public_detail_url: Nullable<string>;
   physical_address: Nullable<string>;
+  town_name: Nullable<string>;
+  zone_name: Nullable<string>;
+  zoning_type: Nullable<string>;
+  brief_property_description: Nullable<string>;
+  situs_address_type_description: Nullable<string>;
   is_business_owner: Nullable<boolean>;
   latitude: Nullable<number>;
   longitude: Nullable<number>;
@@ -61,6 +66,11 @@ function toListingRow(record: ListingRecord): ListingRow {
     schedule_number: record.scheduleNumber || null,
     public_detail_url: record.publicDetailUrl || null,
     physical_address: record.physicalAddress || null,
+    town_name: record.townName || null,
+    zone_name: record.zoneName || null,
+    zoning_type: record.zoningType || null,
+    brief_property_description: record.briefPropertyDescription || null,
+    situs_address_type_description: record.situsAddressTypeDescription || null,
     is_business_owner: record.isBusinessOwner,
     latitude: typeof record.latitude === 'number' ? record.latitude : null,
     longitude: typeof record.longitude === 'number' ? record.longitude : null,
@@ -93,6 +103,11 @@ function fromListingRow(row: ListingRow): ListingRecord {
     scheduleNumber: row.schedule_number ?? '',
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
+    townName: row.town_name ?? '',
+    zoneName: row.zone_name ?? '',
+    zoningType: row.zoning_type ?? '',
+    briefPropertyDescription: row.brief_property_description ?? '',
+    situsAddressTypeDescription: row.situs_address_type_description ?? '',
     isBusinessOwner: Boolean(row.is_business_owner),
     latitude: typeof row.latitude === 'number' ? row.latitude : null,
     longitude: typeof row.longitude === 'number' ? row.longitude : null,
@@ -119,6 +134,11 @@ const LISTING_COLUMNS = [
   'schedule_number',
   'public_detail_url',
   'physical_address',
+  'town_name',
+  'zone_name',
+  'zoning_type',
+  'brief_property_description',
+  'situs_address_type_description',
   'is_business_owner',
   'latitude',
   'longitude',

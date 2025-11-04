@@ -468,6 +468,41 @@ export function toListingRecord(
       attributes.BriefPropertyDescription.trim()) ||
     '';
 
+  const normaliseOptionalTitleCase = (value: unknown): string => {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return '';
+    }
+    if (/^N\/?A$/i.test(trimmed)) {
+      return '';
+    }
+    return titleCase(trimmed);
+  };
+
+  const townName = normaliseOptionalTitleCase(attributes.TownName);
+  const zoneName = normaliseOptionalTitleCase(attributes.ZoneName);
+  let zoningType = '';
+  const zoningTypeRaw = attributes.ZoningType;
+  if (typeof zoningTypeRaw === 'number' && Number.isFinite(zoningTypeRaw)) {
+    zoningType = `${zoningTypeRaw}`;
+  } else if (typeof zoningTypeRaw === 'string') {
+    const trimmed = zoningTypeRaw.trim();
+    zoningType = /^N\/?A$/i.test(trimmed) ? '' : trimmed;
+  }
+
+  const briefPropertyDescription =
+    typeof attributes.BriefPropertyDescription === 'string'
+      ? attributes.BriefPropertyDescription.trim()
+      : '';
+
+  const situsAddressTypeDescription =
+    typeof attributes.SitusAddressTypeDescription === 'string'
+      ? attributes.SitusAddressTypeDescription.trim()
+      : '';
+
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -485,6 +520,11 @@ export function toListingRecord(
     scheduleNumber,
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
+    townName,
+    zoneName,
+    zoningType,
+    briefPropertyDescription,
+    situsAddressTypeDescription,
     isBusinessOwner,
     latitude,
     longitude,

@@ -191,6 +191,36 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.physicalAddress || '—',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),
   },
+  {
+    key: 'townName',
+    label: 'Town',
+    render: (listing) => listing.townName || '—',
+    getFilterValue: (listing) => normalizeText(listing.townName),
+  },
+  {
+    key: 'zoneName',
+    label: 'Zone',
+    render: (listing) => listing.zoneName || '—',
+    getFilterValue: (listing) => normalizeText(listing.zoneName),
+  },
+  {
+    key: 'zoningType',
+    label: 'Zoning type',
+    render: (listing) => listing.zoningType || '—',
+    getFilterValue: (listing) => normalizeText(listing.zoningType),
+  },
+  {
+    key: 'briefPropertyDescription',
+    label: 'Brief property description',
+    render: (listing) => listing.briefPropertyDescription || '—',
+    getFilterValue: (listing) => normalizeText(listing.briefPropertyDescription),
+  },
+  {
+    key: 'situsAddressTypeDescription',
+    label: 'Situs address type',
+    render: (listing) => listing.situsAddressTypeDescription || '—',
+    getFilterValue: (listing) => normalizeText(listing.situsAddressTypeDescription),
+  },
 ];
 
 export function ListingTable({

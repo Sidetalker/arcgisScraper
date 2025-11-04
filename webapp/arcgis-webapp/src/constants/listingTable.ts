@@ -10,6 +10,11 @@ export const LISTING_TABLE_COLUMN_KEYS = [
   'subdivision',
   'scheduleNumber',
   'physicalAddress',
+  'townName',
+  'zoneName',
+  'zoningType',
+  'briefPropertyDescription',
+  'situsAddressTypeDescription',
 ] as const;
 
 export type ListingTableColumnKey = (typeof LISTING_TABLE_COLUMN_KEYS)[number];

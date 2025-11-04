@@ -763,6 +763,11 @@ def _format_owner_table(features: List[Dict[str, Any]]) -> List[Dict[str, str]]:
                 "Schedule Number": schedule_number,
                 "Public Detail URL": detail_url,
                 "Physical Address": physical_address,
+                "Town Name": str(attrs.get("TownName") or ""),
+                "Zone Name": str(attrs.get("ZoneName") or ""),
+                "Zoning Type": str(attrs.get("ZoningType") or ""),
+                "Brief Property Description": str(attrs.get("BriefPropertyDescription") or ""),
+                "Situs Address Type": str(attrs.get("SitusAddressTypeDescription") or ""),
                 "First name": first,
                 "Middle": middle,
                 "Last Name": last,
@@ -795,6 +800,11 @@ IMPORTANT_COLUMNS = [
     "Schedule Number",
     "Public Detail URL",
     "Physical Address",
+    "Town Name",
+    "Zone Name",
+    "Zoning Type",
+    "Brief Property Description",
+    "Situs Address Type",
 ]
 
 SUPPLEMENTAL_COLUMNS = [
