@@ -105,7 +105,7 @@ if (circleEditPrototype) {
 }
 
 import type { ListingRecord, RegionCircle } from '@/types';
-import summitCountyGeoJson from '@/assets/summit_county.json';
+import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
 
 import './RegionMap.css';
 
@@ -146,8 +146,16 @@ const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
 };
 
 const LOCAL_SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
-  const geometry = summitCountyGeoJson as SummitCountyFeatureCollection;
-  return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
+  try {
+    const geometry = JSON.parse(summitCountyGeoJsonRaw) as SummitCountyFeatureCollection;
+    return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- surface parsing issues for the bundled fallback asset
+      console.warn('Failed to parse local Summit County boundary GeoJSON', error);
+    }
+    return null;
+  }
 })();
 
 function useSummitCountyBoundary(): SummitCountyFeatureCollection | null {

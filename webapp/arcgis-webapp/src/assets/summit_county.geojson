@@ -6,7 +6,7 @@
       "properties": {
         "name": "Summit County",
         "geoid": "08117",
-        "boundarySource": "local-fallback"
+        "boundarySource": "local-geojson"
       },
       "geometry": {
         "type": "Polygon",
