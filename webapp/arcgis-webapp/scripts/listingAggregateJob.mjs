@@ -1,5 +1,4 @@
 const NON_PERSON_DATA_URL = new URL('../src/data/nonPersonOwnerNames.json', import.meta.url);
-const EV_STATION_DATA_URL = new URL('../src/data/evChargingStations.json', import.meta.url);
 
 async function loadJsonResource(resourceUrl) {
   if (typeof Deno !== 'undefined' && typeof Deno.readTextFile === 'function') {

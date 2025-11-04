@@ -328,13 +328,152 @@
   color: #64748b;
 }
 
-.insight-card__list { 
+.insight-card__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.insight-card__zone-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.insight-card__zone-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 1rem 1.25rem;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(248, 250, 252, 0.75);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.insight-card__zone-tile:hover,
+.insight-card__zone-tile:focus-visible {
+  border-color: rgba(37, 99, 235, 0.6);
+  background: rgba(59, 130, 246, 0.08);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.insight-card__zone-tile--active {
+  border-color: rgba(37, 99, 235, 0.9);
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.18);
+}
+
+.insight-card__zone-tile--reference {
+  border-style: dashed;
+  border-color: rgba(148, 163, 184, 0.5);
+  background: rgba(148, 163, 184, 0.08);
+  box-shadow: none;
+}
+
+.insight-card__zone-tile--reference:hover,
+.insight-card__zone-tile--reference:focus-visible {
+  border-color: rgba(148, 163, 184, 0.65);
+  background: rgba(148, 163, 184, 0.12);
+  transform: none;
+}
+
+.insight-card__zone-tile--fallback {
+  border-style: dashed;
+}
+
+.insight-card__zone-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.insight-card__zone-code {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1e293b;
+}
+
+.insight-card__zone-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.insight-card__zone-density {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.insight-card__zone-jurisdictions {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.insight-card__zone-progress {
+  width: 100%;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.insight-card__zone-progress-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.85), rgba(59, 130, 246, 0.65));
+}
+
+.insight-card__zone-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
+.insight-card__zone-badge {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+.insight-card__zone-detail {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #0f172a;
+  line-height: 1.55;
+}
+
+.insight-card__zone-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 .insight-card__leaderboard {

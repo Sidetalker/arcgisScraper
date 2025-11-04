@@ -70,21 +70,15 @@ function normaliseStringList(value: unknown): string[] {
 }
 
 function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): ListingFilters {
-  const maxEvDistance = filters?.maxEvDistanceMiles;
-  let normalizedMaxEvDistance: number | null = null;
-  if (typeof maxEvDistance === 'number' && isFinite(maxEvDistance) && maxEvDistance > 0) {
-    normalizedMaxEvDistance = maxEvDistance;
-  }
-
   return {
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
     owner: typeof filters?.owner === 'string' ? filters.owner : '',
+    zones: normaliseStringList(filters?.zones),
     subdivisions: normaliseStringList(filters?.subdivisions),
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
-    maxEvDistanceMiles: normalizedMaxEvDistance,
   };
 }
 
@@ -108,6 +102,7 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
     a.searchTerm === b.searchTerm &&
     a.complex === b.complex &&
     a.owner === b.owner &&
+    stringSetsEqual(a.zones, b.zones) &&
     stringSetsEqual(a.subdivisions, b.subdivisions) &&
     stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
     stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
