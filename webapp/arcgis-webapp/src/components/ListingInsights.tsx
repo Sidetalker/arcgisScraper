@@ -632,7 +632,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
           {zoneRows.length === 0 ? (
             <p className="insight-card__empty">No zoning data available.</p>
           ) : (
-            <ul className="insight-card__list" role="list">
+            <ul className="insight-card__list">
               {zoneRows.map((item) => {
                 const percentage = maxZoneListings
                   ? Math.max(12, Math.round((item.totalListings / maxZoneListings) * 100))
@@ -641,7 +641,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                   ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
                   : 0;
                 return (
-                  <li key={item.zone} role="listitem">
+                  <li key={item.zone}>
                     <div className="insight-card__list-item insight-card__list-item--static">
                       <div className="insight-card__list-line">
                         <span className="insight-card__list-label">{item.zone}</span>
