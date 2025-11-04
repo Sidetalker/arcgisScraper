@@ -74,6 +74,14 @@
   font-size: 0.95rem;
 }
 
+.listing-table__details-header,
+.listing-table__detail-cell {
+  width: 3.25rem;
+  text-align: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 .listing-table th {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
@@ -110,6 +118,31 @@
 
 .listing-table__drag-handle:active {
   cursor: grabbing;
+}
+
+.listing-table__detail-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  text-decoration: none;
+  font-size: 1.15rem;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.listing-table__detail-link:hover,
+.listing-table__detail-link:focus {
+  background-color: rgba(37, 99, 235, 0.18);
+  transform: scale(1.05);
+}
+
+.listing-table__detail-link:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 2px;
 }
 
 .listing-table__hide-button {

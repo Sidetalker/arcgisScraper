@@ -35,8 +35,7 @@ type ColumnKey =
   | 'mailingZip'
   | 'subdivision'
   | 'scheduleNumber'
-  | 'physicalAddress'
-  | 'details';
+  | 'physicalAddress';
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -191,19 +190,6 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.physicalAddress || '—',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),
   },
-  {
-    key: 'details',
-    label: 'Details',
-    render: (listing) =>
-      listing.publicDetailUrl ? (
-        <a href={listing.publicDetailUrl} target="_blank" rel="noreferrer" className="listing-table__link">
-          View
-        </a>
-      ) : (
-        '—'
-      ),
-    getFilterValue: (listing) => normalizeText(listing.publicDetailUrl ? 'view' : ''),
-  },
 ];
 
 type ColumnFilters = Record<ColumnKey, string>;
@@ -280,7 +266,7 @@ export function ListingTable({
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
   const pageListings = filteredListings.slice(startIndex, endIndex);
-  const columnCount = Math.max(1, visibleColumns.length);
+  const columnCount = Math.max(1, visibleColumns.length + 1);
 
   useEffect(() => {
     if (safePage !== requestedPage) {
@@ -472,6 +458,9 @@ export function ListingTable({
           <table>
             <thead>
               <tr>
+                <th scope="col" className="listing-table__details-header">
+                  <span className="visually-hidden">Listing details</span>
+                </th>
                 {visibleColumnDefinitions.map((definition) => (
                   <th
                     key={definition.key}
@@ -507,6 +496,7 @@ export function ListingTable({
               ))}
             </tr>
             <tr className="listing-table__filters">
+              <th aria-hidden="true" />
               {visibleColumnDefinitions.map((definition) => (
                 <th key={`${definition.key}-filter`}>
                   <label className="listing-table__filter">
@@ -548,6 +538,21 @@ export function ListingTable({
                       highlightedListingId === listing.id ? ' listing-table__row--highlight' : ''
                     }`}
                   >
+                    <td className="listing-table__detail-cell">
+                      {listing.publicDetailUrl ? (
+                        <a
+                          href={listing.publicDetailUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="listing-table__detail-link"
+                          aria-label="Open listing details in a new tab"
+                        >
+                          <span aria-hidden="true">ℹ️</span>
+                        </a>
+                      ) : (
+                        <span aria-hidden="true">—</span>
+                      )}
+                    </td>
                     {visibleColumnDefinitions.map((definition) => (
                       <td key={`${listing.id}-${definition.key}`}>{definition.render(listing)}</td>
                     ))}
