@@ -23,11 +23,40 @@ export interface SaveConfigurationProfileInput {
   table: ListingTableState;
 }
 
+function normaliseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Set<string>();
+  const result: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (deduped.has(key)) {
+      continue;
+    }
+    deduped.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function normaliseFilters(filters: ListingFilters | null | undefined): ListingFilters {
   const fallback: ListingFilters = {
     searchTerm: '',
     complex: '',
     owner: '',
+    subdivisions: [],
+    renewalCategories: [],
+    renewalMethods: [],
+    renewalMonths: [],
   };
 
   if (!filters || typeof filters !== 'object') {
@@ -38,6 +67,10 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     searchTerm: typeof filters.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters.complex === 'string' ? filters.complex : '',
     owner: typeof filters.owner === 'string' ? filters.owner : '',
+    subdivisions: normaliseStringArray(filters.subdivisions),
+    renewalCategories: normaliseStringArray(filters.renewalCategories),
+    renewalMethods: normaliseStringArray(filters.renewalMethods),
+    renewalMonths: normaliseStringArray(filters.renewalMonths),
   };
 }
 

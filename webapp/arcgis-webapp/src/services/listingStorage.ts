@@ -1,4 +1,5 @@
 import type { ListingAttributes, ListingRecord } from '@/types';
+import { categoriseRenewal } from '@/services/renewalEstimator';
 import { assertSupabaseClient } from '@/services/supabaseClient';
 
 type Nullable<T> = T | null;
@@ -58,6 +59,9 @@ function toListingRow(record: ListingRecord): ListingRow {
 }
 
 function fromListingRow(row: ListingRow): ListingRecord {
+  const rawAttributes = (row.raw as ListingAttributes | null) ?? {};
+  const renewalSnapshot = categoriseRenewal(rawAttributes);
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -78,7 +82,12 @@ function fromListingRow(row: ListingRow): ListingRecord {
     isBusinessOwner: Boolean(row.is_business_owner),
     latitude: typeof row.latitude === 'number' ? row.latitude : null,
     longitude: typeof row.longitude === 'number' ? row.longitude : null,
-    raw: (row.raw as ListingAttributes | null) ?? {},
+    estimatedRenewalDate: renewalSnapshot.estimate?.date ?? null,
+    estimatedRenewalMethod: renewalSnapshot.estimate?.method ?? null,
+    estimatedRenewalReference: renewalSnapshot.estimate?.reference ?? null,
+    estimatedRenewalCategory: renewalSnapshot.category,
+    estimatedRenewalMonthKey: renewalSnapshot.monthKey,
+    raw: rawAttributes,
   };
 }
 
