@@ -1,0 +1,12 @@
+[functions]
+
+  [[functions.schedules]]
+  name = "sync-listings-hourly"
+  cron = "0 * * * *"
+  function = "sync-listings"
+  enabled = true
+  [functions.schedules.args]
+  method = "POST"
+  body = "{}"
+    [functions.schedules.args.headers]
+    Authorization = "Bearer ${SYNC_SERVICE_TOKEN}"

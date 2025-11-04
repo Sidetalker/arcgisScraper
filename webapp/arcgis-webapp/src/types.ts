@@ -1,4 +1,4 @@
-import type { ListingTableState } from '@/constants/listingTable';
+import type { ListingTableState } from './constants/listingTable';
 
 export interface SpatialReference {
   wkid?: number;

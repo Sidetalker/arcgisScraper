@@ -244,6 +244,19 @@ visits do not trigger another Supabase read. The header surfaces both the
 Supabase sync time and the local cache timestamp, highlighting when the local
 copy is older than the most recent sync.
 
+### Automated syncs and telemetry
+
+Automated refreshes are handled by the Supabase Edge Function in
+`supabase/functions/sync-listings`. Deploy the function and schedule the
+included hourly cron trigger (`supabase/config.toml`) to post to the endpoint.
+The request must supply an `Authorization: Bearer <token>` header that matches
+the `SYNC_SERVICE_TOKEN` environment variable configured for the project. The
+function authenticates with the Supabase service role key, invokes the shared
+ArcGIS sync routine, and records the outcome inside a new
+`public.listing_sync_events` table (schema defined in
+`supabase/listing_sync_events.sql`). The React UI consumes this metadata to
+surface the last automated run and any failures directly in the header.
+
 ## Troubleshooting
 
 Some corporate networks block anonymous requests to ArcGIS Online services. If

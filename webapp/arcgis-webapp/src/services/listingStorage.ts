@@ -1,5 +1,5 @@
-import type { ListingAttributes, ListingRecord } from '@/types';
-import { assertSupabaseClient } from '@/services/supabaseClient';
+import type { ListingAttributes, ListingRecord } from '../types';
+import { assertSupabaseClient } from './supabaseClient';
 
 type Nullable<T> = T | null;
 
@@ -108,8 +108,12 @@ const LISTING_COLUMNS = [
 
 const PAGE_SIZE = 1000;
 
-export async function fetchStoredListings(): Promise<StoredListingSet> {
-  const client = assertSupabaseClient();
+type SupabaseClientLike = ReturnType<typeof assertSupabaseClient>;
+
+export async function fetchStoredListings(
+  clientOverride?: SupabaseClientLike,
+): Promise<StoredListingSet> {
+  const client = clientOverride ?? assertSupabaseClient();
   let from = 0;
   let latest: Date | null = null;
   const records: ListingRecord[] = [];
@@ -149,8 +153,11 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
   return { records, latestUpdatedAt: latest };
 }
 
-export async function replaceAllListings(records: ListingRecord[]): Promise<void> {
-  const client = assertSupabaseClient();
+export async function replaceAllListings(
+  records: ListingRecord[],
+  clientOverride?: SupabaseClientLike,
+): Promise<void> {
+  const client = clientOverride ?? assertSupabaseClient();
   const rows = records.map((record) => toListingRow(record));
 
   const { error: deleteError } = await client.from('listings').delete().neq('id', '');

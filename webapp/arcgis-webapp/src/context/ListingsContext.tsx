@@ -8,10 +8,14 @@ import {
   useState,
 } from 'react';
 
-import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
-import { toListingRecord } from '@/services/listingTransformer';
+import {
+  fetchRecentListingSyncEvents,
+  insertListingSyncEvent,
+  type ListingSyncEvent,
+} from '@/services/listingSyncEvents';
+import { syncListingsFromArcgis } from '@/shared/listingSync';
 import type { ListingRecord, RegionCircle } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
@@ -30,6 +34,7 @@ export interface ListingsContextValue {
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
   clearCacheAndReload: () => Promise<void>;
+  syncEvents: ListingSyncEvent[];
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -43,6 +48,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
+  const [syncEvents, setSyncEvents] = useState<ListingSyncEvent[]>([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -167,6 +173,15 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, [applyListingSnapshot]);
 
+  const loadSyncEvents = useCallback(async () => {
+    try {
+      const events = await fetchRecentListingSyncEvents({ limit: 10 });
+      setSyncEvents(events);
+    } catch (eventError) {
+      console.warn('Unable to load sync event history.', eventError);
+    }
+  }, []);
+
   const loadListingsFromSupabase = useCallback(async () => {
     setLoading(true);
     setSource('supabase');
@@ -175,6 +190,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       const { records, latestUpdatedAt } = await fetchStoredListings();
       applyListingSnapshot(records, latestUpdatedAt ?? null, null);
       await persistLocalCache(records, latestUpdatedAt ?? null);
+      await loadSyncEvents();
     } catch (loadError) {
       console.error('Failed to fetch listings from Supabase.', loadError);
       const message =
@@ -185,16 +201,17 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setLoading(false);
     }
-  }, [applyListingSnapshot, persistLocalCache]);
+  }, [applyListingSnapshot, loadSyncEvents, persistLocalCache]);
 
   useEffect(() => {
+    void loadSyncEvents();
     void (async () => {
       const hadLocal = await hydrateFromLocalCache();
       if (!hadLocal) {
         await loadListingsFromSupabase();
       }
     })();
-  }, [hydrateFromLocalCache, loadListingsFromSupabase]);
+  }, [hydrateFromLocalCache, loadListingsFromSupabase, loadSyncEvents]);
 
   const refresh = useCallback(() => {
     console.info('Refreshing listings from Supabase.');
@@ -232,28 +249,21 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     setSource('syncing');
     setError(null);
     try {
-      const featureSet = await fetchListings({
-        filters: { returnGeometry: true },
-        useCache: false,
-      });
-      const features = featureSet.features ?? [];
-      const seen = new Set<string>();
-      const records: ListingRecord[] = [];
-      features.forEach((feature, index) => {
-        const record = toListingRecord(feature, index);
-        if (seen.has(record.id)) {
-          return;
-        }
-        seen.add(record.id);
-        records.push(record);
+      const result = await syncListingsFromArcgis('manual', {
+        loadSnapshot: () => fetchStoredListings(),
+        replaceAll: (records: ListingRecord[]) => replaceAllListings(records),
+        recordEvent: insertListingSyncEvent,
       });
 
-      await replaceAllListings(records);
-      const syncTimestamp = new Date();
-      applyListingSnapshot(records, syncTimestamp, syncTimestamp);
-      await persistLocalCache(records, syncTimestamp);
+      const syncTimestamp = result.event.completedAt ?? result.summary.completedAt;
+      applyListingSnapshot(result.records, syncTimestamp, syncTimestamp);
+      await persistLocalCache(result.records, syncTimestamp);
+      setSyncEvents((current) => {
+        const withoutDuplicate = current.filter((event) => event.id !== result.event.id);
+        return [result.event, ...withoutDuplicate].slice(0, 10);
+      });
       console.info('Supabase listings were synchronised successfully.', {
-        listingCount: records.length,
+        listingCount: result.records.length,
       });
     } catch (syncError) {
       console.error('Failed to sync listings from ArcGIS into Supabase.', syncError);
@@ -290,6 +300,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       syncing,
       syncFromArcgis,
       clearCacheAndReload,
+      syncEvents,
     }),
     [
       cachedAt,
@@ -305,6 +316,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       regions,
       syncing,
       syncFromArcgis,
+      syncEvents,
     ],
   );
 

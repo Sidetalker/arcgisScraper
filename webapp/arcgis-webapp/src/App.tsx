@@ -22,6 +22,7 @@ function Layout(): JSX.Element {
     syncing,
     syncFromArcgis,
     clearCacheAndReload,
+    syncEvents,
   } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
 
@@ -57,6 +58,77 @@ function Layout(): JSX.Element {
       second: '2-digit',
     })}`;
   }, [localCachedAt]);
+
+  const latestSyncEvent = useMemo(() => syncEvents[0] ?? null, [syncEvents]);
+
+  const latestAutomatedEvent = useMemo(
+    () => syncEvents.find((event) => event.triggeredBy === 'scheduled') ?? null,
+    [syncEvents],
+  );
+
+  const latestFailureEvent = useMemo(
+    () => syncEvents.find((event) => event.status === 'error') ?? null,
+    [syncEvents],
+  );
+
+  const formatEventTimestamp = useCallback((date: Date | null) => {
+    if (!date) {
+      return 'Unknown time';
+    }
+    return date.toLocaleString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      month: 'short',
+      day: '2-digit',
+    });
+  }, []);
+
+  const formatEventSummary = useCallback((event: typeof latestSyncEvent) => {
+    if (!event) {
+      return 'No sync activity recorded yet.';
+    }
+
+    if (event.status === 'error') {
+      return event.errorMessage ?? 'Sync failed with an unknown error.';
+    }
+
+    const parts: string[] = [];
+    if (typeof event.addedCount === 'number') {
+      parts.push(`+${event.addedCount} added`);
+    }
+    if (typeof event.updatedCount === 'number') {
+      parts.push(`${event.updatedCount} updated`);
+    }
+    if (typeof event.removedCount === 'number') {
+      parts.push(`-${event.removedCount} removed`);
+    }
+
+    if (parts.length === 0) {
+      return 'No data changes detected.';
+    }
+
+    return parts.join(' · ');
+  }, []);
+
+  const latestSyncLabel = useMemo(() => {
+    if (!latestSyncEvent) {
+      return 'No syncs yet';
+    }
+    const kind = latestSyncEvent.triggeredBy === 'scheduled' ? 'Automated' : 'Manual';
+    return `${kind} sync ${formatEventTimestamp(latestSyncEvent.completedAt ?? latestSyncEvent.startedAt)}`;
+  }, [formatEventTimestamp, latestSyncEvent]);
+
+  const latestAutomatedLabel = useMemo(() => {
+    if (!latestAutomatedEvent) {
+      return 'No automated syncs yet';
+    }
+    const statusLabel =
+      latestAutomatedEvent.status === 'success' ? 'Succeeded' : 'Failed';
+    return `${statusLabel} ${formatEventTimestamp(
+      latestAutomatedEvent.completedAt ?? latestAutomatedEvent.startedAt,
+    )}`;
+  }, [formatEventTimestamp, latestAutomatedEvent]);
 
   return (
     <div className="app">
@@ -122,6 +194,57 @@ function Layout(): JSX.Element {
           >
             {supabaseSummary}
           </span>
+          <div className="app__sync-history">
+            <div
+              className={`app__sync-card ${
+                latestSyncEvent?.status === 'error'
+                  ? 'app__sync-card--error'
+                  : latestSyncEvent
+                  ? 'app__sync-card--ok'
+                  : 'app__sync-card--idle'
+              }`}
+            >
+              <span className="app__sync-card-label">Latest sync</span>
+              <span className="app__sync-card-value">{latestSyncLabel}</span>
+              <span className="app__sync-card-meta">{formatEventSummary(latestSyncEvent)}</span>
+            </div>
+            <div
+              className={`app__sync-card ${
+                latestAutomatedEvent?.status === 'error'
+                  ? 'app__sync-card--error'
+                  : latestAutomatedEvent
+                  ? 'app__sync-card--ok'
+                  : 'app__sync-card--idle'
+              }`}
+            >
+              <span className="app__sync-card-label">Automated sync</span>
+              <span className="app__sync-card-value">{latestAutomatedLabel}</span>
+              <span className="app__sync-card-meta">
+                {latestAutomatedEvent
+                  ? formatEventSummary(latestAutomatedEvent)
+                  : 'Waiting for the first scheduled sync run.'}
+              </span>
+            </div>
+            <div
+              className={`app__sync-card ${
+                latestFailureEvent ? 'app__sync-card--error' : 'app__sync-card--idle'
+              }`}
+            >
+              <span className="app__sync-card-label">Last failure</span>
+              <span className="app__sync-card-value">
+                {latestFailureEvent
+                  ? `Failure ${formatEventTimestamp(
+                      latestFailureEvent.completedAt ?? latestFailureEvent.startedAt,
+                    )}`
+                  : 'No recent failures'}
+              </span>
+              <span className="app__sync-card-meta">
+                {latestFailureEvent
+                  ? formatEventSummary(latestFailureEvent)
+                  : 'All monitored syncs have completed successfully.'}
+              </span>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -150,3 +273,4 @@ function App(): JSX.Element {
 }
 
 export default App;
+

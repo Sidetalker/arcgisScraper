@@ -108,6 +108,67 @@
   font-weight: 600;
 }
 
+.app__sync-history {
+  display: grid;
+  gap: 0.55rem;
+  width: min(100%, 340px);
+}
+
+.app__sync-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.app__sync-card-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.app__sync-card-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.app__sync-card-meta {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.app__sync-card--ok {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.app__sync-card--idle {
+  opacity: 0.85;
+}
+
+.app__sync-card--error {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
+}
+
+.app__sync-card--error .app__sync-card-label {
+  color: #b91c1c;
+}
+
+.app__sync-card--error .app__sync-card-value {
+  color: #991b1b;
+}
+
+.app__sync-card--error .app__sync-card-meta {
+  color: #7f1d1d;
+}
+
 .app__status {
   width: min(1280px, 100%);
   background: rgba(15, 23, 42, 0.04);
