@@ -5,8 +5,8 @@ describe('evChargingStations', () => {
   describe('getEvStations', () => {
     it('should parse EV charging stations from CSV', () => {
       const stations = getEvStations();
-      expect(stations.length).toBeGreaterThan(0);
-      
+      expect(stations.length).toBeGreaterThan(200);
+
       // Check first station has required fields
       const firstStation = stations[0];
       expect(firstStation).toHaveProperty('id');
@@ -37,7 +37,7 @@ describe('evChargingStations', () => {
       expect(distance).not.toBeNull();
       expect(typeof distance).toBe('number');
       expect(distance!).toBeGreaterThan(0);
-      expect(distance!).toBeLessThan(2000);
+      expect(distance!).toBeLessThan(1500);
     });
 
     it('should return different distances for different locations', () => {

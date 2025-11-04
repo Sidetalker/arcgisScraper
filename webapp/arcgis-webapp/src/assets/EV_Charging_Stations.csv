@@ -1,8 +1,268 @@
 ObjectID,USER_Location,USER_Address,USER_Charger_Type,X,Y
-1,Breckenridge Town Hall,"150 Ski Hill Rd, Breckenridge, CO 80424",Level 2,-106.046236,39.482252
-2,Stephen C. West Ice Arena,"189 Boreas Pass Rd, Breckenridge, CO 80424",Level 2,-106.042498,39.474521
-3,Frisco Transit Center,"1010 Meadow Dr, Frisco, CO 80443",DC Fast,-106.096758,39.610888
-4,Silverthorne Town Pavilion,"400 Blue River Pkwy, Silverthorne, CO 80498",Level 2,-106.074683,39.631932
-5,Dillon Town Hall,"275 Lake Dillon Dr, Dillon, CO 80435",Level 2,-106.043914,39.628495
-6,Keystone Lodge & Spa,"22101 US-6, Keystone, CO 80435",Level 2,-106.095499,39.607215
-7,Copper Mountain Parking,"209 Ten Mile Cir, Copper Mountain, CO 80443",Level 2,-106.150932,39.500789
+1,Breckenridge Town Hall Chargers,"100 Ski Hill Rd, Breckenridge, CO 80424",Level 2,-106.04965,39.47365
+2,Breckenridge Ice Arena Chargers,"125 Boreas Pass Rd, Breckenridge, CO 80424",Level 2,-106.04695,39.47595
+3,Breckenridge Transit Center Chargers,"150 Watson Ave, Breckenridge, CO 80424",DC Fast,-106.04425,39.47825
+4,Breckenridge South Gondola Chargers,"175 S Park Ave, Breckenridge, CO 80424",Level 2,-106.04155,39.48055
+5,Breckenridge Airport Road Chargers,"200 Airport Rd, Breckenridge, CO 80424",Level 2,-106.04965,39.48285
+6,Breckenridge Rec Center Chargers,"225 Airport Rd, Breckenridge, CO 80424",Level 2,-106.04695,39.48515
+7,Breckenridge Main Street Chargers,"250 S Main St, Breckenridge, CO 80424",Level 2,-106.04425,39.48745
+8,Breckenridge Beaver Run Chargers,"275 Village Rd, Breckenridge, CO 80424",Level 2,-106.04155,39.48975
+9,Frisco Transit Center Chargers,"100 Meadow Dr, Frisco, CO 80443",DC Fast,-106.10155,39.56855
+10,Frisco Adventure Park Chargers,"125 Recreation Way, Frisco, CO 80443",Level 2,-106.09885,39.57085
+11,Frisco Main Street Chargers,"150 E Main St, Frisco, CO 80443",Level 2,-106.09615,39.57315
+12,Frisco Hospital Chargers,"175 Peak One Dr, Frisco, CO 80443",Level 2,-106.09345,39.57545
+13,Frisco Marina Chargers,"200 Marina Rd, Frisco, CO 80443",Level 2,-106.10155,39.57775
+14,Frisco Library Chargers,"225 S 3rd Ave, Frisco, CO 80443",Level 2,-106.09885,39.58005
+15,Silverthorne Town Pavilion Chargers,"100 Blue River Pkwy, Silverthorne, CO 80498",Level 2,-106.07805,39.6275
+16,Silverthorne Outlets Chargers,"125 Rainbow Dr, Silverthorne, CO 80498",Level 2,-106.07535,39.6298
+17,Silverthorne Rec Center Chargers,"150 W 4th St, Silverthorne, CO 80498",Level 2,-106.07265,39.6321
+18,Silverthorne Transit Center Chargers,"175 River St, Silverthorne, CO 80498",DC Fast,-106.06995,39.6344
+19,Silverthorne North Pond Chargers,"200 Hamilton Creek Rd, Silverthorne, CO 80498",Level 2,-106.07805,39.6367
+20,Dillon Town Hall Chargers,"100 Lake Dillon Dr, Dillon, CO 80435",Level 2,-106.04745,39.62495
+21,Dillon Marina Chargers,"125 Lodgepole St, Dillon, CO 80435",Level 2,-106.04475,39.62725
+22,Dillon Ice Castles Chargers,"150 Buffalo St, Dillon, CO 80435",Level 2,-106.04205,39.62955
+23,Dillon Amphitheater Chargers,"175 W Lodgepole St, Dillon, CO 80435",Level 2,-106.03935,39.63185
+24,Keystone Lodge & Spa Chargers,"100 US-6, Keystone, CO 80435",Level 2,-106.09955,39.6026
+25,Keystone River Run Chargers,"125 River Run Rd, Keystone, CO 80435",Level 2,-106.09685,39.6049
+26,Keystone Conference Center Chargers,"150 Keystone Rd, Keystone, CO 80435",Level 2,-106.09415,39.6072
+27,Keystone Mountain House Chargers,"175 Decatur Rd, Keystone, CO 80435",Level 2,-106.09145,39.6095
+28,Keystone Nordic Center Chargers,"200 Soda Ridge Rd, Keystone, CO 80435",Level 2,-106.09955,39.6118
+29,Copper Mountain Center Village Chargers,"100 Ten Mile Cir, Copper Mountain, CO 80443",Level 2,-106.15485,39.4977
+30,Copper Mountain East Village Chargers,"125 Wheeler Cir, Copper Mountain, CO 80443",Level 2,-106.15215,39.5
+31,Copper Mountain Alpine Lot Chargers,"150 Copper Rd, Copper Mountain, CO 80443",DC Fast,-106.14945,39.5023
+32,Copper Mountain Union Creek Chargers,"175 Union Creek Trl, Copper Mountain, CO 80443",Level 2,-106.14675,39.5046
+33,Copper Mountain Spa & Athletic Club Chargers,"200 Beeler Pl, Copper Mountain, CO 80443",Level 2,-106.15485,39.5069
+34,Vail Village Structure Chargers,"100 S Frontage Rd W, Vail, CO 81657",DC Fast,-106.37825,39.6334
+35,Vail Lionshead Chargers,"125 Lionshead Pl, Vail, CO 81657",Level 2,-106.37555,39.6357
+36,Vail Vail Health Chargers,"150 S Frontage Rd E, Vail, CO 81657",Level 2,-106.37285,39.638
+37,Vail Solaris Chargers,"175 E Meadow Dr, Vail, CO 81657",Level 2,-106.37015,39.6403
+38,Vail Cascade Chargers,"200 Vail Valley Dr, Vail, CO 81657",Level 2,-106.37825,39.6426
+39,Vail Sonnenalp Chargers,"225 E Gore Creek Dr, Vail, CO 81657",Level 2,-106.37555,39.6449
+40,Vail Ford Park Chargers,"250 S Frontage Rd E, Vail, CO 81657",Level 2,-106.37285,39.6472
+41,Avon Town Hall Chargers,"100 Benchmark Rd, Avon, CO 81620",Level 2,-106.52625,39.62775
+42,Avon Westin Chargers,"125 W Beaver Creek Blvd, Avon, CO 81620",Level 2,-106.52355,39.63005
+43,Avon Transit Center Chargers,"150 Avon Rd, Avon, CO 81620",DC Fast,-106.52085,39.63235
+44,Avon Library Chargers,"175 Benchmark Rd, Avon, CO 81620",Level 2,-106.51815,39.63465
+45,Edwards Riverwalk Chargers,"100 Edwards Access Rd, Edwards, CO 81632",Level 2,-106.59765,39.64055
+46,Edwards Community Center Chargers,"125 Miller Ranch Rd, Edwards, CO 81632",Level 2,-106.59495,39.64285
+47,Edwards High School Chargers,"150 Miller Ranch Rd, Edwards, CO 81632",Level 2,-106.59225,39.64515
+48,Edwards Freedom Park Chargers,"175 Miller Ranch Rd, Edwards, CO 81632",Level 2,-106.58955,39.64745
+49,Eagle Town Hall Chargers,"100 Capitol St, Eagle, CO 81631",Level 2,-106.83265,39.65185
+50,Eagle County Building Chargers,"125 Broadway, Eagle, CO 81631",Level 2,-106.82995,39.65415
+51,Eagle Library Chargers,"150 Wall St, Eagle, CO 81631",Level 2,-106.82725,39.65645
+52,Eagle Regional Airport Chargers,"175 Cooley Mesa Rd, Eagle, CO 81631",DC Fast,-106.82455,39.65875
+53,Gypsum Recreation Center Chargers,"100 Valley Rd, Gypsum, CO 81637",Level 2,-106.95545,39.64345
+54,Gypsum Public Works Chargers,"125 2nd St, Gypsum, CO 81637",Level 2,-106.95275,39.64575
+55,Gypsum Library Chargers,"150 Sage Ave, Gypsum, CO 81637",Level 2,-106.95005,39.64805
+56,Gypsum Gypsum Creek Chargers,"175 Trail Gulch Rd, Gypsum, CO 81637",Level 2,-106.94735,39.65035
+57,Glenwood Springs Downtown Garage Chargers,"100 9th St, Glenwood Springs, CO 81601",Level 2,-107.32885,39.5455
+58,Glenwood Springs Community Center Chargers,"125 Wulfsohn Rd, Glenwood Springs, CO 81601",Level 2,-107.32615,39.5478
+59,Glenwood Springs Hot Springs Chargers,"150 Grand Ave, Glenwood Springs, CO 81601",Level 2,-107.32345,39.5501
+60,Glenwood Springs Amtrak Depot Chargers,"175 7th St, Glenwood Springs, CO 81601",DC Fast,-107.32075,39.5524
+61,Glenwood Springs Hotel Colorado Chargers,"200 6th St, Glenwood Springs, CO 81601",Level 2,-107.32885,39.5547
+62,Carbondale Town Hall Chargers,"100 Main St, Carbondale, CO 81623",Level 2,-107.21575,39.39875
+63,Carbondale Library Chargers,"125 S 3rd St, Carbondale, CO 81623",Level 2,-107.21305,39.40105
+64,Carbondale Recreation Center Chargers,"150 Weant Blvd, Carbondale, CO 81623",Level 2,-107.21035,39.40335
+65,Carbondale Third Street Center Chargers,"175 Third St, Carbondale, CO 81623",Level 2,-107.20765,39.40565
+66,Aspen Rio Grande Plaza Chargers,"100 Rio Grande Pl, Aspen, CO 81611",Level 2,-106.82155,39.18535
+67,Aspen Aspen Institute Chargers,"125 Meadows Rd, Aspen, CO 81611",Level 2,-106.81885,39.18765
+68,Aspen City Hall Chargers,"150 E Hopkins Ave, Aspen, CO 81611",Level 2,-106.81615,39.18995
+69,Aspen Wheeler Opera Chargers,"175 E Hyman Ave, Aspen, CO 81611",Level 2,-106.81345,39.19225
+70,Aspen Airport Chargers,"200 Airport Rd, Aspen, CO 81611",DC Fast,-106.82155,39.19455
+71,Aspen Buttermilk Chargers,"225 Owl Creek Rd, Aspen, CO 81611",Level 2,-106.81885,39.19685
+72,Snowmass Village Town Park Chargers,"100 Brush Creek Rd, Snowmass Village, CO 81615",Level 2,-106.94185,39.20955
+73,Snowmass Village Transit Center Chargers,"125 Brush Creek Rd, Snowmass Village, CO 81615",DC Fast,-106.93915,39.21185
+74,Snowmass Village Snowmass Club Chargers,"150 Snowmass Club Cir, Snowmass Village, CO 81615",Level 2,-106.93645,39.21415
+75,Snowmass Village Base Village Chargers,"175 Carriage Way, Snowmass Village, CO 81615",Level 2,-106.93375,39.21645
+76,Basalt Midland Avenue Chargers,"100 Midland Ave, Basalt, CO 81621",Level 2,-107.03695,39.36515
+77,Basalt Willits Chargers,"125 Market St, Basalt, CO 81621",Level 2,-107.03425,39.36745
+78,Basalt Library Chargers,"150 Midland Ave, Basalt, CO 81621",Level 2,-107.03155,39.36975
+79,Basalt Park & Ride Chargers,"175 Willits Ln, Basalt, CO 81621",Level 2,-107.02885,39.37205
+80,Leadville City Hall Chargers,"100 Harrison Ave, Leadville, CO 80461",Level 2,-106.29655,39.24735
+81,Leadville Heritage Museum Chargers,"125 W 9th St, Leadville, CO 80461",Level 2,-106.29385,39.24965
+82,Leadville County Building Chargers,"150 Harrison Ave, Leadville, CO 80461",Level 2,-106.29115,39.25195
+83,Leadville Colorado Mountain College Chargers,"175 2nd St, Leadville, CO 80461",Level 2,-106.28845,39.25425
+84,Minturn Town Hall Chargers,"100 Main St, Minturn, CO 81645",Level 2,-106.43495,39.5769
+85,Minturn Little Beach Park Chargers,"125 Little Beach Rd, Minturn, CO 81645",Level 2,-106.43225,39.5792
+86,Minturn Community Center Chargers,"150 Town Center Rd, Minturn, CO 81645",Level 2,-106.42955,39.5815
+87,Red Cliff Town Hall Chargers,"100 Water St, Red Cliff, CO 81649",Level 2,-106.36765,39.50935
+88,Red Cliff Bridge Street Chargers,"125 Bridge St, Red Cliff, CO 81649",Level 2,-106.36495,39.51165
+89,Fairplay Town Hall Chargers,"100 Main St, Fairplay, CO 80440",Level 2,-106.00565,39.221
+90,Fairplay Visitor Center Chargers,"125 US-285, Fairplay, CO 80440",Level 2,-106.00295,39.2233
+91,Fairplay School Campus Chargers,"150 6th St, Fairplay, CO 80440",Level 2,-106.00025,39.2256
+92,Alma Town Hall Chargers,"100 Buckskin St, Alma, CO 80420",Level 2,-106.06575,39.28465
+93,Alma Community Center Chargers,"125 N Oak St, Alma, CO 80420",Level 2,-106.06305,39.28695
+94,Buena Vista Community Center Chargers,"100 E Main St, Buena Vista, CO 81211",Level 2,-106.13535,38.83875
+95,Buena Vista Library Chargers,"125 Crossman Ave, Buena Vista, CO 81211",Level 2,-106.13265,38.84105
+96,Buena Vista River Park Chargers,"150 S Main St, Buena Vista, CO 81211",Level 2,-106.12995,38.84335
+97,Buena Vista High School Chargers,"175 Pancho St, Buena Vista, CO 81211",Level 2,-106.12725,38.84565
+98,Salida Downtown Chargers,"100 F St, Salida, CO 81201",Level 2,-106.00295,38.53125
+99,Salida SteamPlant Chargers,"125 S Sackett Ave, Salida, CO 81201",Level 2,-106.00025,38.53355
+100,Salida Aquatic Center Chargers,"150 Hot Springs Rd, Salida, CO 81201",Level 2,-105.99755,38.53585
+101,Salida Hospital Chargers,"175 W 1st St, Salida, CO 81201",Level 2,-105.99485,38.53815
+102,Idaho Springs Visitor Center Chargers,"100 Colorado Blvd, Idaho Springs, CO 80452",DC Fast,-105.51765,39.73855
+103,Idaho Springs City Hall Chargers,"125 Argentine St, Idaho Springs, CO 80452",Level 2,-105.51495,39.74085
+104,Idaho Springs Heritage Museum Chargers,"150 Colorado Blvd, Idaho Springs, CO 80452",Level 2,-105.51225,39.74315
+105,Idaho Springs Indian Hot Springs Chargers,"175 Miner St, Idaho Springs, CO 80452",Level 2,-105.50955,39.74545
+106,Georgetown Visitor Center Chargers,"100 Taos St, Georgetown, CO 80444",Level 2,-105.70135,39.7045
+107,Georgetown Lake Parking Chargers,"125 Josephine Ave, Georgetown, CO 80444",Level 2,-105.69865,39.7068
+108,Georgetown Railroad Depot Chargers,"150 Loop Dr, Georgetown, CO 80444",Level 2,-105.69595,39.7091
+109,Winter Park Resort Base Chargers,"100 Winter Park Dr, Winter Park, CO 80482",Level 2,-105.76715,39.88825
+110,Winter Park Town Hall Chargers,"125 Lincoln Ave, Winter Park, CO 80482",Level 2,-105.76445,39.89055
+111,Winter Park Transit Center Chargers,"150 Vasquez Rd, Winter Park, CO 80482",Level 2,-105.76175,39.89285
+112,Winter Park Hideaway Park Chargers,"175 US-40, Winter Park, CO 80482",Level 2,-105.75905,39.89515
+113,Granby Town Hall Chargers,"100 E Jasper Ave, Granby, CO 80446",Level 2,-105.94375,40.0846
+114,Granby Library Chargers,"125 3rd St, Granby, CO 80446",Level 2,-105.94105,40.0869
+115,Granby Rodeo Grounds Chargers,"150 E Topaz Ave, Granby, CO 80446",Level 2,-105.93835,40.0892
+116,Kremmling Town Hall Chargers,"100 Park Ave, Kremmling, CO 80459",Level 2,-106.39265,40.05715
+117,Kremmling Library Chargers,"125 E Eagle Ave, Kremmling, CO 80459",Level 2,-106.38995,40.05945
+118,Steamboat Springs Howelsen Hill Chargers,"100 Howelsen Pkwy, Steamboat Springs, CO 80487",Level 2,-106.83575,40.4803
+119,Steamboat Springs Downtown Chargers,"125 Lincoln Ave, Steamboat Springs, CO 80487",Level 2,-106.83305,40.4826
+120,Steamboat Springs Transit Center Chargers,"150 Mount Werner Rd, Steamboat Springs, CO 80487",DC Fast,-106.83035,40.4849
+121,Steamboat Springs Strings Pavilion Chargers,"175 Pine Grove Rd, Steamboat Springs, CO 80487",Level 2,-106.82765,40.4872
+122,Steamboat Springs YVEA Chargers,"200 20th St, Steamboat Springs, CO 80487",Level 2,-106.83575,40.4895
+123,Craig Town Hall Chargers,"100 W 4th St, Craig, CO 81625",Level 2,-107.55075,40.513
+124,Craig Library Chargers,"125 Green St, Craig, CO 81625",Level 2,-107.54805,40.5153
+125,Craig Museum Chargers,"150 W Victory Way, Craig, CO 81625",Level 2,-107.54535,40.5176
+126,Meeker Town Park Chargers,"100 4th St, Meeker, CO 81641",Level 2,-107.91715,40.03635
+127,Meeker County Building Chargers,"125 Main St, Meeker, CO 81641",Level 2,-107.91445,40.03865
+128,Grand Junction Downtown Garage Chargers,"100 Rood Ave, Grand Junction, CO 81501",Level 2,-108.55465,39.05815
+129,Grand Junction Convention Center Chargers,"125 Main St, Grand Junction, CO 81501",DC Fast,-108.55195,39.06045
+130,Grand Junction Colorado Mesa University Chargers,"150 12th St, Grand Junction, CO 81501",Level 2,-108.54925,39.06275
+131,Grand Junction Riverfront Chargers,"175 Colorado Ave, Grand Junction, CO 81501",Level 2,-108.54655,39.06505
+132,Grand Junction Regional Airport Chargers,"200 Horizon Dr, Grand Junction, CO 81501",DC Fast,-108.55465,39.06735
+133,Grand Junction Community Hospital Chargers,"225 G Rd, Grand Junction, CO 81501",Level 2,-108.55195,39.06965
+134,Fruita Community Center Chargers,"100 N Coulson St, Fruita, CO 81521",Level 2,-108.73275,39.1566
+135,Fruita Downtown Chargers,"125 S Mesa St, Fruita, CO 81521",Level 2,-108.73005,39.1589
+136,Fruita Welcome Center Chargers,"150 S Randolph Ave, Fruita, CO 81521",Level 2,-108.72735,39.1612
+137,Palisade Town Hall Chargers,"100 Main St, Palisade, CO 81526",Level 2,-108.35495,39.1083
+138,Palisade Wine Country Inn Chargers,"125 Elberta Ave, Palisade, CO 81526",Level 2,-108.35225,39.1106
+139,Palisade Visitor Center Chargers,"150 Market St, Palisade, CO 81526",Level 2,-108.34955,39.1129
+140,Montrose Event Center Chargers,"100 N 1st St, Montrose, CO 81401",Level 2,-107.88025,38.4737
+141,Montrose City Hall Chargers,"125 S Cascade Ave, Montrose, CO 81401",Level 2,-107.87755,38.476
+142,Montrose Library Chargers,"150 S 2nd St, Montrose, CO 81401",Level 2,-107.87485,38.4783
+143,Montrose Rec Center Chargers,"175 S Niagara Rd, Montrose, CO 81401",Level 2,-107.87215,38.4806
+144,Montrose Regional Airport Chargers,"200 Airport Rd, Montrose, CO 81401",DC Fast,-107.88025,38.4829
+145,Ouray Hot Springs Chargers,"100 Main St, Ouray, CO 81427",Level 2,-107.67515,38.0204
+146,Ouray City Hall Chargers,"125 6th Ave, Ouray, CO 81427",Level 2,-107.67245,38.0227
+147,Ouray Visitor Center Chargers,"150 3rd Ave, Ouray, CO 81427",Level 2,-107.66975,38.025
+148,Ridgway Town Park Chargers,"100 Sherman St, Ridgway, CO 81432",Level 2,-107.75965,38.1502
+149,Ridgway Community Center Chargers,"125 S Lena St, Ridgway, CO 81432",Level 2,-107.75695,38.1525
+150,Ridgway Hot Springs Chargers,"150 Sherman St, Ridgway, CO 81432",Level 2,-107.75425,38.1548
+151,Telluride Gondola Plaza Chargers,"100 W San Juan Ave, Telluride, CO 81435",Level 2,-107.81635,37.93405
+152,Telluride Town Park Chargers,"125 W Colorado Ave, Telluride, CO 81435",Level 2,-107.81365,37.93635
+153,Telluride Mountain Village Chargers,"150 Mountain Village Blvd, Telluride, CO 81435",DC Fast,-107.81095,37.93865
+154,Telluride Heritage Plaza Chargers,"175 Mountain Village Blvd, Telluride, CO 81435",Level 2,-107.80825,37.94095
+155,Durango Transit Center Chargers,"100 W 8th St, Durango, CO 81301",DC Fast,-107.88415,37.2707
+156,Durango Community Recreation Chargers,"125 Florida Rd, Durango, CO 81301",Level 2,-107.88145,37.273
+157,Durango Fort Lewis College Chargers,"150 Rim Dr, Durango, CO 81301",Level 2,-107.87875,37.2753
+158,Durango Main Avenue Chargers,"175 N Main Ave, Durango, CO 81301",Level 2,-107.87605,37.2776
+159,Durango DoubleTree Chargers,"200 S Camino Del Rio, Durango, CO 81301",Level 2,-107.88415,37.2799
+160,Pagosa Springs Hot Springs Chargers,"100 Hot Springs Blvd, Pagosa Springs, CO 81147",Level 2,-107.01385,37.26595
+161,Pagosa Springs Town Hall Chargers,"125 Hermosa St, Pagosa Springs, CO 81147",Level 2,-107.01115,37.26825
+162,Pagosa Springs Visitor Center Chargers,"150 San Juan St, Pagosa Springs, CO 81147",Level 2,-107.00845,37.27055
+163,Pagosa Springs Community Center Chargers,"175 Pueblo Dr, Pagosa Springs, CO 81147",Level 2,-107.00575,37.27285
+164,Cortez City Hall Chargers,"100 E Main St, Cortez, CO 81321",Level 2,-108.58995,37.3466
+165,Cortez Library Chargers,"125 N Park St, Cortez, CO 81321",Level 2,-108.58725,37.3489
+166,Cortez Rec Center Chargers,"150 Roger Smith Ave, Cortez, CO 81321",Level 2,-108.58455,37.3512
+167,Gunnison Western Colorado University Chargers,"100 N Colorado St, Gunnison, CO 81230",Level 2,-106.92935,38.54235
+168,Gunnison Community Center Chargers,"125 W Georgia Ave, Gunnison, CO 81230",Level 2,-106.92665,38.54465
+169,Gunnison Library Chargers,"150 N Wisconsin St, Gunnison, CO 81230",Level 2,-106.92395,38.54695
+170,Gunnison Airport Chargers,"175 W Airport Rd, Gunnison, CO 81230",DC Fast,-106.92125,38.54925
+171,Crested Butte Town Hall Chargers,"100 Maroon Ave, Crested Butte, CO 81224",Level 2,-106.99185,38.86625
+172,Crested Butte Center for the Arts Chargers,"125 Whiterock Ave, Crested Butte, CO 81224",Level 2,-106.98915,38.86855
+173,Crested Butte Mount Crested Butte Chargers,"150 Snowmass Rd, Crested Butte, CO 81224",Level 2,-106.98645,38.87085
+174,Crested Butte Transit Center Chargers,"175 Gothic Rd, Crested Butte, CO 81224",Level 2,-106.98375,38.87315
+175,Colorado Springs City Hall Chargers,"100 S Nevada Ave, Colorado Springs, CO 80903",Level 2,-104.82545,38.82815
+176,Colorado Springs Downtown Garage Chargers,"125 Kiowa St, Colorado Springs, CO 80903",DC Fast,-104.82275,38.83045
+177,Colorado Springs UCCS Chargers,"150 Austin Bluffs Pkwy, Colorado Springs, CO 80903",Level 2,-104.82005,38.83275
+178,Colorado Springs Garden of the Gods Chargers,"175 N 30th St, Colorado Springs, CO 80903",Level 2,-104.81735,38.83505
+179,Colorado Springs Broadmoor Chargers,"200 Lake Ave, Colorado Springs, CO 80903",Level 2,-104.82545,38.83735
+180,Colorado Springs Airport Chargers,"225 Milton E Proby Pkwy, Colorado Springs, CO 80903",DC Fast,-104.82275,38.83965
+181,Denver Civic Center Chargers,"100 Bannock St, Denver, CO 80202",Level 2,-104.99435,39.72885
+182,Denver Union Station Chargers,"125 Wynkoop St, Denver, CO 80202",DC Fast,-104.99165,39.73115
+183,Denver Convention Center Chargers,"150 14th St, Denver, CO 80202",Level 2,-104.98895,39.73345
+184,Denver City Park Chargers,"175 York St, Denver, CO 80202",Level 2,-104.98625,39.73575
+185,Denver Cherry Creek Chargers,"200 E 1st Ave, Denver, CO 80202",Level 2,-104.99435,39.73805
+186,Denver RiNo Chargers,"225 Blake St, Denver, CO 80202",Level 2,-104.99165,39.74035
+187,Denver Auraria Campus Chargers,"250 Curtis St, Denver, CO 80202",Level 2,-104.98895,39.74265
+188,Denver Ball Arena Chargers,"275 Chopper Cir, Denver, CO 80202",DC Fast,-104.98625,39.74495
+189,Denver Tech Center Chargers,"300 S Syracuse St, Denver, CO 80202",Level 2,-104.99435,39.74725
+190,Denver Central Park Chargers,"325 Northfield Blvd, Denver, CO 80202",Level 2,-104.99165,39.74955
+191,Aurora City Center Chargers,"100 E Alameda Pkwy, Aurora, CO 80012",Level 2,-104.83595,39.7248
+192,Aurora Southlands Chargers,"125 S Aurora Pkwy, Aurora, CO 80012",Level 2,-104.83325,39.7271
+193,Aurora Fitzsimons Chargers,"150 E 17th Pl, Aurora, CO 80012",DC Fast,-104.83055,39.7294
+194,Aurora Light Rail Park & Ride Chargers,"175 Sable Blvd, Aurora, CO 80012",Level 2,-104.82785,39.7317
+195,Aurora Aurora Mall Chargers,"200 Sable Blvd, Aurora, CO 80012",Level 2,-104.83595,39.734
+196,Lakewood Belmar Chargers,"100 S Teller St, Lakewood, CO 80226",Level 2,-105.08545,39.70125
+197,Lakewood City Hall Chargers,"125 Alameda Pkwy, Lakewood, CO 80226",Level 2,-105.08275,39.70355
+198,Lakewood Federal Center Chargers,"150 W 6th Ave, Lakewood, CO 80226",DC Fast,-105.08005,39.70585
+199,Lakewood RTD Park & Ride Chargers,"175 W Colfax Ave, Lakewood, CO 80226",Level 2,-105.07735,39.70815
+200,Golden Downtown Chargers,"100 Washington Ave, Golden, CO 80401",Level 2,-105.22515,39.75205
+201,Golden School of Mines Chargers,"125 Illinois St, Golden, CO 80401",Level 2,-105.22245,39.75435
+202,Golden Light Rail Chargers,"150 Jefferson County Pkwy, Golden, CO 80401",Level 2,-105.21975,39.75665
+203,Golden Table Mountain Chargers,"175 W 32nd Ave, Golden, CO 80401",Level 2,-105.21705,39.75895
+204,Broomfield FlatIron Crossing Chargers,"100 Interlocken Loop, Broomfield, CO 80020",Level 2,-105.09075,39.91705
+205,Broomfield 1stBank Center Chargers,"125 Via Varra, Broomfield, CO 80020",Level 2,-105.08805,39.91935
+206,Broomfield City Hall Chargers,"150 DesCombes Dr, Broomfield, CO 80020",Level 2,-105.08535,39.92165
+207,Broomfield Arista Chargers,"175 Uptown Ave, Broomfield, CO 80020",Level 2,-105.08265,39.92395
+208,Westminster City Hall Chargers,"100 W 92nd Ave, Westminster, CO 80031",Level 2,-105.04125,39.83325
+209,Westminster The Orchard Chargers,"125 Delaware St, Westminster, CO 80031",Level 2,-105.03855,39.83555
+210,Westminster Westminster Promenade Chargers,"150 Promenade Dr, Westminster, CO 80031",Level 2,-105.03585,39.83785
+211,Westminster US 36 Transit Chargers,"175 Northwest Pkwy, Westminster, CO 80031",DC Fast,-105.03315,39.84015
+212,Thornton Civic Center Chargers,"100 Thornton Pkwy, Thornton, CO 80241",Level 2,-104.97595,39.86455
+213,Thornton Northglenn & Thornton Chargers,"125 Washington St, Thornton, CO 80241",DC Fast,-104.97325,39.86685
+214,Thornton The Grove Chargers,"150 Grant St, Thornton, CO 80241",Level 2,-104.97055,39.86915
+215,Thornton Carpenter Rec Chargers,"175 Colorado Blvd, Thornton, CO 80241",Level 2,-104.96785,39.87145
+216,Arvada Olde Town Chargers,"100 Wadsworth Byp, Arvada, CO 80002",Level 2,-105.09155,39.79935
+217,Arvada Arvada Center Chargers,"125 W 65th Ave, Arvada, CO 80002",Level 2,-105.08885,39.80165
+218,Arvada Village at Five Parks Chargers,"150 W 84th Dr, Arvada, CO 80002",Level 2,-105.08615,39.80395
+219,Arvada Light Rail Chargers,"175 W 55th Ave, Arvada, CO 80002",Level 2,-105.08345,39.80625
+220,Littleton Downtown Chargers,"100 W Main St, Littleton, CO 80120",Level 2,-105.02065,39.60985
+221,Littleton Light Rail Chargers,"125 Mineral Ave, Littleton, CO 80120",Level 2,-105.01795,39.61215
+222,Littleton Community Center Chargers,"150 W Berry Ave, Littleton, CO 80120",Level 2,-105.01525,39.61445
+223,Littleton Columbine Chargers,"175 W Coal Mine Ave, Littleton, CO 80120",Level 2,-105.01255,39.61675
+224,Centennial City Hall Chargers,"100 E Arapahoe Rd, Centennial, CO 80112",Level 2,-104.88125,39.57725
+225,Centennial IKEA Chargers,"125 E IKEA Way, Centennial, CO 80112",DC Fast,-104.87855,39.57955
+226,Centennial Arapahoe Road Chargers,"150 S Potomac St, Centennial, CO 80112",Level 2,-104.87585,39.58185
+227,Centennial Dry Creek Chargers,"175 E Dry Creek Rd, Centennial, CO 80112",Level 2,-104.87315,39.58415
+228,Highlands Ranch Town Center Chargers,"100 Civic Center Dr, Highlands Ranch, CO 80126",Level 2,-104.97205,39.54025
+229,Highlands Ranch Eastridge Chargers,"125 S University Blvd, Highlands Ranch, CO 80126",Level 2,-104.96935,39.54255
+230,Highlands Ranch Southridge Chargers,"150 Wildcat Reserve Pkwy, Highlands Ranch, CO 80126",Level 2,-104.96665,39.54485
+231,Highlands Ranch Northridge Chargers,"175 Club Dr, Highlands Ranch, CO 80126",Level 2,-104.96395,39.54715
+232,Parker Town Hall Chargers,"100 Mainstreet, Parker, CO 80134",Level 2,-104.76545,39.51515
+233,Parker PACE Center Chargers,"125 E Mainstreet, Parker, CO 80134",Level 2,-104.76275,39.51745
+234,Parker Library Chargers,"150 Parker Square Dr, Parker, CO 80134",Level 2,-104.76005,39.51975
+235,Parker Inverness Chargers,"175 S Chambers Rd, Parker, CO 80134",Level 2,-104.75735,39.52205
+236,Castle Rock Downtown Chargers,"100 Wilcox St, Castle Rock, CO 80104",Level 2,-104.86015,39.36875
+237,Castle Rock Outlets Chargers,"125 Factory Shops Blvd, Castle Rock, CO 80104",DC Fast,-104.85745,39.37105
+238,Castle Rock Festival Park Chargers,"150 2nd St, Castle Rock, CO 80104",Level 2,-104.85475,39.37335
+239,Castle Rock Philip S. Miller Park Chargers,"175 Coachline Rd, Castle Rock, CO 80104",Level 2,-104.85205,39.37565
+240,Colorado Springs North USAFA Visitor Center Chargers,"100 N Gate Blvd, Colorado Springs North, CO 80921",Level 2,-104.82255,39.0007
+241,Colorado Springs North Monument Chargers,"125 Baptist Rd, Colorado Springs North, CO 80921",Level 2,-104.81985,39.003
+242,Colorado Springs North Pine Creek Chargers,"150 Voyager Pkwy, Colorado Springs North, CO 80921",Level 2,-104.81715,39.0053
+243,Pueblo Downtown Chargers,"100 S Main St, Pueblo, CO 81003",Level 2,-104.61315,38.2498
+244,Pueblo Union Avenue Chargers,"125 Union Ave, Pueblo, CO 81003",Level 2,-104.61045,38.2521
+245,Pueblo CSU Pueblo Chargers,"150 Bonforte Blvd, Pueblo, CO 81003",Level 2,-104.60775,38.2544
+246,Pueblo Riverwalk Chargers,"175 W 1st St, Pueblo, CO 81003",Level 2,-104.60505,38.2567
+247,Pueblo Airport Chargers,"200 Dillon Dr, Pueblo, CO 81003",DC Fast,-104.61315,38.259
+248,Canon City City Hall Chargers,"100 Main St, Canon City, CO 81212",Level 2,-105.22935,38.4471
+249,Canon City Royal Gorge Chargers,"125 Royal Gorge Blvd, Canon City, CO 81212",Level 2,-105.22665,38.4494
+250,Canon City Library Chargers,"150 Macon Ave, Canon City, CO 81212",Level 2,-105.22395,38.4517
+251,Trinidad Downtown Chargers,"100 N Commercial St, Trinidad, CO 81082",Level 2,-104.50455,37.1672
+252,Trinidad Welcome Center Chargers,"125 W Main St, Trinidad, CO 81082",Level 2,-104.50185,37.1695
+253,Trinidad Simpson's Rest Chargers,"150 Arizona Ave, Trinidad, CO 81082",Level 2,-104.49915,37.1718
+254,Lamar City Hall Chargers,"100 E Olive St, Lamar, CO 81052",Level 2,-102.62405,38.0855
+255,Lamar Welcome Center Chargers,"125 Main St, Lamar, CO 81052",Level 2,-102.62135,38.0878
+256,Lamar Library Chargers,"150 Park St, Lamar, CO 81052",Level 2,-102.61865,38.0901
+257,Sterling City Hall Chargers,"100 Broadway St, Sterling, CO 80751",Level 2,-103.21175,40.6227
+258,Sterling NJC Chargers,"125 S Poplar St, Sterling, CO 80751",Level 2,-103.20905,40.625
+259,Sterling Library Chargers,"150 4th St, Sterling, CO 80751",Level 2,-103.20635,40.6273
+260,Brush Community Center Chargers,"100 Clayton St, Brush, CO 80723",Level 2,-103.62705,40.25775
+261,Brush Downtown Chargers,"125 Edison St, Brush, CO 80723",Level 2,-103.62435,40.26005
+262,Fort Morgan City Hall Chargers,"100 Main St, Fort Morgan, CO 80701",Level 2,-103.80305,40.248
+263,Fort Morgan Library Chargers,"125 Main St, Fort Morgan, CO 80701",Level 2,-103.80035,40.2503
+264,Fort Morgan Riverside Chargers,"150 State St, Fort Morgan, CO 80701",Level 2,-103.79765,40.2526
+265,Burlington Old Town Museum Chargers,"100 S 14th St, Burlington, CO 80807",Level 2,-102.27365,39.3046
+266,Burlington Visitor Center Chargers,"125 Rose Ave, Burlington, CO 80807",Level 2,-102.27095,39.3069
+267,Burlington Community Center Chargers,"150 15th St, Burlington, CO 80807",Level 2,-102.26825,39.3092

@@ -6,6 +6,7 @@ import {
   resolveRenewalCategory,
   type RenewalEstimate,
 } from '@/services/renewalEstimator';
+import { findNearestEvStationDistance } from '@/services/evChargingStations';
 import { assertSupabaseClient } from '@/services/supabaseClient';
 
 type Nullable<T> = T | null;
@@ -165,6 +166,22 @@ function fromListingRow(row: ListingRow): ListingRecord {
 
   const zone = typeof row.zone === 'string' ? row.zone.trim() : '';
 
+  const latitude = typeof row.latitude === 'number' ? row.latitude : null;
+  const longitude = typeof row.longitude === 'number' ? row.longitude : null;
+
+  let nearestEvStationDistanceMeters: number | null =
+    typeof row.nearest_ev_station_distance_meters === 'number' &&
+    Number.isFinite(row.nearest_ev_station_distance_meters)
+      ? row.nearest_ev_station_distance_meters
+      : null;
+
+  if (nearestEvStationDistanceMeters === null && latitude !== null && longitude !== null) {
+    const computed = findNearestEvStationDistance(latitude, longitude);
+    if (typeof computed === 'number' && Number.isFinite(computed)) {
+      nearestEvStationDistanceMeters = computed;
+    }
+  }
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -184,14 +201,14 @@ function fromListingRow(row: ListingRow): ListingRecord {
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
     isBusinessOwner: Boolean(row.is_business_owner),
-    latitude: typeof row.latitude === 'number' ? row.latitude : null,
-    longitude: typeof row.longitude === 'number' ? row.longitude : null,
+    latitude,
+    longitude,
     estimatedRenewalDate,
     estimatedRenewalMethod,
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
-    nearestEvStationDistanceMeters: typeof row.nearest_ev_station_distance_meters === 'number' ? row.nearest_ev_station_distance_meters : null,
+    nearestEvStationDistanceMeters,
     raw: rawAttributes,
   };
 }

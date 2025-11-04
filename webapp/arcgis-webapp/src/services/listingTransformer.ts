@@ -502,6 +502,23 @@ export function toListingRecord(
   };
 }
 
+function ensureNearestEvDistance(listing: ListingRecord): number | null {
+  const currentDistance = listing.nearestEvStationDistanceMeters;
+  if (typeof currentDistance === 'number' && Number.isFinite(currentDistance)) {
+    return currentDistance;
+  }
+
+  if (typeof listing.latitude === 'number' && typeof listing.longitude === 'number') {
+    const computed = findNearestEvStationDistance(listing.latitude, listing.longitude);
+    if (typeof computed === 'number' && Number.isFinite(computed)) {
+      listing.nearestEvStationDistanceMeters = computed;
+      return computed;
+    }
+  }
+
+  return null;
+}
+
 export function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean {
   const search = filters.searchTerm.trim().toLowerCase();
   if (search) {
@@ -577,12 +594,12 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
   }
 
   if (filters.maxEvDistanceMiles !== null && filters.maxEvDistanceMiles > 0) {
-    const distanceMeters = listing.nearestEvStationDistanceMeters;
-    if (distanceMeters === null) {
+    const resolvedDistance = ensureNearestEvDistance(listing);
+    if (resolvedDistance === null) {
       return false;
     }
     const METERS_PER_MILE = 1609.34;
-    const distanceMiles = distanceMeters / METERS_PER_MILE;
+    const distanceMiles = resolvedDistance / METERS_PER_MILE;
     if (distanceMiles > filters.maxEvDistanceMiles) {
       return false;
     }
