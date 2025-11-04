@@ -1,3 +1,23 @@
+const NON_PERSON_DATA_URL = new URL('../src/data/nonPersonOwnerNames.json', import.meta.url);
+const EV_STATION_DATA_URL = new URL('../src/data/evChargingStations.json', import.meta.url);
+
+async function loadJsonResource(resourceUrl) {
+  if (typeof Deno !== 'undefined' && typeof Deno.readTextFile === 'function') {
+    const text = await Deno.readTextFile(resourceUrl);
+    return JSON.parse(text);
+  }
+
+  const [{ readFile }, { fileURLToPath }] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:url'),
+  ]);
+  const filePath = fileURLToPath(resourceUrl);
+  const text = await readFile(filePath, 'utf8');
+  return JSON.parse(text);
+}
+
+const nonPersonOwnerNames = await loadJsonResource(NON_PERSON_DATA_URL);
+
 const PAGE_SIZE = 1000;
 const MAX_SIGNAL_DEPTH = 4;
 const MAX_SIGNAL_ARRAY_LENGTH = 25;
@@ -21,6 +41,46 @@ const RENEWAL_METHODS = new Set([
 ]);
 
 const RENEWAL_CATEGORIES = new Set(['overdue', 'due_30', 'due_60', 'due_90', 'future', 'missing']);
+
+const MANUAL_NON_PERSON_NAMES = new Set(
+  Array.isArray(nonPersonOwnerNames) ? nonPersonOwnerNames.map((value) => String(value).toUpperCase()) : [],
+);
+
+const ORGANIZATION_PATTERNS = [
+  /\b(?:LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|COMPANY|CO\.|LTD|LIMITED|LP|L\.P\.|LLP|L\.L\.P\.|LLLP|PLC|PLLC|PC|P\.C\.|RLLP)\b/,
+  /\b(?:ASSOCIATION|ASSN|ASSOC|HOA|POA|COA|MASTER|HOMEOWNERS?|CONDOMINIUMS?|CONDOMINIUM|CONDO|RESORT|LODGE|HOTEL|INN|TIMESHARE|VACATION|VILLAGE|CLUB|RESIDENCES?|SUITES|APARTMENTS?|COMMON ELEMENT)\b/,
+  /\b(?:PARTNERS|PARTNERSHIP|INVESTMENTS?|INVESTORS?|CAPITAL|VENTURES?|ENTERPRISES?|GROUP|MANAGEMENT|MGMT|SERVICES?|SOLUTIONS?|ADVISORS?|CONSULTING|HOLDINGS?|HOLDING|DEVELOPMENT|DEVELOPERS?|PROPERTIES?|PROPERTY|REALTY|REAL ESTATE|HOMES?|HOSPITALITY|OPERATIONS|OPERATION|LODGING|RENTALS?)\b/,
+  /\b(?:TRUST|ESTATE|FOUNDATION|FUND|MINISTRIES|CHURCH|CATHOLIC|LUTHERAN|METHODIST|PRESBYTERIAN|EPISCOPAL|SOCIETY|HOSPITAL|UNIVERSITY|COLLEGE|SCHOOL|ACADEMY|BANK|MORTGAGE|CREDIT UNION|ASSOCIATES?)\b/,
+  /\b(?:TOWN|CITY|COUNTY|STATE|DISTRICT|DEPARTMENT|DEPT|AUTHORITY|BOARD|COMMISSIONERS?|COMMISSION|COUNCIL|HOUSING|URBAN|RENEWAL|METROPOLITAN|GOVERNMENT|PUBLIC|FIRE PROTECTION|FIRE DISTRICT|SANITATION|METRO DISTRICT)\b/,
+  /\b(?:C\/O|CARE OF|ET AL|ET UX|ET VIR|ET ALIA)\b/,
+  /\b(?:UNITED STATES|U\.S\.|USA)\b/,
+  /\b(?:SUMMIT COUNTY|BRECKENRIDGE|DILLON|FRISCO|SILVERTHORNE|COPPER MOUNTAIN|KEYSTONE) (?:TOWN|CITY|COUNTY|METRO|AUTHORITY)\b/,
+  /[#]/,
+];
+
+function isLikelyOrganization(name) {
+  if (!name) {
+    return true;
+  }
+  const normalised = String(name).trim();
+  if (normalised.length === 0) {
+    return true;
+  }
+  const collapsed = normalised.replace(/\s+/g, ' ');
+  const upper = collapsed.toUpperCase();
+  if (MANUAL_NON_PERSON_NAMES.has(upper)) {
+    return true;
+  }
+  for (const pattern of ORGANIZATION_PATTERNS) {
+    if (pattern.test(upper)) {
+      return true;
+    }
+  }
+  if (/\d/.test(upper) && !/\b(?:I|II|III|IV|V)\b/.test(upper)) {
+    return true;
+  }
+  return false;
+}
 
 function normaliseRenewalMethod(value) {
   if (!value || typeof value !== 'string') {
@@ -119,6 +179,23 @@ function collectOwnerNames(listing) {
   }
 
   return owners;
+}
+
+async function applyBusinessOwnerCorrections(supabase, listingIds, logger) {
+  const batchSize = 500;
+  for (let index = 0; index < listingIds.length; index += batchSize) {
+    const batch = listingIds.slice(index, index + batchSize);
+    const { error } = await supabase
+      .from('listings')
+      .update({ is_business_owner: true })
+      .in('id', batch);
+    if (error) {
+      throw error;
+    }
+  }
+  logger.info?.(
+    `[metrics] Marked ${listingIds.length.toLocaleString()} listings as business-owned via heuristics.`,
+  );
 }
 
 function addDays(date, days) {
@@ -567,9 +644,11 @@ export async function refreshListingAggregates(
     due_30: { count: 0, windowStart: null, windowEnd: null },
     due_60: { count: 0, windowStart: null, windowEnd: null },
     due_90: { count: 0, windowStart: null, windowEnd: null },
-    future: { count: 0, windowStart: null, windowEnd: null },
-    missing: { count: 0, windowStart: null, windowEnd: null },
-  };
+  future: { count: 0, windowStart: null, windowEnd: null },
+  missing: { count: 0, windowStart: null, windowEnd: null },
+};
+
+  const businessOwnerCorrections = new Set();
 
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -587,10 +666,20 @@ export async function refreshListingAggregates(
   summary.future.windowStart = formatDate(addDays(in90, 1));
 
   listings.forEach((listing) => {
+    const ownerCandidates = collectOwnerNames(listing);
+    const inferredBusinessOwner = ownerCandidates.some((owner) =>
+      isLikelyOrganization(owner.display),
+    );
+    const listingIsBusiness = Boolean(listing.is_business_owner) || inferredBusinessOwner;
+
+    if (!listing.is_business_owner && listingIsBusiness && listing.id) {
+      businessOwnerCorrections.add(listing.id);
+    }
+
     const subdivision = normaliseSubdivision(listing.subdivision);
     const stats = subdivisions.get(subdivision) || { total: 0, business: 0 };
     stats.total += 1;
-    if (listing.is_business_owner) {
+    if (listingIsBusiness) {
       stats.business += 1;
     }
     subdivisions.set(subdivision, stats);
@@ -598,12 +687,11 @@ export async function refreshListingAggregates(
     const zone = normaliseZone(listing.zone);
     const zoneStats = zones.get(zone) || { total: 0, business: 0 };
     zoneStats.total += 1;
-    if (listing.is_business_owner) {
+    if (listingIsBusiness) {
       zoneStats.business += 1;
     }
     zones.set(zone, zoneStats);
 
-    const ownerCandidates = collectOwnerNames(listing);
     if (ownerCandidates.length > 0) {
       const seen = new Set();
       for (const owner of ownerCandidates) {
@@ -624,7 +712,7 @@ export async function refreshListingAggregates(
         }
 
         existing.propertyCount += 1;
-        if (listing.is_business_owner) {
+        if (listingIsBusiness) {
           existing.businessPropertyCount += 1;
         } else {
           existing.individualPropertyCount += 1;
@@ -698,6 +786,14 @@ export async function refreshListingAggregates(
       summary.future.count += 1;
     }
   });
+
+  const reclassifiedBusinessIds = Array.from(businessOwnerCorrections);
+  if (reclassifiedBusinessIds.length > 0) {
+    logger.info?.(
+      `[metrics] Reclassifying ${reclassifiedBusinessIds.length.toLocaleString()} listings as business-owned prior to writing aggregates…`,
+    );
+    await applyBusinessOwnerCorrections(supabase, reclassifiedBusinessIds, logger);
+  }
 
   const subdivisionRows = Array.from(subdivisions.entries())
     .map(([subdivision, stats]) => ({
@@ -783,6 +879,7 @@ export async function refreshListingAggregates(
     landBaronsWritten: landBaronRows.length,
     totalBusinessOwners,
     totalIndividualOwners,
+    businessOwnerReclassifications: reclassifiedBusinessIds.length,
   };
 }
 

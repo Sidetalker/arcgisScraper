@@ -1,0 +1,359 @@
+[
+  {
+    "name": "1535 Vernon Odom Blvd, Akron, OH, 44320, USA",
+    "address": "1535 Vernon Odom Blvd, Akron, OH, 44320, USA",
+    "latitude": 41.063023955125,
+    "longitude": -81.576670232032,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "322 W Market St, Akron, OH, 44303, USA",
+    "address": "322 W Market St, Akron, OH, 44303, USA",
+    "latitude": 41.089964649216,
+    "longitude": -81.527935500037,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "834 W Market St, Akron, OH, 44303, USA",
+    "address": "834 W Market St, Akron, OH, 44303, USA",
+    "latitude": 41.096875654113,
+    "longitude": -81.544309464071,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1745 W Market St, Akron, OH, 44313, USA",
+    "address": "1745 W Market St, Akron, OH, 44313, USA",
+    "latitude": 41.11062465753,
+    "longitude": -81.571468842016,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "374 Bell St, Akron, OH, 44307, USA",
+    "address": "374 Bell St, Akron, OH, 44307, USA",
+    "latitude": 41.084009521613,
+    "longitude": -81.53570295243,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "11 W Mill St, Akron, OH, 44308, USA",
+    "address": "11 W Mill St, Akron, OH, 44308, USA",
+    "latitude": 41.083095763383,
+    "longitude": -81.519210441745,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "10 W Mill St, Akron, OH, 44308, USA",
+    "address": "10 W Mill St, Akron, OH, 44308, USA",
+    "latitude": 41.082951929924,
+    "longitude": -81.519708159156,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "W Buchtel Ave, Akron, OH, 44308, USA",
+    "address": "W Buchtel Ave, Akron, OH, 44308, USA",
+    "latitude": 41.079920209679,
+    "longitude": -81.527180410053,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "199 W Bowery St, Akron, OH, 44308, USA",
+    "address": "199 W Bowery St, Akron, OH, 44308, USA",
+    "latitude": 41.079479433167,
+    "longitude": -81.524297921697,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "348 Locust St, Akron, OH, 44302, USA",
+    "address": "348 Locust St, Akron, OH, 44302, USA",
+    "latitude": 41.077925093043,
+    "longitude": -81.527172746848,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "41 Furnace St, Akron, OH, 44308, USA",
+    "address": "41 Furnace St, Akron, OH, 44308, USA",
+    "latitude": 41.088511813939,
+    "longitude": -81.515109427979,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "122 S Broadway St, Akron, OH, 44308, USA",
+    "address": "122 S Broadway St, Akron, OH, 44308, USA",
+    "latitude": 41.08160529336,
+    "longitude": -81.515715439578,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "797 E Market St, Akron, OH, 44305, USA",
+    "address": "797 E Market St, Akron, OH, 44305, USA",
+    "latitude": 41.074189739802,
+    "longitude": -81.492870646293,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1561 Akron Peninsula Rd, Akron, OH, 44313, USA",
+    "address": "1561 Akron Peninsula Rd, Akron, OH, 44313, USA",
+    "latitude": 41.137544145406,
+    "longitude": -81.547320662787,
+    "chargerType": "Tesla"
+  },
+  {
+    "name": "1345 E Market St, Akron, OH, 44305, USA",
+    "address": "1345 E Market St, Akron, OH, 44305, USA",
+    "latitude": 41.063911095757,
+    "longitude": -81.478952579889,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "600 E Cuyahoga Falls Ave, Akron, OH, 44310, USA",
+    "address": "600 E Cuyahoga Falls Ave, Akron, OH, 44310, USA",
+    "latitude": 41.114017651935,
+    "longitude": -81.497795433503,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "160 Montrose West Ave, Copley, OH, 44321, USA",
+    "address": "160 Montrose West Ave, Copley, OH, 44321, USA",
+    "latitude": 41.129702330162,
+    "longitude": -81.653885749008,
+    "chargerType": "Tesla"
+  },
+  {
+    "name": "7481 Olde Eight Rd, Hudson, OH, 44236, USA",
+    "address": "7481 Olde Eight Rd, Hudson, OH, 44236, USA",
+    "latitude": 41.267839171343,
+    "longitude": -81.513358309509,
+    "chargerType": "J-1772/Tesla"
+  },
+  {
+    "name": "666 S Broadway St, Akron, OH, 44311, USA",
+    "address": "666 S Broadway St, Akron, OH, 44311, USA",
+    "latitude": 41.066882449426,
+    "longitude": -81.524580202618,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "2390 2nd St, Cuyahoga Falls, OH, 44221, USA",
+    "address": "2390 2nd St, Cuyahoga Falls, OH, 44221, USA",
+    "latitude": 41.140386496059,
+    "longitude": -81.482036549619,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1989 Front St, Cuyahoga Falls, OH, 44221, USA",
+    "address": "1989 Front St, Cuyahoga Falls, OH, 44221, USA",
+    "latitude": 41.132744667648,
+    "longitude": -81.483378895318,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "2356 Front St, Cuyahoga Falls, OH, 44221, USA",
+    "address": "2356 Front St, Cuyahoga Falls, OH, 44221, USA",
+    "latitude": 41.139142071427,
+    "longitude": -81.481389282961,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1900 23rd St, Cuyahoga Falls, OH, 44223, USA",
+    "address": "1900 23rd St, Cuyahoga Falls, OH, 44223, USA",
+    "latitude": 41.132560475326,
+    "longitude": -81.510075340751,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "4149 State Rd, Cuyahoga Falls, OH, 44223, USA",
+    "address": "4149 State Rd, Cuyahoga Falls, OH, 44223, USA",
+    "latitude": 41.184576638595,
+    "longitude": -81.508532651471,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "703 Kumho Dr, Akron, OH, 44333, USA",
+    "address": "703 Kumho Dr, Akron, OH, 44333, USA",
+    "latitude": 41.117789220063,
+    "longitude": -81.638264317349,
+    "chargerType": "CHAdeMO"
+  },
+  {
+    "name": "30 Springside Dr, Akron, OH, 44333, USA",
+    "address": "30 Springside Dr, Akron, OH, 44333, USA",
+    "latitude": 41.136500724189,
+    "longitude": -81.645089276901,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1260 Main St, Cuyahoga Falls, OH, 44221, USA",
+    "address": "1260 Main St, Cuyahoga Falls, OH, 44221, USA",
+    "latitude": 41.120775812827,
+    "longitude": -81.484354800305,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "921 Interstate Pkwy, Akron, OH, 44312, USA",
+    "address": "921 Interstate Pkwy, Akron, OH, 44312, USA",
+    "latitude": 40.979042398268,
+    "longitude": -81.488729650848,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "3737 State Rd, Cuyahoga Falls, OH, 44223, USA",
+    "address": "3737 State Rd, Cuyahoga Falls, OH, 44223, USA",
+    "latitude": 41.171576013403,
+    "longitude": -81.508542458298,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "3388 S Arlington Rd, Akron, OH, 44312, USA",
+    "address": "3388 S Arlington Rd, Akron, OH, 44312, USA",
+    "latitude": 40.978909838469,
+    "longitude": -81.493252358164,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1000 Interstate Pkwy, Akron, OH, 44312, USA",
+    "address": "1000 Interstate Pkwy, Akron, OH, 44312, USA",
+    "latitude": 40.978925051623,
+    "longitude": -81.486697123147,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1787 Thorn Dr, Uniontown, OH, 44685, USA",
+    "address": "1787 Thorn Dr, Uniontown, OH, 44685, USA",
+    "latitude": 40.960857524053,
+    "longitude": -81.464162627917,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "3700 Massillon Rd, Uniontown, OH, 44685, USA",
+    "address": "3700 Massillon Rd, Uniontown, OH, 44685, USA",
+    "latitude": 40.960284788609,
+    "longitude": -81.465374148202,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1541 E Turkeyfoot Lake Rd, Akron, OH, 44312, USA",
+    "address": "1541 E Turkeyfoot Lake Rd, Akron, OH, 44312, USA",
+    "latitude": 40.973962629668,
+    "longitude": -81.469028490348,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "1755 Town Park Blvd, Uniontown, OH, 44685, USA",
+    "address": "1755 Town Park Blvd, Uniontown, OH, 44685, USA",
+    "latitude": 40.950703225541,
+    "longitude": -81.469147345736,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "89 1st St, Hudson, OH, 44236, USA",
+    "address": "89 1st St, Hudson, OH, 44236, USA",
+    "latitude": 41.241801190768,
+    "longitude": -81.441967767403,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "5400 Lauby Rd, North Canton, OH, 44720, USA",
+    "address": "5400 Lauby Rd, North Canton, OH, 44720, USA",
+    "latitude": 40.91775731692,
+    "longitude": -81.430154815983,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "5381 Darrow Rd, Hudson, OH, 44236, USA",
+    "address": "5381 Darrow Rd, Hudson, OH, 44236, USA",
+    "latitude": 41.211469011014,
+    "longitude": -81.436371003015,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "5661 Stow Rd, Hudson, OH, 44236, USA",
+    "address": "5661 Stow Rd, Hudson, OH, 44236, USA",
+    "latitude": 41.211361010192,
+    "longitude": -81.405337006508,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "8210 Macedonia Commons Blvd, Macedonia, OH, 44056, USA",
+    "address": "8210 Macedonia Commons Blvd, Macedonia, OH, 44056, USA",
+    "latitude": 41.311749262415,
+    "longitude": -81.517035840786,
+    "chargerType": "Supercharger"
+  },
+  {
+    "name": "60 Kendall Park Rd, Peninsula, OH, 44264, USA",
+    "address": "60 Kendall Park Rd, Peninsula, OH, 44264, USA",
+    "latitude": 41.220004638294,
+    "longitude": -81.492674928854,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "600 Highland Rd E, Macedonia, OH, 44056, USA",
+    "address": "600 Highland Rd E, Macedonia, OH, 44056, USA",
+    "latitude": 41.298976205894,
+    "longitude": -81.502429536312,
+    "chargerType": "Wall/J-1772"
+  },
+  {
+    "name": "5238 Young Rd, Stow, OH, 44224, USA",
+    "address": "5238 Young Rd, Stow, OH, 44224, USA",
+    "latitude": 41.194413072268,
+    "longitude": -81.402256578685,
+    "chargerType": "NEMA TT-30 Wall"
+  },
+  {
+    "name": "4331 Lakepointe Corporate Dr, Stow, OH, 44224, USA",
+    "address": "4331 Lakepointe Corporate Dr, Stow, OH, 44224, USA",
+    "latitude": 41.183632291473,
+    "longitude": -81.474628858955,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "4300 Allen Rd, Stow, OH, 44224, USA",
+    "address": "4300 Allen Rd, Stow, OH, 44224, USA",
+    "latitude": 41.18463418036,
+    "longitude": -81.474001473503,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "49 Northmoreland Ave, Munroe Falls, OH, 44262, USA",
+    "address": "49 Northmoreland Ave, Munroe Falls, OH, 44262, USA",
+    "latitude": 41.131303776582,
+    "longitude": -81.441848744378,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "11550 Valley View Rd, Northfield, OH, 44067, USA",
+    "address": "11550 Valley View Rd, Northfield, OH, 44067, USA",
+    "latitude": 41.338067600195,
+    "longitude": -81.563553810848,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "4351 Steels Pointe, Stow, OH, 44224, USA",
+    "address": "4351 Steels Pointe, Stow, OH, 44224, USA",
+    "latitude": 41.182447383731,
+    "longitude": -81.480187569503,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "4170 Steels Pointe, Stow, OH, 44224, USA",
+    "address": "4170 Steels Pointe, Stow, OH, 44224, USA",
+    "latitude": 41.18228552918,
+    "longitude": -81.481758338158,
+    "chargerType": "J-1772"
+  },
+  {
+    "name": "2495 E Aurora Rd, Twinsburg, OH, 44087, USA",
+    "address": "2495 E Aurora Rd, Twinsburg, OH, 44087, USA",
+    "latitude": 41.31145359078,
+    "longitude": -81.448691311036,
+    "chargerType": "Supercharger"
+  },
+  {
+    "name": "4097 Bridgewater Pkwy, Stow, OH, 44224, USA",
+    "address": "4097 Bridgewater Pkwy, Stow, OH, 44224, USA",
+    "latitude": 41.178798950826,
+    "longitude": -81.480548326615,
+    "chargerType": "J-1772"
+  }
+]

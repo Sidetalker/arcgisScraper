@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import nonPersonOwnerNames from '@/data/nonPersonOwnerNames.json';
+
 import {
   deriveLatestMetricsTimestamp,
   fetchListingMetrics,
@@ -86,43 +88,7 @@ const LAND_BARON_SECTION_SIZE = 5;
 const ZONE_LIMIT = 10;
 
 const MANUAL_NON_PERSON_NAMES = new Set(
-  [
-    'Data Not Available',
-    'Unknown',
-    'Unknown Owner',
-    'Unknown Owners',
-    'Unknown Owner S',
-    'Unknown Owner(s)',
-    'Unassigned',
-    'To Be Determined',
-    'Tbd',
-    'None',
-    'N/A',
-    'Na',
-    'Various Owners',
-    'Multiple Owners',
-    'Multiple Owner',
-    'No Owner On File',
-    'No Owner Listed',
-    'Not Available',
-    'Not Applicable',
-    'State Of Colorado',
-    'State Of Colorado Department Of Transportation',
-    'United States Of America',
-    'Us Government',
-    'U.s. Government',
-    'U S Government',
-    'Usa',
-    'Summit Cty Brd Of Commissioners',
-    'Breckenridge Town Of',
-    'Grand Lodge On Peak 7 Intrvl Owner Ass',
-    'Silverthorne Town Of',
-    'Town Of Frisco',
-    'Town Of Dillon',
-    'Town Of Blue River',
-    'Town Of Montezuma',
-    'Data Not Provided',
-  ].map((value) => value.toUpperCase()),
+  (nonPersonOwnerNames as string[]).map((value) => value.toUpperCase()),
 );
 
 const ORGANIZATION_PATTERNS: RegExp[] = [
@@ -326,12 +292,16 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       const ownersWritten =
         typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
       const zonesWritten = typeof result.zonesWritten === 'number' ? result.zonesWritten : 0;
+      const businessReclassified =
+        typeof result.businessOwnerReclassifications === 'number'
+          ? result.businessOwnerReclassifications
+          : 0;
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, then tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, reclassified ${businessReclassified.toLocaleString()} business owners, then tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
       );
       await loadMetrics();
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, then tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, reclassified ${businessReclassified.toLocaleString()} business owners, then tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
       );
     } catch (refreshError) {
       console.error('Failed to trigger listing metrics refresh.', refreshError);

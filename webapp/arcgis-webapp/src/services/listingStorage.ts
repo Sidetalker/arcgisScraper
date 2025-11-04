@@ -84,6 +84,7 @@ export interface ListingRow {
   estimated_renewal_reference: Nullable<string>;
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
+  distance_to_ev_station_meters: Nullable<number>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -120,6 +121,10 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
+    distance_to_ev_station_meters:
+      typeof record.nearestEvStationDistanceMeters === 'number'
+        ? record.nearestEvStationDistanceMeters
+        : null,
     raw: (record.raw as Record<string, unknown>) ?? null,
   };
 }
