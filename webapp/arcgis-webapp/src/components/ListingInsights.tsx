@@ -191,6 +191,12 @@ interface ZoneOverviewRow {
   fallback: boolean;
 }
 
+interface ZoneSuppressionStats {
+  missingMetrics: number;
+  belowThreshold: number;
+  truncated: number;
+}
+
 function buildSubdivisionDisplay(
   subdivisions: SubdivisionMetric[],
   limit: number,
@@ -352,7 +358,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
   }, [metrics, subdivisionLimit]);
 
-  const zoneRows = useMemo<ZoneOverviewRow[]>(() => {
+  const zoneOverview = useMemo((): { rows: ZoneOverviewRow[]; suppression: ZoneSuppressionStats } => {
     const metricsList: ZoneMetric[] = metrics?.zones ?? [];
     const usedMetricIndexes = new Set<number>();
 
@@ -394,15 +400,23 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       });
     });
 
+    const suppression: ZoneSuppressionStats = {
+      missingMetrics: 0,
+      belowThreshold: 0,
+      truncated: 0,
+    };
+
     const filtered = rows.filter((row) => {
       if (!row.metric) {
+        suppression.missingMetrics += 1;
         return false;
       }
       const totalListings = row.metric.totalListings;
-      if (typeof totalListings !== 'number') {
+      if (typeof totalListings !== 'number' || totalListings < MIN_ZONE_LISTING_THRESHOLD) {
+        suppression.belowThreshold += 1;
         return false;
       }
-      return totalListings >= MIN_ZONE_LISTING_THRESHOLD;
+      return true;
     });
 
     filtered.sort((a, b) => {
@@ -414,12 +428,16 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       return totalB - totalA;
     });
 
-    if (filtered.length <= MAX_ZONE_OVERVIEW_ROWS) {
-      return filtered;
+    if (filtered.length > MAX_ZONE_OVERVIEW_ROWS) {
+      suppression.truncated = filtered.length - MAX_ZONE_OVERVIEW_ROWS;
+      return { rows: filtered.slice(0, MAX_ZONE_OVERVIEW_ROWS), suppression };
     }
 
-    return filtered.slice(0, MAX_ZONE_OVERVIEW_ROWS);
+    return { rows: filtered, suppression };
   }, [metrics]);
+
+  const zoneRows = zoneOverview.rows;
+  const zoneSuppression = zoneOverview.suppression;
 
   const landBaronEntries = useMemo(() => {
     if (!metrics) {
@@ -776,7 +794,19 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
             })}
           </ul>
           <p className="insight-card__hint">
-            Tiles highlighted in blue filter the listings table; dashed tiles surface metrics that need zoning research.
+            {zoneRows.length > 0
+              ? `Showing ${zoneRows.length.toLocaleString()} zone${zoneRows.length === 1 ? '' : 's'} with at least ${MIN_ZONE_LISTING_THRESHOLD.toLocaleString()} cached listings.`
+              : 'Supabase has not cataloged enough listings per zone to populate this overview yet.'}
+            {zoneSuppression.belowThreshold > 0
+              ? ` ${zoneSuppression.belowThreshold.toLocaleString()} zone${zoneSuppression.belowThreshold === 1 ? '' : 's'} fell below the ${MIN_ZONE_LISTING_THRESHOLD.toLocaleString()}-listing visibility threshold.`
+              : ''}
+            {zoneSuppression.missingMetrics > 0
+              ? ` ${zoneSuppression.missingMetrics.toLocaleString()} zone${zoneSuppression.missingMetrics === 1 ? '' : 's'} are missing Supabase metrics and will appear once data lands.`
+              : ''}
+            {zoneSuppression.truncated > 0
+              ? ` ${zoneSuppression.truncated.toLocaleString()} additional zone${zoneSuppression.truncated === 1 ? '' : 's'} were truncated to keep the grid concise.`
+              : ''}
+            {' '}Tiles highlighted in blue filter the listings table; dashed tiles surface metrics that need zoning research.
           </p>
         </article>
 
