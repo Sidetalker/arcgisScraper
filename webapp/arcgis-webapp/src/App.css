@@ -44,6 +44,12 @@
   align-items: start;
 }
 
+.app__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
 @media (max-width: 960px) {
   .app {
     padding: 2.5rem clamp(1.25rem, 4vw, 2rem) 3.5rem;
@@ -55,6 +61,10 @@
 
   .app__content {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app__main {
+    gap: 2rem;
   }
 }
 
