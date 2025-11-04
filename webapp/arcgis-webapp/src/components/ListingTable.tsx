@@ -12,6 +12,10 @@ import {
 } from 'react';
 import { Link } from 'react-router-dom';
 
+import {
+  type ListingTableColumnFilters,
+  type ListingTableColumnKey,
+} from '@/constants/listingTable';
 import type { ListingRecord } from '@/types';
 
 interface ListingTableProps {
@@ -22,21 +26,15 @@ interface ListingTableProps {
   isLoading: boolean;
   error?: string | null;
   highlightedListingId?: string;
+  columnOrder: ListingTableColumnKey[];
+  hiddenColumns: ListingTableColumnKey[];
+  columnFilters: ListingTableColumnFilters;
+  onColumnOrderChange: (order: ListingTableColumnKey[]) => void;
+  onHiddenColumnsChange: (hidden: ListingTableColumnKey[]) => void;
+  onColumnFiltersChange: (filters: ListingTableColumnFilters) => void;
 }
 
-type ColumnKey =
-  | 'complex'
-  | 'unit'
-  | 'owners'
-  | 'business'
-  | 'mailingAddress'
-  | 'mailingCity'
-  | 'mailingState'
-  | 'mailingZip'
-  | 'subdivision'
-  | 'scheduleNumber'
-  | 'physicalAddress'
-  | 'details';
+type ColumnKey = ListingTableColumnKey;
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -195,15 +193,6 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
 ];
 
-type ColumnFilters = Record<ColumnKey, string>;
-
-function createInitialFilters(): ColumnFilters {
-  return COLUMN_DEFINITIONS.reduce<ColumnFilters>((acc, column) => {
-    acc[column.key] = '';
-    return acc;
-  }, {} as ColumnFilters);
-}
-
 export function ListingTable({
   listings,
   pageSize,
@@ -212,12 +201,13 @@ export function ListingTable({
   isLoading,
   error,
   highlightedListingId,
+  columnOrder,
+  hiddenColumns,
+  columnFilters,
+  onColumnOrderChange,
+  onHiddenColumnsChange,
+  onColumnFiltersChange,
 }: ListingTableProps) {
-  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(() =>
-    COLUMN_DEFINITIONS.map((definition) => definition.key),
-  );
-  const [hiddenColumns, setHiddenColumns] = useState<ColumnKey[]>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFilters>(() => createInitialFilters());
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -368,42 +358,43 @@ export function ListingTable({
       (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const rawValue = event.target.value;
         const nextValue = options?.normalize ? options.normalize(rawValue) : rawValue;
-        setColumnFilters((previous) => {
-          if (previous[columnKey] === nextValue) {
-            return previous;
-          }
-          return { ...previous, [columnKey]: nextValue };
-        });
+        if (columnFilters[columnKey] === nextValue) {
+          return;
+        }
+        onColumnFiltersChange({ ...columnFilters, [columnKey]: nextValue });
         onPageChange(1);
       },
-    [onPageChange],
+    [columnFilters, onColumnFiltersChange, onPageChange],
   );
 
   const handleHideColumn = useCallback(
     (columnKey: ColumnKey) => {
-      setHiddenColumns((previous) => {
-        if (previous.includes(columnKey)) {
-          return previous;
-        }
-        return [...previous, columnKey];
-      });
-      setColumnFilters((previous) => {
-        if (!previous[columnKey]) {
-          return previous;
-        }
-        return { ...previous, [columnKey]: '' };
-      });
+      if (!hiddenColumns.includes(columnKey)) {
+        onHiddenColumnsChange([...hiddenColumns, columnKey]);
+      }
+      if (columnFilters[columnKey]) {
+        onColumnFiltersChange({ ...columnFilters, [columnKey]: '' });
+      }
       scheduleScrollIndicatorUpdate();
     },
-    [scheduleScrollIndicatorUpdate],
+    [
+      columnFilters,
+      hiddenColumns,
+      onColumnFiltersChange,
+      onHiddenColumnsChange,
+      scheduleScrollIndicatorUpdate,
+    ],
   );
 
   const handleUnhideColumn = useCallback(
     (columnKey: ColumnKey) => {
-      setHiddenColumns((previous) => previous.filter((key) => key !== columnKey));
+      if (!hiddenColumns.includes(columnKey)) {
+        return;
+      }
+      onHiddenColumnsChange(hiddenColumns.filter((key) => key !== columnKey));
       scheduleScrollIndicatorUpdate();
     },
-    [scheduleScrollIndicatorUpdate],
+    [hiddenColumns, onHiddenColumnsChange, scheduleScrollIndicatorUpdate],
   );
 
   const handleDragStart = useCallback(
@@ -475,18 +466,16 @@ export function ListingTable({
         return;
       }
 
-      setColumnOrder((previous) => {
-        const nextOrder = previous.filter((key) => key !== sourceColumn);
-        const insertIndex = nextOrder.indexOf(columnKey);
-        if (insertIndex === -1) {
-          return previous;
-        }
-        nextOrder.splice(insertIndex, 0, sourceColumn);
-        return [...nextOrder];
-      });
+      const nextOrder = columnOrder.filter((key) => key !== sourceColumn);
+      const insertIndex = nextOrder.indexOf(columnKey);
+      if (insertIndex === -1) {
+        return;
+      }
+      nextOrder.splice(insertIndex, 0, sourceColumn);
+      onColumnOrderChange([...nextOrder]);
       scheduleScrollIndicatorUpdate();
     },
-    [scheduleScrollIndicatorUpdate, stopAutoScroll],
+    [columnOrder, onColumnOrderChange, scheduleScrollIndicatorUpdate, stopAutoScroll],
   );
 
   const handleDragEnd = useCallback(() => {

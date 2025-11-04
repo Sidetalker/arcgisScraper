@@ -1,3 +1,4 @@
+import { normaliseTableState, type ListingTableState } from '@/constants/listingTable';
 import { assertSupabaseClient } from '@/services/supabaseClient';
 import {
   type ConfigurationProfile,
@@ -10,6 +11,7 @@ interface ConfigurationProfileRow {
   name: string;
   filters: ListingFilters | null;
   regions: RegionCircle[] | null;
+  table_state: ListingTableState | null;
   updated_at?: string | null;
 }
 
@@ -18,6 +20,7 @@ export interface SaveConfigurationProfileInput {
   name: string;
   filters: ListingFilters;
   regions: RegionCircle[];
+  table: ListingTableState;
 }
 
 function normaliseFilters(filters: ListingFilters | null | undefined): ListingFilters {
@@ -71,6 +74,7 @@ function fromRow(row: ConfigurationProfileRow): ConfigurationProfile {
     name: row.name,
     filters: normaliseFilters(row.filters),
     regions: normaliseRegions(row.regions),
+    table: normaliseTableState(row.table_state),
     updatedAt: normalisedUpdatedAt,
   };
 }
@@ -81,6 +85,7 @@ function prepareRow(input: SaveConfigurationProfileInput): Partial<Configuration
     name: input.name,
     filters: input.filters,
     regions: input.regions,
+    table_state: input.table,
     updated_at: new Date().toISOString(),
   };
 }
@@ -90,7 +95,7 @@ export async function fetchConfigurationProfiles(): Promise<ConfigurationProfile
 
   const { data, error } = await client
     .from('configuration_profiles')
-    .select('id, name, filters, regions, updated_at')
+    .select('id, name, filters, regions, table_state, updated_at')
     .order('name', { ascending: true });
 
   if (error) {
@@ -110,7 +115,7 @@ export async function saveConfigurationProfile(
   const { data, error } = await client
     .from('configuration_profiles')
     .upsert(payload, { onConflict: 'id' })
-    .select('id, name, filters, regions, updated_at')
+    .select('id, name, filters, regions, table_state, updated_at')
     .single();
 
   if (error) {
