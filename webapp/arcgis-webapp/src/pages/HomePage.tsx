@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 
 import FilterPanel from '@/components/FilterPanel';
@@ -15,6 +15,10 @@ import {
 } from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
 import { applyFilters } from '@/services/listingTransformer';
+import {
+  createMailingListCsvBlob,
+  createMailingListFileBasename,
+} from '@/services/mailingListExport';
 import {
   fetchConfigurationProfiles,
   saveConfigurationProfile,
@@ -120,20 +124,7 @@ function isListingInsideRegions(
 }
 
 function HomePage(): JSX.Element {
-  const {
-    listings,
-    loading,
-    error,
-    regions,
-    onRegionsChange,
-    cachedAt,
-    source,
-    canRequestMailingListExport,
-    exportJob,
-    requestMailingListExport,
-    refreshMailingListExport,
-    clearMailingListExport,
-  } = useListings();
+  const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -148,8 +139,12 @@ function HomePage(): JSX.Element {
   const [localProfileName, setLocalProfileName] = useState(DEFAULT_PROFILE_NAME);
   const [savingProfile, setSavingProfile] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [exportRequesting, setExportRequesting] = useState(false);
-  const exportPollingRef = useRef<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportLinks, setExportLinks] = useState<{
+    csvUrl: string;
+    basename: string;
+  } | null>(null);
+  const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
   const supabaseAvailable = Boolean(supabase);
 
@@ -313,57 +308,16 @@ function HomePage(): JSX.Element {
   }, [filters, regions, tableState, localProfileId, localProfileName]);
 
   useEffect(() => {
-    if (!exportJob) {
-      if (exportPollingRef.current !== null) {
-        window.clearInterval(exportPollingRef.current);
-        exportPollingRef.current = null;
+    const currentLinks = exportLinks;
+    return () => {
+      if (!currentLinks || typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+        return;
       }
-      return;
-    }
-
-    if (exportJob.status === 'pending' || exportJob.status === 'processing') {
-      const poll = async () => {
-        try {
-          await refreshMailingListExport(exportJob.id);
-        } catch (pollError) {
-          console.error('Failed to refresh mailing list export job.', pollError);
-          setExportError((current) =>
-            current ??
-            (pollError instanceof Error
-              ? pollError.message
-              : 'Unable to refresh mailing list export.'),
-          );
-        }
-      };
-
-      void poll();
-
-      if (exportPollingRef.current !== null) {
-        window.clearInterval(exportPollingRef.current);
+      if (currentLinks.csvUrl) {
+        URL.revokeObjectURL(currentLinks.csvUrl);
       }
-      exportPollingRef.current = window.setInterval(() => {
-        void poll();
-      }, 5000);
-
-      return () => {
-        if (exportPollingRef.current !== null) {
-          window.clearInterval(exportPollingRef.current);
-          exportPollingRef.current = null;
-        }
-      };
-    }
-
-    if (exportPollingRef.current !== null) {
-      window.clearInterval(exportPollingRef.current);
-      exportPollingRef.current = null;
-    }
-  }, [exportJob, refreshMailingListExport]);
-
-  useEffect(() => {
-    if (exportJob && exportJob.status === 'completed') {
-      setExportError(null);
-    }
-  }, [exportJob]);
+    };
+  }, [exportLinks]);
 
   const statusMessage = useMemo(() => {
     if (loading) {
@@ -541,72 +495,83 @@ function HomePage(): JSX.Element {
     void loadProfiles();
   }, [loadProfiles]);
 
-  const handleExportMailingList = useCallback(async () => {
-    if (!canRequestMailingListExport) {
-      setExportError('Supabase is not configured for exports.');
+  const handleExportMailingList = useCallback(() => {
+    if (filteredListings.length === 0) {
+      setExportError('No listings match the current filters and map region.');
+      setExportLinks(null);
+      setLastExportCount(null);
       return;
     }
 
-    clearMailingListExport();
-    setExportRequesting(true);
+    setExporting(true);
     setExportError(null);
+    setExportLinks(null);
+    setLastExportCount(null);
 
     try {
-      const job = await requestMailingListExport({
-        filters: { ...filters },
-        regions: regions.map((region) => ({ ...region })),
-      });
-      if (job.status === 'failed' && job.error) {
-        setExportError(job.error);
+      const csvBlob = createMailingListCsvBlob(filteredListings);
+      if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+        throw new Error('Browser does not support generating download URLs.');
+      }
+
+      const basename = createMailingListFileBasename(new Date());
+      const csvUrl = URL.createObjectURL(csvBlob);
+
+      setExportLinks({ csvUrl, basename });
+      setLastExportCount(filteredListings.length);
+
+      if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+        const triggerDownload = (url: string, extension: string) => {
+          const anchor = window.document.createElement('a');
+          anchor.href = url;
+          anchor.download = `${basename}.${extension}`;
+          anchor.rel = 'noopener noreferrer';
+          window.document.body.appendChild(anchor);
+          anchor.click();
+          window.document.body.removeChild(anchor);
+        };
+
+        triggerDownload(csvUrl, 'csv');
       }
     } catch (exportErr) {
-      console.error('Failed to start mailing list export.', exportErr);
+      console.error('Failed to generate mailing list export.', exportErr);
       setExportError(
         exportErr instanceof Error
           ? exportErr.message
-          : 'Unable to start mailing list export.',
+          : 'Unable to generate mailing list export.',
       );
+      setExportLinks(null);
+      setLastExportCount(null);
     } finally {
-      setExportRequesting(false);
+      setExporting(false);
     }
-  }, [canRequestMailingListExport, clearMailingListExport, filters, regions, requestMailingListExport]);
+  }, [filteredListings]);
 
-  const exportStatus = exportJob?.status ?? 'idle';
-  const exportDownloadUrls = exportJob?.downloadUrls ?? null;
-  const exportCsvUrl = exportDownloadUrls?.csv ?? null;
-  const exportXlsxUrl = exportDownloadUrls?.xlsx ?? null;
-  const exportJobError = exportJob?.error ?? null;
-  const exportInProgress = exportStatus === 'pending' || exportStatus === 'processing';
-  const exportButtonLabel = exportRequesting
-    ? 'Starting export…'
-    : exportInProgress
-      ? 'Export in progress…'
-      : 'Export mailing list';
-  const exportButtonDisabled = exportRequesting || exportInProgress || !canRequestMailingListExport;
+  const exportButtonLabel = exporting ? 'Preparing export…' : 'Export mailing list';
+  const exportButtonDisabled = exporting || filteredListings.length === 0;
+  const exportCsvUrl = exportLinks?.csvUrl ?? null;
+  const exportBasename = exportLinks?.basename ?? 'mailing-list';
 
   let exportHelperMessage: string | null = null;
   let exportHelperVariant: 'error' | 'success' | 'info' = 'info';
 
-  if (!canRequestMailingListExport) {
-    exportHelperMessage = 'Supabase credentials are required to export mailing lists.';
+  if (filteredListings.length === 0) {
+    exportHelperMessage = 'No listings match the current filters and map region yet. Draw a circle or adjust filters to enable exports.';
   } else if (exportError) {
     exportHelperMessage = exportError;
     exportHelperVariant = 'error';
-  } else if (exportJobError) {
-    exportHelperMessage = exportJobError;
-    exportHelperVariant = 'error';
-  } else if (exportInProgress) {
+  } else if (exporting) {
     exportHelperMessage = 'Preparing export…';
-  } else if (exportStatus === 'completed' && (exportCsvUrl || exportXlsxUrl)) {
-    exportHelperMessage = 'Export ready. Download links expire in 60 minutes.';
+  } else if (exportLinks) {
+    const countMessage =
+      lastExportCount !== null
+        ? `${lastExportCount.toLocaleString()} listings exported. `
+        : '';
+    exportHelperMessage =
+      `${countMessage}Download should begin automatically. The link remains available while this page stays open.`;
     exportHelperVariant = 'success';
-  } else if (exportStatus === 'completed') {
-    exportHelperMessage = 'Export finished, but no download links were generated.';
-    exportHelperVariant = 'error';
-  } else if (exportJob) {
-    exportHelperMessage = 'Export requested. Waiting for completion…';
   } else {
-    exportHelperMessage = 'Generate CSV and XLSX mailing lists for the current filters and map region.';
+    exportHelperMessage = 'Generate a CSV mailing list for the current filters and map region.';
   }
 
   const exportHelperClassName = `listing-table__actions-message${
@@ -627,26 +592,15 @@ function HomePage(): JSX.Element {
       >
         {exportButtonLabel}
       </button>
-      {exportCsvUrl || exportXlsxUrl ? (
+      {exportCsvUrl ? (
         <div className="listing-table__actions-links">
           {exportCsvUrl ? (
             <a
               href={exportCsvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              download={`${exportBasename}.csv`}
               className="listing-table__actions-link"
             >
               Download CSV
-            </a>
-          ) : null}
-          {exportXlsxUrl ? (
-            <a
-              href={exportXlsxUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="listing-table__actions-link"
-            >
-              Download XLSX
             </a>
           ) : null}
         </div>

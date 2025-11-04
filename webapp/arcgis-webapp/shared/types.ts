@@ -40,16 +40,3 @@ export interface RegionCircle {
   radius: number;
 }
 
-export type MailingListExportStatus = 'pending' | 'processing' | 'completed' | 'failed';
-
-export interface MailingListExportJobPayload {
-  id: string;
-  status: MailingListExportStatus;
-  downloadUrls?: {
-    csv?: string | null;
-    xlsx?: string | null;
-  } | null;
-  error?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}

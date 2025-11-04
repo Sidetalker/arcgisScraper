@@ -11,13 +11,6 @@ import {
 import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
-import {
-  fetchMailingListExportStatus,
-  requestMailingListExport,
-  type MailingListExportJob,
-  type MailingListExportRequest,
-} from '@/services/mailingListExport';
-import { supabase } from '@/services/supabaseClient';
 import { toListingRecord } from '@/services/listingTransformer';
 import type { ListingRecord, RegionCircle } from '@/types';
 
@@ -37,11 +30,6 @@ export interface ListingsContextValue {
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
   clearCacheAndReload: () => Promise<void>;
-  canRequestMailingListExport: boolean;
-  exportJob: MailingListExportJob | null;
-  requestMailingListExport: (request: MailingListExportRequest) => Promise<MailingListExportJob>;
-  refreshMailingListExport: (jobId: string) => Promise<MailingListExportJob>;
-  clearMailingListExport: () => void;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -55,7 +43,6 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
-  const [exportJob, setExportJob] = useState<MailingListExportJob | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -281,36 +268,6 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, [applyListingSnapshot, persistLocalCache]);
 
-  const canRequestMailingListExport = Boolean(supabase);
-
-  const handleRequestMailingListExport = useCallback(
-    async (request: MailingListExportRequest) => {
-      if (!supabase) {
-        throw new Error('Supabase client is not configured.');
-      }
-      const job = await requestMailingListExport(request);
-      setExportJob(job);
-      return job;
-    },
-    [supabase],
-  );
-
-  const handleRefreshMailingListExport = useCallback(
-    async (jobId: string) => {
-      if (!supabase) {
-        throw new Error('Supabase client is not configured.');
-      }
-      const job = await fetchMailingListExportStatus(jobId);
-      setExportJob(job);
-      return job;
-    },
-    [supabase],
-  );
-
-  const handleClearMailingListExport = useCallback(() => {
-    setExportJob(null);
-  }, []);
-
   const isLocalCacheStale = useMemo(() => {
     if (!localCachedAt || !cachedAt) {
       return false;
@@ -333,11 +290,6 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       syncing,
       syncFromArcgis,
       clearCacheAndReload,
-      canRequestMailingListExport,
-      exportJob,
-      requestMailingListExport: handleRequestMailingListExport,
-      refreshMailingListExport: handleRefreshMailingListExport,
-      clearMailingListExport: handleClearMailingListExport,
     }),
     [
       cachedAt,
@@ -353,11 +305,6 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       regions,
       syncing,
       syncFromArcgis,
-      canRequestMailingListExport,
-      exportJob,
-      handleRequestMailingListExport,
-      handleRefreshMailingListExport,
-      handleClearMailingListExport,
     ],
   );
 

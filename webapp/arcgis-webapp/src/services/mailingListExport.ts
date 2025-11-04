@@ -1,79 +1,68 @@
-import type { MailingListExportJobPayload, MailingListExportStatus } from '@shared/types';
+import type { ListingRecord } from '@/types';
 
-import type { ListingFilters, RegionCircle } from '@/types';
-import { assertSupabaseClient } from '@/services/supabaseClient';
+const MAILING_LIST_HEADERS = [
+  'Owner name',
+  'Mailing address line 1',
+  'Mailing address line 2',
+  'Mailing city',
+  'Mailing state',
+  'Mailing ZIP',
+  'Complex',
+  'Unit',
+  'Schedule number',
+  'Physical address',
+  'Business owned',
+];
 
-export interface MailingListExportJob {
-  id: string;
-  status: MailingListExportStatus;
-  downloadUrls: { csv: string | null; xlsx: string | null };
-  error: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
+const CSV_MIME_TYPE = 'text/csv';
 
-export interface MailingListExportRequest {
-  filters: ListingFilters;
-  regions: RegionCircle[];
-}
-
-interface InvokeResponse {
-  job: MailingListExportJobPayload;
-}
-
-function parseJob(payload: MailingListExportJobPayload): MailingListExportJob {
-  return {
-    id: payload.id,
-    status: payload.status,
-    downloadUrls: {
-      csv: payload.downloadUrls?.csv ?? null,
-      xlsx: payload.downloadUrls?.xlsx ?? null,
-    },
-    error: payload.error ?? null,
-    createdAt: new Date(payload.createdAt),
-    updatedAt: new Date(payload.updatedAt),
-  };
-}
-
-export async function requestMailingListExport(
-  request: MailingListExportRequest,
-): Promise<MailingListExportJob> {
-  const client = assertSupabaseClient();
-  const { data, error } = await client.functions.invoke<InvokeResponse>('mailing-list-export', {
-    body: {
-      action: 'create',
-      filters: request.filters,
-      regions: request.regions,
-    },
-  });
-
-  if (error) {
-    throw error;
+function normaliseCell(value: string | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '';
   }
-
-  if (!data || typeof data !== 'object' || !data.job) {
-    throw new Error('Unexpected response from mailing list export function.');
-  }
-
-  return parseJob(data.job);
+  return value;
 }
 
-export async function fetchMailingListExportStatus(jobId: string): Promise<MailingListExportJob> {
-  const client = assertSupabaseClient();
-  const { data, error } = await client.functions.invoke<InvokeResponse>('mailing-list-export', {
-    body: {
-      action: 'status',
-      jobId,
-    },
-  });
+function toCsv(rows: string[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((value) => {
+          const text = normaliseCell(value);
+          const escaped = text.replace(/"/g, '""');
+          return /["\n,]/.test(escaped) ? `"${escaped}"` : escaped;
+        })
+        .join(','),
+    )
+    .join('\n');
+}
 
-  if (error) {
-    throw error;
-  }
+function listingToRow(listing: ListingRecord): string[] {
+  return [
+    normaliseCell(listing.ownerName),
+    normaliseCell(listing.mailingAddressLine1),
+    normaliseCell(listing.mailingAddressLine2),
+    normaliseCell(listing.mailingCity),
+    normaliseCell(listing.mailingState),
+    normaliseCell(listing.mailingZip9 || listing.mailingZip5),
+    normaliseCell(listing.complex),
+    normaliseCell(listing.unit),
+    normaliseCell(listing.scheduleNumber),
+    normaliseCell(listing.physicalAddress),
+    listing.isBusinessOwner ? 'Yes' : 'No',
+  ];
+}
 
-  if (!data || typeof data !== 'object' || !data.job) {
-    throw new Error('Unexpected response while fetching mailing list export status.');
-  }
+export function createMailingListExportRows(listings: ListingRecord[]): string[][] {
+  return [MAILING_LIST_HEADERS, ...listings.map((listing) => listingToRow(listing))];
+}
 
-  return parseJob(data.job);
+export function createMailingListCsvBlob(listings: ListingRecord[]): Blob {
+  const rows = createMailingListExportRows(listings);
+  const csvContent = toCsv(rows);
+  return new Blob([csvContent], { type: CSV_MIME_TYPE });
+}
+
+export function createMailingListFileBasename(date = new Date()): string {
+  return `mailing-list-${date.toISOString().replace(/[:.]/g, '-')}`;
 }
