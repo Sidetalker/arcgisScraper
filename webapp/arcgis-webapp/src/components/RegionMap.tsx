@@ -232,6 +232,36 @@ type RegionMapProps = {
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
 
+type MapLayerType = 'map' | 'satellite' | 'terrain';
+
+type MapLayerConfig = {
+  name: string;
+  url: string;
+  attribution: string;
+  maxZoom?: number;
+};
+
+const MAP_LAYERS: Record<MapLayerType, MapLayerConfig> = {
+  map: {
+    name: 'Street Map',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  },
+  satellite: {
+    name: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri',
+    maxZoom: 19,
+  },
+  terrain: {
+    name: 'Terrain',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenTopoMap contributors',
+    maxZoom: 17,
+  },
+};
+
 type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
 
 type SummitCountyBoundaryProperties = {
@@ -713,6 +743,8 @@ type DrawManagerProps = {
   onRegionsChange: (regions: RegionShape[]) => void;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  currentLayer: MapLayerType;
+  onLayerChange: (layer: MapLayerType) => void;
 };
 
 type MapToolbarProps = {
@@ -724,6 +756,8 @@ type MapToolbarProps = {
   activeTool: 'polygon' | 'circle' | null;
   showAllProperties: boolean;
   onToggleShowAll: () => void;
+  currentLayer: MapLayerType;
+  onLayerChange: (layer: MapLayerType) => void;
 };
 
 function MapToolbar({
@@ -735,6 +769,8 @@ function MapToolbar({
   activeTool,
   showAllProperties,
   onToggleShowAll,
+  currentLayer,
+  onLayerChange,
 }: MapToolbarProps): null {
   const map = useMap();
   const buttonRefs = useRef<
@@ -744,6 +780,7 @@ function MapToolbar({
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
         toggleAllButton?: HTMLButtonElement;
+        layerButton?: HTMLButtonElement;
       }
     | null
   >(null);
@@ -833,6 +870,23 @@ function MapToolbar({
         onToggleShowAll();
       });
 
+      const layerButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      layerButton.type = 'button';
+      layerButton.title = 'Switch between map, satellite, and terrain views';
+      layerButton.textContent = MAP_LAYERS[currentLayer].name;
+      layerButton.dataset.action = 'toggle-layer';
+      layerButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        const layers: MapLayerType[] = ['map', 'satellite', 'terrain'];
+        const currentIndex = layers.indexOf(currentLayer);
+        const nextIndex = (currentIndex + 1) % layers.length;
+        onLayerChange(layers[nextIndex]);
+      });
+
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
 
@@ -842,7 +896,7 @@ function MapToolbar({
         button.classList.add('region-map__toolbar-button--disabled');
       });
 
-      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton, toggleAllButton };
+      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton, toggleAllButton, layerButton };
 
       return container;
     };
@@ -853,7 +907,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties, currentLayer, onLayerChange]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -901,6 +955,15 @@ function MapToolbar({
     toggleActiveState(refs.circleButton, activeTool === 'circle');
   }, [activeTool]);
 
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs || !refs.layerButton) {
+      return;
+    }
+
+    refs.layerButton.textContent = MAP_LAYERS[currentLayer].name;
+  }, [currentLayer]);
+
   return null;
 }
 
@@ -909,6 +972,8 @@ function DrawManager({
   onRegionsChange,
   showAllProperties,
   onToggleShowAll,
+  currentLayer,
+  onLayerChange,
 }: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
@@ -1125,6 +1190,8 @@ function DrawManager({
       activeTool={activeTool}
       showAllProperties={showAllProperties}
       onToggleShowAll={onToggleShowAll}
+      currentLayer={currentLayer}
+      onLayerChange={onLayerChange}
     />
   );
 }
@@ -1257,6 +1324,7 @@ function RegionMap({
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
 
   const displayedListings = useMemo(() => {
     // When toggle is on, always show all filtered listings
@@ -1307,6 +1375,12 @@ function RegionMap({
     setShowAllProperties((prev) => !prev);
   }, []);
 
+  const handleLayerChange = useCallback((layer: MapLayerType) => {
+    setCurrentLayer(layer);
+  }, []);
+
+  const currentLayerConfig = MAP_LAYERS[currentLayer];
+
   return (
     <section
       className="region-map"
@@ -1332,13 +1406,19 @@ function RegionMap({
         zoom={DEFAULT_ZOOM}
         scrollWheelZoom
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+        <TileLayer 
+          url={currentLayerConfig.url} 
+          attribution={currentLayerConfig.attribution}
+          maxZoom={currentLayerConfig.maxZoom}
+        />
         <SummitCountyOverlay />
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
           showAllProperties={showAllProperties}
           onToggleShowAll={handleToggleShowAll}
+          currentLayer={currentLayer}
+          onLayerChange={handleLayerChange}
         />
         <EvStationMarkers />
         {displayedListings.length ? (
