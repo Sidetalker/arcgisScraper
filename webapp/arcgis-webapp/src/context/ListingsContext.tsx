@@ -12,7 +12,12 @@ import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
-import type { ListingRecord, RegionCircle } from '@/types';
+import {
+  cloneRegionShape,
+  normaliseRegionList,
+  regionsAreEqual,
+} from '@/services/regionShapes';
+import type { ListingRecord, RegionShape } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
 
@@ -20,12 +25,12 @@ export interface ListingsContextValue {
   listings: ListingRecord[];
   loading: boolean;
   error: string | null;
-  regions: RegionCircle[];
+  regions: RegionShape[];
   cachedAt: Date | null;
   localCachedAt: Date | null;
   isLocalCacheStale: boolean;
   source: 'local' | 'supabase' | 'syncing' | 'unknown';
-  onRegionsChange: (nextRegions: RegionCircle[]) => void;
+  onRegionsChange: (nextRegions: RegionShape[]) => void;
   refresh: () => void;
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
@@ -38,7 +43,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [listings, setListings] = useState<ListingRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [regions, setRegions] = useState<RegionCircle[]>([]);
+  const [regions, setRegions] = useState<RegionShape[]>([]);
   const [cachedAt, setCachedAt] = useState<Date | null>(null);
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -55,31 +60,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         return;
       }
 
-      const parsed = JSON.parse(stored) as RegionCircle[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      const normalised = parsed
-        .filter(
-          (region) =>
-            region &&
-            typeof region.lat === 'number' &&
-            typeof region.lng === 'number' &&
-            typeof region.radius === 'number' &&
-            Number.isFinite(region.lat) &&
-            Number.isFinite(region.lng) &&
-            Number.isFinite(region.radius) &&
-            region.radius > 0,
-        )
-        .map((region) => ({
-          lat: region.lat,
-          lng: region.lng,
-          radius: region.radius,
-        }));
-
+      const parsed = JSON.parse(stored);
+      const normalised = normaliseRegionList(parsed);
       if (normalised.length) {
-        setRegions(normalised);
+        setRegions(normalised.map((region) => cloneRegionShape(region)));
       }
     } catch (storageError) {
       console.warn('Unable to restore saved regions from localStorage.', storageError);
@@ -102,24 +86,13 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, [regions]);
 
-  const handleRegionsChange = useCallback((nextRegions: RegionCircle[]) => {
+  const handleRegionsChange = useCallback((nextRegions: RegionShape[]) => {
     setRegions((current) => {
-      if (
-        current.length === nextRegions.length &&
-        current.every((region, index) => {
-          const next = nextRegions[index];
-          return (
-            next &&
-            region.lat === next.lat &&
-            region.lng === next.lng &&
-            region.radius === next.radius
-          );
-        })
-      ) {
+      if (regionsAreEqual(current, nextRegions)) {
         return current;
       }
 
-      return nextRegions.map((region) => ({ ...region }));
+      return nextRegions.map((region) => cloneRegionShape(region));
     });
   }, []);
 
