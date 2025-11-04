@@ -517,21 +517,5 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     }
   }
 
-  if (filters.scheduleNumber.trim()) {
-    const scheduleQuery = filters.scheduleNumber.trim().toLowerCase();
-    if (!listing.scheduleNumber.toLowerCase().includes(scheduleQuery)) {
-      return false;
-    }
-  }
-
-  if (filters.subdivision) {
-    if (
-      !listing.subdivision ||
-      listing.subdivision.toLowerCase() !== filters.subdivision.toLowerCase()
-    ) {
-      return false;
-    }
-  }
-
   return true;
 }
