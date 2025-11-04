@@ -91,7 +91,7 @@ function PasswordModal({
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter password"
             className="password-modal__input"
-            autoComplete="off"
+            autoComplete="current-password"
           />
           <div className="password-modal__actions">
             <button type="button" onClick={handleCancel} className="password-modal__button password-modal__button--cancel">
