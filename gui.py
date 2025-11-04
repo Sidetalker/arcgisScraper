@@ -13,7 +13,10 @@ from tkinter.scrolledtext import ScrolledText
 import scrape_arcgis
 
 
-OWNER_LAYER_URL = (
+PRESET_METADATA = scrape_arcgis.LAYER_PRESETS
+DEFAULT_LAYER_PRESET = scrape_arcgis.DEFAULT_LAYER_PRESET
+OWNER_LAYER_PRESET = scrape_arcgis.OWNER_LAYER_PRESET
+OWNER_LAYER_FALLBACK_URL = (
     "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/"
     "PrISM_APParcelPts_View_Layer_for_Query/FeatureServer/0"
 )
@@ -91,7 +94,7 @@ class ScraperGUI:
         self.where_var = tk.StringVar(value="")
         self.out_fields_var = tk.StringVar(value="*")
         self.portal_var = tk.StringVar(value=scrape_arcgis.DEFAULT_PORTAL_URL)
-        self.layer_var = tk.StringVar(value=OWNER_LAYER_URL)
+        self.layer_var = tk.StringVar(value=OWNER_LAYER_FALLBACK_URL)
         self.item_id_var = tk.StringVar(value="")
         self.layer_index_var = tk.StringVar(value="0")
         self.referer_var = tk.StringVar(value=scrape_arcgis.DEFAULT_REFERER)
@@ -189,7 +192,7 @@ class ScraperGUI:
         self.layer_var.set(scrape_arcgis.DEFAULT_LAYER_URL)
 
     def _set_owner_layer(self) -> None:
-        self.layer_var.set(OWNER_LAYER_URL)
+        self.layer_var.set(OWNER_LAYER_FALLBACK_URL)
 
     def start_query(self) -> None:
         try:
