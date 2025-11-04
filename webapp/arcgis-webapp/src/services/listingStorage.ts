@@ -75,6 +75,10 @@ export interface ListingRow {
   schedule_number: Nullable<string>;
   public_detail_url: Nullable<string>;
   physical_address: Nullable<string>;
+  zoning_district: Nullable<string>;
+  zoning_description: Nullable<string>;
+  land_use_category: Nullable<string>;
+  land_use_description: Nullable<string>;
   is_business_owner: Nullable<boolean>;
   latitude: Nullable<number>;
   longitude: Nullable<number>;
@@ -110,6 +114,10 @@ function toListingRow(record: ListingRecord): ListingRow {
     schedule_number: record.scheduleNumber || null,
     public_detail_url: record.publicDetailUrl || null,
     physical_address: record.physicalAddress || null,
+    zoning_district: record.zoningDistrict || null,
+    zoning_description: record.zoningDescription || null,
+    land_use_category: record.landUseCategory || null,
+    land_use_description: record.landUseDescription || null,
     is_business_owner: record.isBusinessOwner,
     latitude: typeof record.latitude === 'number' ? record.latitude : null,
     longitude: typeof record.longitude === 'number' ? record.longitude : null,
@@ -173,6 +181,10 @@ function fromListingRow(row: ListingRow): ListingRecord {
     scheduleNumber: row.schedule_number ?? '',
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
+    zoningDistrict: row.zoning_district ?? '',
+    zoningDescription: row.zoning_description ?? '',
+    landUseCategory: row.land_use_category ?? '',
+    landUseDescription: row.land_use_description ?? '',
     isBusinessOwner: Boolean(row.is_business_owner),
     latitude: typeof row.latitude === 'number' ? row.latitude : null,
     longitude: typeof row.longitude === 'number' ? row.longitude : null,
@@ -199,6 +211,10 @@ const LISTING_COLUMNS = [
   'mailing_zip5',
   'mailing_zip9',
   'subdivision',
+  'zoning_district',
+  'zoning_description',
+  'land_use_category',
+  'land_use_description',
   'schedule_number',
   'public_detail_url',
   'physical_address',

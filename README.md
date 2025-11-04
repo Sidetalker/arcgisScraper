@@ -71,6 +71,10 @@ Key options:
 * `--referer` – customise the HTTP referer header if the target service enforces
   a different host check.
 * `--owner-table` – emit a CSV owner contact table (best used with the PrISM parcel point view).
+* `--zoning-layer-url` / `--zoning-item-id` / `--land-use-layer-url` / `--land-use-item-id` – join zoning and
+  land-use overlays from additional feature layers by schedule number during owner exports. The CLI accepts
+  ArcGIS REST URLs directly or resolves layers from item ids and indexes; combine with the `--*-join-field`,
+  `--*-code-field`, `--*-description-field`, and `--*-where` overrides when upstream schemas diverge.
 * `--all-subdivisions` – automatically enumerate every subdivision in the search window and query them one by one.
 * `--excel-output` – write an `.xlsx` workbook with cross-linked “By Complex” and “By Owner” sheets.
 * `--sheets-doc-id`, `--complex-gid`, `--owner-gid` – optional overrides for the Google Sheets document/GIDs used when

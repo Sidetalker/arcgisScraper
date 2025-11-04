@@ -69,6 +69,8 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
     owner: typeof filters?.owner === 'string' ? filters.owner : '',
     subdivisions: normaliseStringList(filters?.subdivisions),
+    zoningDistricts: normaliseStringList(filters?.zoningDistricts),
+    landUseCategories: normaliseStringList(filters?.landUseCategories),
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
@@ -120,6 +122,8 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
     a.complex === b.complex &&
     a.owner === b.owner &&
     stringSetsEqual(a.subdivisions, b.subdivisions) &&
+    stringSetsEqual(a.zoningDistricts, b.zoningDistricts) &&
+    stringSetsEqual(a.landUseCategories, b.landUseCategories) &&
     stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
     stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
     stringSetsEqual(a.renewalMonths, b.renewalMonths)

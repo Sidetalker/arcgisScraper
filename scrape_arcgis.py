@@ -13,7 +13,7 @@ import re
 import sys
 from dataclasses import dataclass
 from html import unescape
-from typing import Any, Dict, List, Optional, Set, TextIO, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, TextIO, Tuple
 
 from arcgis.features import FeatureLayer
 from arcgis.gis import GIS
@@ -189,7 +189,7 @@ def _initial_page_size(layer: FeatureLayer, max_records: Optional[int]) -> int:
 
 def query_features(
     layer: FeatureLayer,
-    geometry: Geometry,
+    geometry: Optional[Geometry],
     where: str,
     out_fields: str,
     return_geometry: bool,
@@ -203,10 +203,11 @@ def query_features(
     template: Optional[Dict[str, Any]] = None
 
     while True:
+        geometry_filter = intersects(geometry) if geometry is not None else None
         feature_set = layer.query(
             where=where,
             out_fields=out_fields,
-            geometry_filter=intersects(geometry),
+            geometry_filter=geometry_filter,
             return_geometry=return_geometry,
             out_sr=4326,
             result_offset=offset,
@@ -324,6 +325,79 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
             "OwnerFullName and OwnerContactPublicMailingAddr fields, such as the "
             "PrISM parcel point views."
         ),
+    )
+    compliance_group = parser.add_argument_group("Compliance overlays")
+    compliance_group.add_argument(
+        "--zoning-layer-url",
+        help=(
+            "ArcGIS feature layer URL containing zoning attributes keyed by parcel schedule numbers."
+        ),
+    )
+    compliance_group.add_argument(
+        "--zoning-item-id",
+        help="ArcGIS Online item id resolving to the zoning layer when a direct URL is not supplied.",
+    )
+    compliance_group.add_argument(
+        "--zoning-layer-index",
+        type=int,
+        default=0,
+        help="Layer index to use when resolving the zoning item id (default: 0).",
+    )
+    compliance_group.add_argument(
+        "--zoning-join-field",
+        default="SCHEDNUM",
+        help="Field name in the zoning layer that stores the parcel schedule number (default: SCHEDNUM).",
+    )
+    compliance_group.add_argument(
+        "--zoning-code-field",
+        default="ZONE_CODE",
+        help="Attribute containing the zoning district code to surface in exports (default: ZONE_CODE).",
+    )
+    compliance_group.add_argument(
+        "--zoning-description-field",
+        default="ZONE_DESC",
+        help="Attribute containing the zoning description to surface in exports (default: ZONE_DESC).",
+    )
+    compliance_group.add_argument(
+        "--zoning-where",
+        help="Optional WHERE clause applied when querying the zoning layer.",
+    )
+    compliance_group.add_argument(
+        "--land-use-layer-url",
+        help=(
+            "ArcGIS feature layer URL exposing land-use attributes keyed by parcel schedule numbers."
+        ),
+    )
+    compliance_group.add_argument(
+        "--land-use-item-id",
+        help="ArcGIS Online item id resolving to the land-use layer when a direct URL is not supplied.",
+    )
+    compliance_group.add_argument(
+        "--land-use-layer-index",
+        type=int,
+        default=0,
+        help="Layer index to use when resolving the land-use item id (default: 0).",
+    )
+    compliance_group.add_argument(
+        "--land-use-join-field",
+        default="SCHEDNUM",
+        help="Field name in the land-use layer that stores the parcel schedule number (default: SCHEDNUM).",
+    )
+    compliance_group.add_argument(
+        "--land-use-code-field",
+        default="LAND_USE",
+        help="Attribute containing the land-use category code to surface in exports (default: LAND_USE).",
+    )
+    compliance_group.add_argument(
+        "--land-use-description-field",
+        default="LAND_DESC",
+        help=(
+            "Attribute containing the land-use description to surface in exports (default: LAND_DESC)."
+        ),
+    )
+    compliance_group.add_argument(
+        "--land-use-where",
+        help="Optional WHERE clause applied when querying the land-use layer.",
     )
     parser.add_argument(
         "--all-subdivisions",
@@ -484,8 +558,57 @@ def main():
         template["exceededTransferLimit"] = exceeded
         result = QueryResult(template=template, features=combined_features)
 
+        compliance_columns: List[str] = []
+        schedule_numbers = _collect_schedule_numbers(result.features)
+
+        if schedule_numbers and (args.zoning_layer_url or args.zoning_item_id):
+            zoning_layer = resolve_layer(
+                gis,
+                args.zoning_layer_url,
+                args.zoning_item_id,
+                args.zoning_layer_index,
+            )
+            zoning_mapping = {
+                "Zoning District": args.zoning_code_field,
+                "Zoning Description": args.zoning_description_field,
+            }
+            zoning_overlay = _fetch_overlay_attributes(
+                zoning_layer,
+                schedule_numbers,
+                join_field=args.zoning_join_field,
+                where=args.zoning_where,
+                value_fields=list(zoning_mapping.values()),
+            )
+            _apply_overlay_attributes(result.features, zoning_overlay, value_mapping=zoning_mapping)
+            for column in zoning_mapping.keys():
+                if column not in compliance_columns:
+                    compliance_columns.append(column)
+
+        if schedule_numbers and (args.land_use_layer_url or args.land_use_item_id):
+            land_use_layer = resolve_layer(
+                gis,
+                args.land_use_layer_url,
+                args.land_use_item_id,
+                args.land_use_layer_index,
+            )
+            land_use_mapping = {
+                "Land Use Category": args.land_use_code_field,
+                "Land Use Description": args.land_use_description_field,
+            }
+            land_use_overlay = _fetch_overlay_attributes(
+                land_use_layer,
+                schedule_numbers,
+                join_field=args.land_use_join_field,
+                where=args.land_use_where,
+                value_fields=list(land_use_mapping.values()),
+            )
+            _apply_overlay_attributes(result.features, land_use_overlay, value_mapping=land_use_mapping)
+            for column in land_use_mapping.keys():
+                if column not in compliance_columns:
+                    compliance_columns.append(column)
+
         if args.owner_table:
-            rows = _format_owner_table(result.features)
+            rows = _format_owner_table(result.features, extra_columns=compliance_columns)
             owners, property_to_owner = _build_owner_registry(rows)
 
             if sheets_doc_id and complex_gid and owner_gid:
@@ -498,7 +621,7 @@ def main():
                     owner_gid,
                 )
 
-            _emit_owner_table(rows, args.output)
+            _emit_owner_table(rows, args.output, extra_columns=compliance_columns)
             if args.excel_output:
                 _write_excel_workbook(
                     rows,
@@ -624,7 +747,123 @@ def _escape_sql_literal(value: str) -> str:
     return value.replace("'", "''")
 
 
-def _format_owner_table(features: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def _coerce_to_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _chunked(values: Iterable[str], size: int) -> Iterable[List[str]]:
+    batch: List[str] = []
+    for value in values:
+        batch.append(value)
+        if len(batch) >= size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _build_in_clause(field: str, values: Sequence[str]) -> str:
+    safe_values = [f"'{_escape_sql_literal(value)}'" for value in values if value]
+    if not safe_values:
+        return "1=0"
+    joined = ", ".join(safe_values)
+    return f"{field} IN ({joined})"
+
+
+def _collect_schedule_numbers(features: List[Dict[str, Any]]) -> Set[str]:
+    numbers: Set[str] = set()
+    for feature in features:
+        attrs = feature.get("attributes") or {}
+        schedule_raw = attrs.get("PropertyScheduleText")
+        if schedule_raw is None:
+            continue
+        schedule = _coerce_to_str(schedule_raw).strip()
+        if schedule:
+            numbers.add(schedule)
+    return numbers
+
+
+def _fetch_overlay_attributes(
+    layer: FeatureLayer,
+    schedule_numbers: Set[str],
+    *,
+    join_field: str,
+    where: Optional[str],
+    value_fields: Sequence[str],
+) -> Dict[str, Dict[str, Any]]:
+    if not schedule_numbers:
+        return {}
+
+    base_where = (where or "1=1").strip() or "1=1"
+    all_fields = {join_field, *value_fields}
+    out_fields = ",".join(sorted(all_fields))
+
+    overlay_map: Dict[str, Dict[str, Any]] = {}
+    chunk_size = 200
+
+    for chunk in _chunked(sorted(schedule_numbers), chunk_size):
+        clause = _build_in_clause(join_field, chunk)
+        combined_where = _combine_where(base_where, clause)
+        result = query_features(
+            layer=layer,
+            geometry=None,
+            where=combined_where,
+            out_fields=out_fields,
+            return_geometry=False,
+            max_records=None,
+        )
+
+        for feature in result.features:
+            attrs = feature.get("attributes") or {}
+            key_raw = attrs.get(join_field)
+            key = _coerce_to_str(key_raw).strip()
+            if not key:
+                continue
+
+            existing = overlay_map.setdefault(key, {})
+            for field in value_fields:
+                if field in attrs and attrs[field] is not None:
+                    existing[field] = attrs[field]
+
+    return overlay_map
+
+
+def _apply_overlay_attributes(
+    features: List[Dict[str, Any]],
+    overlay_map: Dict[str, Dict[str, Any]],
+    *,
+    value_mapping: Dict[str, str],
+) -> None:
+    if not overlay_map:
+        return
+
+    for feature in features:
+        attrs = feature.get("attributes")
+        if not isinstance(attrs, dict):
+            continue
+        schedule = _coerce_to_str(attrs.get("PropertyScheduleText")).strip()
+        if not schedule:
+            continue
+
+        overlay_values = overlay_map.get(schedule)
+        if not overlay_values:
+            continue
+
+        for output_name, source_field in value_mapping.items():
+            value = overlay_values.get(source_field)
+            if value is None:
+                continue
+            attrs[output_name] = _coerce_to_str(value)
+
+
+def _format_owner_table(
+    features: List[Dict[str, Any]],
+    extra_columns: Optional[Sequence[str]] = None,
+) -> List[Dict[str, str]]:
     rows: List[Dict[str, str]] = []
     for feature in features:
         attrs = feature.get("attributes", {})
@@ -687,15 +926,22 @@ def _format_owner_table(features: List[Dict[str, Any]]) -> List[Dict[str, str]]:
                 "Schedule Number": schedule_number,
                 "Public Detail URL": detail_url,
                 "Physical Address": physical_address,
-                "First name": first,
-                "Middle": middle,
-                "Last Name": last,
-                "Suffix": suffix,
-                "Title": title,
-                "Company (Required if last name is not provided)": company,
-                "Original Zip": postcode,
-                "Comments": "",
             }
+            if extra_columns:
+                for column in extra_columns:
+                    row[column] = _coerce_to_str(attrs.get(column, ""))
+            row.update(
+                {
+                    "First name": first,
+                    "Middle": middle,
+                    "Last Name": last,
+                    "Suffix": suffix,
+                    "Title": title,
+                    "Company (Required if last name is not provided)": company,
+                    "Original Zip": postcode,
+                    "Comments": "",
+                }
+            )
             rows.append(row)
 
     rows.sort(key=lambda row: (row["Complex"].lower(), _unit_sort_key(row["Unit"])))
@@ -738,8 +984,11 @@ def _emit_owner_table(
     output_path: Optional[str],
     *,
     destination: Optional[TextIO] = None,
+    extra_columns: Optional[Sequence[str]] = None,
 ) -> None:
-    fieldnames = IMPORTANT_COLUMNS + SUPPLEMENTAL_COLUMNS
+    supplemental = list(SUPPLEMENTAL_COLUMNS)
+    enriched = list(extra_columns or [])
+    fieldnames = IMPORTANT_COLUMNS + enriched + supplemental
 
     close_stream = False
     if destination is None:

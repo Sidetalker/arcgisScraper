@@ -7,6 +7,8 @@ export const DEFAULT_FILTERS: ListingFilters = {
   complex: '',
   owner: '',
   subdivisions: [],
+  zoningDistricts: [],
+  landUseCategories: [],
   renewalCategories: [],
   renewalMethods: [],
   renewalMonths: [],

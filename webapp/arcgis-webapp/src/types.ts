@@ -65,6 +65,10 @@ export interface ListingRecord {
   scheduleNumber: string;
   publicDetailUrl: string;
   physicalAddress: string;
+  zoningDistrict: string;
+  zoningDescription: string;
+  landUseCategory: string;
+  landUseDescription: string;
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -81,6 +85,8 @@ export interface ListingFilters {
   complex: string;
   owner: string;
   subdivisions: string[];
+  zoningDistricts: string[];
+  landUseCategories: string[];
   renewalCategories: string[];
   renewalMethods: string[];
   renewalMonths: string[];

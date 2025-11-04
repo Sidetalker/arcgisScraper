@@ -16,6 +16,10 @@ create table if not exists public.listings (
   schedule_number text,
   public_detail_url text,
   physical_address text,
+  zoning_district text,
+  zoning_description text,
+  land_use_category text,
+  land_use_description text,
   is_business_owner boolean,
   latitude double precision,
   longitude double precision,
@@ -34,6 +38,12 @@ create index if not exists listings_schedule_number_idx
 
 create index if not exists listings_subdivision_idx
   on public.listings (subdivision);
+
+create index if not exists listings_zoning_district_idx
+  on public.listings (zoning_district);
+
+create index if not exists listings_land_use_category_idx
+  on public.listings (land_use_category);
 
 create index if not exists listings_estimated_renewal_month_key_idx
   on public.listings (estimated_renewal_month_key);
