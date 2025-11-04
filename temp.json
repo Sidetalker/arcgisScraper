@@ -1,0 +1,163 @@
+{
+  "objectIdFieldName": "OBJECTID",
+  "uniqueIdField": {
+    "name": "OBJECTID",
+    "isSystemMaintained": true
+  },
+  "globalIdFieldName": "",
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": {
+    "wkid": 4326,
+    "latestWkid": 4326
+  },
+  "fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "sqlType": "sqlTypeOther",
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalCleaned",
+      "type": "esriFieldTypeString",
+      "alias": "Parcel Number",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalClean_1",
+      "type": "esriFieldTypeString",
+      "alias": "Registration Number",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalClean_2",
+      "type": "esriFieldTypeString",
+      "alias": "Registered Address",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalClean_3",
+      "type": "esriFieldTypeString",
+      "alias": "Registered Unit Number",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalClea_23",
+      "type": "esriFieldTypeString",
+      "alias": "Zoning District",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalClea_25",
+      "type": "esriFieldTypeString",
+      "alias": "License Type",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "HC_RegistrationsOriginalClea_43",
+      "type": "esriFieldTypeString",
+      "alias": "Status",
+      "sqlType": "sqlTypeOther",
+      "length": 255,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "BASIN",
+      "type": "esriFieldTypeString",
+      "alias": "BASIN",
+      "sqlType": "sqlTypeOther",
+      "length": 17,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "EvaluationArea",
+      "type": "esriFieldTypeString",
+      "alias": "EvaluationArea",
+      "sqlType": "sqlTypeOther",
+      "length": 254,
+      "domain": null,
+      "defaultValue": null
+    }
+  ],
+  "exceededTransferLimit": false,
+  "features": [
+    {
+      "attributes": {
+        "OBJECTID": 1643,
+        "HC_RegistrationsOriginalCleaned": "3000220",
+        "HC_RegistrationsOriginalClean_1": "BCA-72323",
+        "HC_RegistrationsOriginalClean_2": "304 Cartier CT, Dillon, CO 80435, US",
+        "HC_RegistrationsOriginalClean_3": "",
+        "HC_RegistrationsOriginalClea_23": "Neighborhood",
+        "HC_RegistrationsOriginalClea_25": "TYPE2",
+        "HC_RegistrationsOriginalClea_43": "Pending",
+        "BASIN": "Snake River Basin",
+        "EvaluationArea": "Summit Cove East"
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 1673,
+        "HC_RegistrationsOriginalCleaned": "1000869",
+        "HC_RegistrationsOriginalClean_1": "STR22-N2-00115",
+        "HC_RegistrationsOriginalClean_2": "27 Tally Ho CT, Unit 106, Dillon, Colorado 80435, USA",
+        "HC_RegistrationsOriginalClean_3": "106",
+        "HC_RegistrationsOriginalClea_23": "Neighborhood",
+        "HC_RegistrationsOriginalClea_25": "TYPE2",
+        "HC_RegistrationsOriginalClea_43": "Pending",
+        "BASIN": "Snake River Basin",
+        "EvaluationArea": "Summit Cove East"
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 1674,
+        "HC_RegistrationsOriginalCleaned": "1000864",
+        "HC_RegistrationsOriginalClean_1": "STR22-N2-00042",
+        "HC_RegistrationsOriginalClean_2": "27 Tally Ho CT, Unit 101, Dillon, Colorado 80435, USA",
+        "HC_RegistrationsOriginalClean_3": "101",
+        "HC_RegistrationsOriginalClea_23": "Neighborhood",
+        "HC_RegistrationsOriginalClea_25": "TYPE2",
+        "HC_RegistrationsOriginalClea_43": "Pending",
+        "BASIN": "Snake River Basin",
+        "EvaluationArea": "Summit Cove East"
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 1675,
+        "HC_RegistrationsOriginalCleaned": "1000879",
+        "HC_RegistrationsOriginalClean_1": "STR22-N2-00143",
+        "HC_RegistrationsOriginalClean_2": "37 Tally Ho CT, Unit 116, Dillon, Colorado 80435, USA",
+        "HC_RegistrationsOriginalClean_3": "116",
+        "HC_RegistrationsOriginalClea_23": "Neighborhood",
+        "HC_RegistrationsOriginalClea_25": "TYPE2",
+        "HC_RegistrationsOriginalClea_43": "Pending",
+        "BASIN": "Snake River Basin",
+        "EvaluationArea": "Summit Cove East"
+      }
+    }
+  ]
+}
