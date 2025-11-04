@@ -374,27 +374,62 @@ async function handleStatus(jobId: unknown): Promise<Response> {
   });
 }
 
-const ALLOWED_ORIGINS = (Deno.env.get('MAILING_LIST_ALLOWED_ORIGINS') ?? '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter((origin) => origin.length > 0);
+const ALLOWED_ORIGIN_PATTERNS = (() => {
+  const raw = (Deno.env.get('MAILING_LIST_ALLOWED_ORIGINS') ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  return raw.length > 0 ? raw : ['*'];
+})();
 
-function createCorsHeaders(request: Request): Headers {
-  const headers = new Headers({
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Max-Age': '86400',
-    Vary: 'Origin',
-  });
-
-  const origin = request.headers.get('origin');
-  if (!ALLOWED_ORIGINS.length) {
-    headers.set('Access-Control-Allow-Origin', origin ?? '*');
-  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    headers.set('Access-Control-Allow-Origin', origin);
+function matchesOrigin(origin: string, pattern: string): boolean {
+  if (pattern === '*') {
+    return true;
+  }
+  if (!pattern.includes('*')) {
+    return origin === pattern;
   }
 
-  return headers;
+  const escaped = pattern
+    .split('*')
+    .map((segment) => segment.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'))
+    .join('.*');
+  const regex = new RegExp(`^${escaped}$`);
+  return regex.test(origin);
+}
+
+function resolveAllowedOrigin(origin: string | null): string | null {
+  if (ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern === '*')) {
+    return '*';
+  }
+  if (!origin) {
+    return null;
+  }
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => matchesOrigin(origin, pattern)) ? origin : null;
+}
+
+function createCorsHeaders(request: Request): { headers: Headers; originAllowed: boolean } {
+  const origin = request.headers.get('origin');
+  const requestedHeaders =
+    request.headers.get('access-control-request-headers') ??
+    'authorization, x-client-info, apikey, content-type';
+  const headers = new Headers({
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': requestedHeaders,
+    'Access-Control-Max-Age': '86400',
+  });
+
+  const allowedOrigin = resolveAllowedOrigin(origin);
+  if (allowedOrigin) {
+    headers.set('Access-Control-Allow-Origin', allowedOrigin);
+    if (allowedOrigin !== '*') {
+      headers.set('Vary', 'Origin');
+    }
+  } else if (origin) {
+    headers.set('Vary', 'Origin');
+  }
+
+  return { headers, originAllowed: Boolean(allowedOrigin) };
 }
 
 function withCors(response: Response, corsHeaders: Headers): Response {
@@ -405,10 +440,21 @@ function withCors(response: Response, corsHeaders: Headers): Response {
 }
 
 serve(async (request) => {
-  const corsHeaders = createCorsHeaders(request);
+  const { headers: corsHeaders, originAllowed } = createCorsHeaders(request);
 
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    const status = originAllowed ? 204 : 403;
+    return new Response(null, { status, headers: corsHeaders });
+  }
+
+  if (!originAllowed) {
+    return withCors(
+      new Response(JSON.stringify({ error: 'Origin not allowed.' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      }),
+      corsHeaders,
+    );
   }
 
   if (request.method !== 'POST') {
