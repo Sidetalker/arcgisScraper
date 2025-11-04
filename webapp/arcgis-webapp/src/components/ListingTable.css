@@ -180,6 +180,12 @@
   transition: background-color 160ms ease, transform 160ms ease;
 }
 
+.listing-table__detail-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
+}
+
 .listing-table__detail-link:hover,
 .listing-table__detail-link:focus {
   background-color: rgba(37, 99, 235, 0.18);
