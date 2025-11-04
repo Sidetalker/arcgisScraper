@@ -1,5 +1,56 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
 import { createClient } from '@supabase/supabase-js';
 import { refreshListingAggregates } from './listingAggregateJob.mjs';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, '..');
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const fileContents = fs.readFileSync(filePath, 'utf8');
+
+  for (const rawLine of fileContents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const sanitizedLine = line.startsWith('export ') ? line.slice('export '.length) : line;
+    const separatorIndex = sanitizedLine.indexOf('=');
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = sanitizedLine.slice(0, separatorIndex).trim();
+    let value = sanitizedLine.slice(separatorIndex + 1).trim();
+
+    if (!key || key in process.env) {
+      continue;
+    }
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
+}
+
+for (const envFile of ['.env.local', '.env']) {
+  loadEnvFile(path.join(WORKSPACE_ROOT, envFile));
+}
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL ||
