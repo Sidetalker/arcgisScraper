@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
-import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';
+import type { FeatureCollection, MultiPolygon, Polygon, Position } from 'geojson';
 
 type LeafletEditTooltip = {
   updateContent: (content: { text: string; subtext: string }) => void;
@@ -253,8 +253,81 @@ const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
   color: '#1f78b4',
   weight: 2,
   fillColor: '#1f78b4',
-  fillOpacity: 0.2,
+  fillOpacity: 0.05,
 };
+
+const SUMMIT_OVERLAY_MASK_STYLE: L.PathOptions = {
+  color: '#001b2b',
+  weight: 0,
+  fillColor: '#001b2b',
+  fillOpacity: 0.35,
+  fillRule: 'evenodd',
+};
+
+type LinearRing = Position[];
+
+const WORLD_MASK_OUTER_RING: LinearRing = [
+  [-180, -90],
+  [-180, 90],
+  [180, 90],
+  [180, -90],
+  [-180, -90],
+];
+
+function extractOuterRings(
+  geometry: Polygon | MultiPolygon | null | undefined,
+): LinearRing[] {
+  if (!geometry) {
+    return [];
+  }
+
+  if (geometry.type === 'Polygon') {
+    return geometry.coordinates.length > 0 ? [geometry.coordinates[0]] : [];
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates
+      .map((polygonCoordinates) => polygonCoordinates[0])
+      .filter((ring): ring is LinearRing => Array.isArray(ring) && ring.length > 0);
+  }
+
+  return [];
+}
+
+function createInvertedMask(
+  boundary: SummitCountyFeatureCollection | null,
+): FeatureCollection<Polygon> | null {
+  if (!boundary?.features?.length) {
+    return null;
+  }
+
+  const holes: LinearRing[] = boundary.features.flatMap((feature) => {
+    if (!feature || typeof feature !== 'object') {
+      return [];
+    }
+    return extractOuterRings(feature.geometry);
+  });
+
+  if (holes.length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {
+          mask: true,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [WORLD_MASK_OUTER_RING, ...holes],
+        },
+      },
+    ],
+  };
+}
 
 const LOCAL_SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
   try {
@@ -355,6 +428,7 @@ function useSummitCountyBoundary(): SummitCountyFeatureCollection | null {
 function SummitCountyOverlay(): JSX.Element | null {
   const overlayGeometry = useSummitCountyBoundary();
   const overlayRef = useRef<L.GeoJSON | null>(null);
+  const maskGeometry = useMemo(() => createInvertedMask(overlayGeometry), [overlayGeometry]);
   const map = useMap();
   const fittedSourceRef = useRef<string | null>(null);
 
@@ -396,14 +470,19 @@ function SummitCountyOverlay(): JSX.Element | null {
   }
 
   return (
-    <GeoJSON
-      data={overlayGeometry}
-      ref={(instance) => {
-        overlayRef.current = instance;
-      }}
-      style={() => SUMMIT_OVERLAY_STYLE}
-      interactive={false}
-    />
+    <>
+      {maskGeometry ? (
+        <GeoJSON data={maskGeometry} style={() => SUMMIT_OVERLAY_MASK_STYLE} interactive={false} />
+      ) : null}
+      <GeoJSON
+        data={overlayGeometry}
+        ref={(instance) => {
+          overlayRef.current = instance;
+        }}
+        style={() => SUMMIT_OVERLAY_STYLE}
+        interactive={false}
+      />
+    </>
   );
 }
 
