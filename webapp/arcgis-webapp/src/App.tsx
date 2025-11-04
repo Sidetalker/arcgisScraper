@@ -61,7 +61,7 @@ function Layout(): JSX.Element {
     <div className="app">
       <header className="app__header">
         <div>
-          <h1>ArcGIS 2.0</h1>
+          <h1>ArcGIS Revolution</h1>
           <p>Everything you need for short-term rental listings, all in one place. Sync data with ArcGIS on demand at any time, and instantly query across 10s of thousands of listings.</p>
         </div>
         <div className="app__actions">

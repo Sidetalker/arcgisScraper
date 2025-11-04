@@ -35,13 +35,15 @@ type ColumnKey =
   | 'mailingZip'
   | 'subdivision'
   | 'scheduleNumber'
-  | 'physicalAddress';
+  | 'physicalAddress'
+  | 'details';
 
 interface ColumnDefinition {
   key: ColumnKey;
   label: string;
   render: (listing: ListingRecord) => ReactNode;
   getFilterValue: (listing: ListingRecord) => string;
+  filterType?: 'text' | 'boolean';
 }
 
 function toUniqueOwners(listing: ListingRecord): string[] {
@@ -133,9 +135,10 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
   {
     key: 'business',
-    label: 'Business',
+    label: 'Business-owned',
     render: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
     getFilterValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
+    filterType: 'boolean',
   },
   {
     key: 'mailingAddress',
@@ -301,6 +304,13 @@ export function ListingTable({
         if (!column) {
           return true;
         }
+        if (column.filterType === 'boolean') {
+          if (query === 'all') {
+            return true;
+          }
+          const candidate = column.getFilterValue(listing);
+          return candidate === query;
+        }
         return fuzzyMatch(column.getFilterValue(listing), query);
       }),
     );
@@ -317,7 +327,7 @@ export function ListingTable({
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
   const pageListings = filteredListings.slice(startIndex, endIndex);
-  const columnCount = Math.max(1, visibleColumns.length + 1);
+  const columnCount = Math.max(1, visibleColumns.length);
 
   useEffect(() => {
     const element = scrollContainerRef.current;
@@ -354,16 +364,18 @@ export function ListingTable({
   };
 
   const handleFilterChange = useCallback(
-    (columnKey: ColumnKey) => (event: ChangeEvent<HTMLInputElement>) => {
-      const nextValue = event.target.value;
-      setColumnFilters((previous) => {
-        if (previous[columnKey] === nextValue) {
-          return previous;
-        }
-        return { ...previous, [columnKey]: nextValue };
-      });
-      onPageChange(1);
-    },
+    (columnKey: ColumnKey, options?: { normalize?: (value: string) => string }) =>
+      (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const rawValue = event.target.value;
+        const nextValue = options?.normalize ? options.normalize(rawValue) : rawValue;
+        setColumnFilters((previous) => {
+          if (previous[columnKey] === nextValue) {
+            return previous;
+          }
+          return { ...previous, [columnKey]: nextValue };
+        });
+        onPageChange(1);
+      },
     [onPageChange],
   );
 
@@ -614,20 +626,41 @@ export function ListingTable({
             </tr>
             <tr className="listing-table__filters">
               <th aria-hidden="true" />
-              {visibleColumnDefinitions.map((definition) => (
-                <th key={`${definition.key}-filter`}>
-                  <label className="listing-table__filter">
-                    <span className="visually-hidden">Filter {definition.label}</span>
-                    <input
-                      type="text"
-                      value={columnFilters[definition.key] ?? ''}
-                      onChange={handleFilterChange(definition.key)}
-                      placeholder="Type to filter…"
-                      className="listing-table__filter-input"
-                    />
-                  </label>
-                </th>
-              ))}
+              {visibleColumnDefinitions.map((definition) => {
+                const filterValue = columnFilters[definition.key] ?? '';
+                const isBooleanFilter = definition.filterType === 'boolean';
+                const selectValue = filterValue === '' ? 'all' : filterValue;
+
+                return (
+                  <th key={`${definition.key}-filter`}>
+                    <label className="listing-table__filter">
+                      <span className="visually-hidden">Filter {definition.label}</span>
+                      {isBooleanFilter ? (
+                        <select
+                          value={selectValue}
+                          onChange={handleFilterChange(definition.key, {
+                            normalize: (value) => (value === 'all' ? '' : value),
+                          })}
+                          className="listing-table__filter-select"
+                          aria-label={`Filter ${definition.label}`}
+                        >
+                          <option value="all">All</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={filterValue}
+                          onChange={handleFilterChange(definition.key)}
+                          placeholder="Type to filter…"
+                          className="listing-table__filter-input"
+                        />
+                      )}
+                    </label>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
