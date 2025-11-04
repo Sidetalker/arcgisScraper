@@ -5,6 +5,104 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
 
+type LeafletEditTooltip = {
+  updateContent: (content: { text: string; subtext: string }) => void;
+};
+
+type LeafletCircleEditor = {
+  _moveMarker: L.Marker;
+  _map: L.Map & {
+    distance: (from: L.LatLngExpression, to: L.LatLngExpression) => number;
+    _editTooltip?: LeafletEditTooltip;
+  };
+  _shape: L.Circle;
+  options?: {
+    feet?: boolean;
+    nautic?: boolean;
+  };
+};
+
+const leafletWithDraw = L as typeof L & {
+  Edit?: {
+    Circle?: {
+      prototype: {
+        _resize?: (this: LeafletCircleEditor, latlng: L.LatLng) => void;
+      };
+    };
+  };
+  GeometryUtil?: {
+    isVersion07x?: () => boolean;
+    readableDistance?: (
+      radius: number,
+      isMetric?: boolean,
+      useFeet?: boolean,
+      useNautic?: boolean,
+    ) => string;
+  };
+  Draw?: {
+    Event: {
+      EDITRESIZE: string;
+    };
+  };
+  drawLocal?: {
+    draw: {
+      handlers: {
+        circle: {
+          radius: string;
+        };
+      };
+    };
+    edit: {
+      handlers: {
+        edit: {
+          tooltip: {
+            text: string;
+            subtext: string;
+          };
+        };
+      };
+    };
+  };
+};
+
+const circleEditPrototype = leafletWithDraw.Edit?.Circle?.prototype;
+
+if (circleEditPrototype) {
+  circleEditPrototype._resize = function patchLeafletDrawResize(this: LeafletCircleEditor, latlng: L.LatLng) {
+    const moveLatLng = this._moveMarker.getLatLng();
+    const geometryUtil = leafletWithDraw.GeometryUtil;
+    const isV07 =
+      geometryUtil?.isVersion07x?.() ?? false;
+
+    const radiusValue = isV07
+      ? moveLatLng.distanceTo(latlng)
+      : this._map.distance(moveLatLng, latlng);
+
+    this._shape.setRadius(radiusValue);
+
+    const tooltipStrings = leafletWithDraw.drawLocal?.edit?.handlers?.edit?.tooltip;
+    const radiusLabel = leafletWithDraw.drawLocal?.draw?.handlers?.circle?.radius;
+
+    if (this._map._editTooltip && tooltipStrings && radiusLabel) {
+      this._map._editTooltip.updateContent({
+        text: `${tooltipStrings.subtext}<br />${tooltipStrings.text}`,
+        subtext: `${radiusLabel}: ${
+          geometryUtil?.readableDistance?.(
+            radiusValue,
+            true,
+            this.options?.feet,
+            this.options?.nautic,
+          ) ?? radiusValue.toFixed(2)
+        }`,
+      });
+    }
+
+    this._map.fire(leafletWithDraw.Draw?.Event.EDITRESIZE ?? 'draw:editresize', {
+      layer: this._shape,
+    });
+  };
+}
+
 import type { ListingRecord, RegionCircle } from '@/types';
 
 import './RegionMap.css';

@@ -9,11 +9,6 @@ interface FilterPanelProps {
   onChange: (filters: ListingFilters) => void;
   disabled?: boolean;
   onReset: () => void;
-  onDropPinRequest: () => void;
-  onCancelPinDrop: () => void;
-  pinDropActive: boolean;
-  hasPinnedRegion: boolean;
-  onClearPinRegion: () => void;
 }
 
 export function FilterPanel({
@@ -21,11 +16,6 @@ export function FilterPanel({
   onChange,
   disabled = false,
   onReset,
-  onDropPinRequest,
-  onCancelPinDrop,
-  pinDropActive,
-  hasPinnedRegion,
-  onClearPinRegion,
 }: FilterPanelProps) {
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -35,8 +25,6 @@ export function FilterPanel({
       onChange({ ...filters, complex: value });
     } else if (name === 'owner') {
       onChange({ ...filters, owner: value });
-    } else if (name === 'pinRadiusMeters') {
-      onChange({ ...filters, pinRadiusMeters: value });
     }
   };
 
@@ -100,59 +88,6 @@ export function FilterPanel({
           title="Only show listings whose owner names contain this text"
         />
       </div>
-
-      <fieldset className="filters__group filters__pin" disabled={disabled}>
-        <legend>Map radius filter</legend>
-        <div className="filters__pin-row">
-          <label htmlFor="pinRadiusMeters">Radius (meters)</label>
-          <input
-            id="pinRadiusMeters"
-            name="pinRadiusMeters"
-            type="number"
-            min={50}
-            step={50}
-            value={filters.pinRadiusMeters}
-            onChange={handleInputChange}
-            placeholder="e.g. 500"
-            title="Limit listings to a circle around a dropped pin"
-          />
-        </div>
-        <p className="filters__hint" aria-live="polite">
-          {pinDropActive
-            ? 'Click anywhere on the map to drop your pin.'
-            : hasPinnedRegion
-              ? 'Pin placed: adjust the radius or clear the geocircle.'
-              : 'Enter a radius and drop a pin on the map to limit results to that area.'}
-        </p>
-        <div className="filters__pin-actions">
-          <button
-            type="button"
-            onClick={onDropPinRequest}
-            disabled={disabled || pinDropActive}
-            className="filters__pin-button"
-          >
-            {pinDropActive ? 'Waiting for map click…' : 'Drop pin on map'}
-          </button>
-          {pinDropActive ? (
-            <button
-              type="button"
-              onClick={onCancelPinDrop}
-              className="filters__pin-button filters__pin-button--secondary"
-            >
-              Cancel
-            </button>
-          ) : null}
-          {!pinDropActive && hasPinnedRegion ? (
-            <button
-              type="button"
-              onClick={onClearPinRegion}
-              className="filters__pin-button filters__pin-button--secondary"
-            >
-              Clear radius filter
-            </button>
-          ) : null}
-        </div>
-      </fieldset>
     </aside>
   );
 }

@@ -71,7 +71,6 @@ export interface ListingFilters {
   searchTerm: string;
   complex: string;
   owner: string;
-  pinRadiusMeters: string;
 }
 
 export interface RegionCircle {
