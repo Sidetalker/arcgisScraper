@@ -204,7 +204,12 @@ VITE_SUPABASE_ANON_KEY=<anon-key>
 # or SUPABASE_URL / SUPABASE_ANON_KEY
 ```
 
-Create a `listings` table in Supabase before syncing for the first time:
+Create the base `listings` table in Supabase before syncing for the first time.
+The repository ships an idempotent helper at `supabase/listings.sql` that you can
+run via `psql -f supabase/listings.sql` (or copy/paste into the Supabase SQL
+editor). It provisions the table with the full set of metadata captured by the
+scraper, grants read access to anonymous clients, and configures triggers so the
+`updated_at` column reflects the most recent write.
 
 ```sql
 create table public.listings (
@@ -212,7 +217,7 @@ create table public.listings (
   complex text,
   unit text,
   owner_name text,
-  owner_names text[],
+  owner_names text[] default '{}'::text[],
   mailing_address text,
   mailing_address_line1 text,
   mailing_address_line2 text,
@@ -224,11 +229,16 @@ create table public.listings (
   schedule_number text,
   public_detail_url text,
   physical_address text,
+  town_name text,
+  zone_name text,
+  zoning_type text,
+  brief_property_description text,
+  situs_address_type_description text,
   is_business_owner boolean,
   latitude double precision,
   longitude double precision,
-  raw jsonb,
-  updated_at timestamptz default timezone('utc', now())
+  raw jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
 );
 ```
 
