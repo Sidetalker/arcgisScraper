@@ -1,8 +1,62 @@
-import type { ListingAttributes, ListingRecord } from '@/types';
-import { categoriseRenewal } from '@/services/renewalEstimator';
+import type { ListingAttributes, ListingRecord, RenewalCategory } from '@/types';
+import {
+  categoriseRenewal,
+  normaliseMonthKey,
+  parseDateValue,
+  resolveRenewalCategory,
+  type RenewalEstimate,
+} from '@/services/renewalEstimator';
 import { assertSupabaseClient } from '@/services/supabaseClient';
 
 type Nullable<T> = T | null;
+
+const RENEWAL_METHODS: ReadonlySet<RenewalEstimate['method']> = new Set([
+  'direct_permit',
+  'transfer_cycle',
+  'assessment_cycle',
+  'update_cycle',
+  'generic_cycle',
+]);
+
+const RENEWAL_CATEGORIES: ReadonlySet<RenewalCategory> = new Set([
+  'overdue',
+  'due_30',
+  'due_60',
+  'due_90',
+  'future',
+  'missing',
+]);
+
+function normaliseRenewalMethod(value: Nullable<string>): RenewalEstimate['method'] | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return RENEWAL_METHODS.has(trimmed as RenewalEstimate['method'])
+    ? (trimmed as RenewalEstimate['method'])
+    : null;
+}
+
+function normaliseRenewalCategory(value: Nullable<string>): RenewalCategory | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return RENEWAL_CATEGORIES.has(trimmed as RenewalCategory)
+    ? (trimmed as RenewalCategory)
+    : null;
+}
+
+function parseDateColumn(value: Nullable<unknown>): Date | null {
+  return parseDateValue(value ?? null);
+}
+
+function formatDateColumn(value: Date | null): string | null {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return null;
+  }
+  return value.toISOString().slice(0, 10);
+}
 
 export interface ListingRow {
   id: string;
@@ -24,6 +78,11 @@ export interface ListingRow {
   is_business_owner: Nullable<boolean>;
   latitude: Nullable<number>;
   longitude: Nullable<number>;
+  estimated_renewal_date: Nullable<string>;
+  estimated_renewal_method: Nullable<string>;
+  estimated_renewal_reference: Nullable<string>;
+  estimated_renewal_category: Nullable<string>;
+  estimated_renewal_month_key: Nullable<string>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -54,13 +113,48 @@ function toListingRow(record: ListingRecord): ListingRow {
     is_business_owner: record.isBusinessOwner,
     latitude: typeof record.latitude === 'number' ? record.latitude : null,
     longitude: typeof record.longitude === 'number' ? record.longitude : null,
+    estimated_renewal_date: formatDateColumn(record.estimatedRenewalDate),
+    estimated_renewal_method: record.estimatedRenewalMethod ?? null,
+    estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
+    estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
+    estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
     raw: (record.raw as Record<string, unknown>) ?? null,
   };
 }
 
 function fromListingRow(row: ListingRow): ListingRecord {
   const rawAttributes = (row.raw as ListingAttributes | null) ?? {};
-  const renewalSnapshot = categoriseRenewal(rawAttributes);
+  const referenceDate = new Date();
+
+  let estimatedRenewalDate = parseDateColumn(row.estimated_renewal_date);
+  let estimatedRenewalMethod = normaliseRenewalMethod(row.estimated_renewal_method);
+  let estimatedRenewalReference = parseDateColumn(row.estimated_renewal_reference);
+  let estimatedRenewalCategory = normaliseRenewalCategory(row.estimated_renewal_category);
+  let estimatedRenewalMonthKey = normaliseMonthKey(row.estimated_renewal_month_key);
+
+  if (estimatedRenewalDate) {
+    const estimate: RenewalEstimate = {
+      date: estimatedRenewalDate,
+      method: estimatedRenewalMethod ?? 'generic_cycle',
+      reference: estimatedRenewalReference ?? null,
+    };
+    const snapshot = resolveRenewalCategory(estimate, referenceDate);
+    estimatedRenewalDate = snapshot.estimate?.date ?? estimatedRenewalDate;
+    estimatedRenewalMethod = snapshot.estimate?.method ?? estimatedRenewalMethod ?? null;
+    estimatedRenewalReference = snapshot.estimate?.reference ?? estimatedRenewalReference ?? null;
+    estimatedRenewalCategory = estimatedRenewalCategory ?? snapshot.category;
+    estimatedRenewalMonthKey = estimatedRenewalMonthKey ?? snapshot.monthKey;
+  } else {
+    const snapshot = categoriseRenewal(rawAttributes, referenceDate);
+    estimatedRenewalDate = snapshot.estimate?.date ?? null;
+    estimatedRenewalMethod = snapshot.estimate?.method ?? null;
+    estimatedRenewalReference = snapshot.estimate?.reference ?? null;
+    estimatedRenewalCategory = snapshot.category;
+    estimatedRenewalMonthKey = snapshot.monthKey;
+  }
+
+  const safeCategory = estimatedRenewalCategory ?? 'missing';
+  const safeMonthKey = normaliseMonthKey(estimatedRenewalMonthKey) ?? null;
 
   return {
     id: row.id,
@@ -82,11 +176,11 @@ function fromListingRow(row: ListingRow): ListingRecord {
     isBusinessOwner: Boolean(row.is_business_owner),
     latitude: typeof row.latitude === 'number' ? row.latitude : null,
     longitude: typeof row.longitude === 'number' ? row.longitude : null,
-    estimatedRenewalDate: renewalSnapshot.estimate?.date ?? null,
-    estimatedRenewalMethod: renewalSnapshot.estimate?.method ?? null,
-    estimatedRenewalReference: renewalSnapshot.estimate?.reference ?? null,
-    estimatedRenewalCategory: renewalSnapshot.category,
-    estimatedRenewalMonthKey: renewalSnapshot.monthKey,
+    estimatedRenewalDate,
+    estimatedRenewalMethod,
+    estimatedRenewalReference,
+    estimatedRenewalCategory: safeCategory,
+    estimatedRenewalMonthKey: safeMonthKey,
     raw: rawAttributes,
   };
 }
@@ -111,6 +205,11 @@ const LISTING_COLUMNS = [
   'is_business_owner',
   'latitude',
   'longitude',
+  'estimated_renewal_date',
+  'estimated_renewal_method',
+  'estimated_renewal_reference',
+  'estimated_renewal_category',
+  'estimated_renewal_month_key',
   'raw',
   'updated_at',
 ] as const;
