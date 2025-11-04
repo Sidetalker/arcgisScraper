@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 
 import FilterPanel from '@/components/FilterPanel';
@@ -120,7 +120,20 @@ function isListingInsideRegions(
 }
 
 function HomePage(): JSX.Element {
-  const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
+  const {
+    listings,
+    loading,
+    error,
+    regions,
+    onRegionsChange,
+    cachedAt,
+    source,
+    canRequestMailingListExport,
+    exportJob,
+    requestMailingListExport,
+    refreshMailingListExport,
+    clearMailingListExport,
+  } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -134,6 +147,9 @@ function HomePage(): JSX.Element {
   const [localProfileId, setLocalProfileId] = useState<string | null>(null);
   const [localProfileName, setLocalProfileName] = useState(DEFAULT_PROFILE_NAME);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportRequesting, setExportRequesting] = useState(false);
+  const exportPollingRef = useRef<number | null>(null);
 
   const supabaseAvailable = Boolean(supabase);
 
@@ -295,6 +311,59 @@ function HomePage(): JSX.Element {
       console.warn('Unable to persist configuration profile to localStorage.', storageError);
     }
   }, [filters, regions, tableState, localProfileId, localProfileName]);
+
+  useEffect(() => {
+    if (!exportJob) {
+      if (exportPollingRef.current !== null) {
+        window.clearInterval(exportPollingRef.current);
+        exportPollingRef.current = null;
+      }
+      return;
+    }
+
+    if (exportJob.status === 'pending' || exportJob.status === 'processing') {
+      const poll = async () => {
+        try {
+          await refreshMailingListExport(exportJob.id);
+        } catch (pollError) {
+          console.error('Failed to refresh mailing list export job.', pollError);
+          setExportError((current) =>
+            current ??
+            (pollError instanceof Error
+              ? pollError.message
+              : 'Unable to refresh mailing list export.'),
+          );
+        }
+      };
+
+      void poll();
+
+      if (exportPollingRef.current !== null) {
+        window.clearInterval(exportPollingRef.current);
+      }
+      exportPollingRef.current = window.setInterval(() => {
+        void poll();
+      }, 5000);
+
+      return () => {
+        if (exportPollingRef.current !== null) {
+          window.clearInterval(exportPollingRef.current);
+          exportPollingRef.current = null;
+        }
+      };
+    }
+
+    if (exportPollingRef.current !== null) {
+      window.clearInterval(exportPollingRef.current);
+      exportPollingRef.current = null;
+    }
+  }, [exportJob, refreshMailingListExport]);
+
+  useEffect(() => {
+    if (exportJob && exportJob.status === 'completed') {
+      setExportError(null);
+    }
+  }, [exportJob]);
 
   const statusMessage = useMemo(() => {
     if (loading) {
@@ -472,6 +541,122 @@ function HomePage(): JSX.Element {
     void loadProfiles();
   }, [loadProfiles]);
 
+  const handleExportMailingList = useCallback(async () => {
+    if (!canRequestMailingListExport) {
+      setExportError('Supabase is not configured for exports.');
+      return;
+    }
+
+    clearMailingListExport();
+    setExportRequesting(true);
+    setExportError(null);
+
+    try {
+      const job = await requestMailingListExport({
+        filters: { ...filters },
+        regions: regions.map((region) => ({ ...region })),
+      });
+      if (job.status === 'failed' && job.error) {
+        setExportError(job.error);
+      }
+    } catch (exportErr) {
+      console.error('Failed to start mailing list export.', exportErr);
+      setExportError(
+        exportErr instanceof Error
+          ? exportErr.message
+          : 'Unable to start mailing list export.',
+      );
+    } finally {
+      setExportRequesting(false);
+    }
+  }, [canRequestMailingListExport, clearMailingListExport, filters, regions, requestMailingListExport]);
+
+  const exportStatus = exportJob?.status ?? 'idle';
+  const exportDownloadUrls = exportJob?.downloadUrls ?? null;
+  const exportCsvUrl = exportDownloadUrls?.csv ?? null;
+  const exportXlsxUrl = exportDownloadUrls?.xlsx ?? null;
+  const exportJobError = exportJob?.error ?? null;
+  const exportInProgress = exportStatus === 'pending' || exportStatus === 'processing';
+  const exportButtonLabel = exportRequesting
+    ? 'Starting export…'
+    : exportInProgress
+      ? 'Export in progress…'
+      : 'Export mailing list';
+  const exportButtonDisabled = exportRequesting || exportInProgress || !canRequestMailingListExport;
+
+  let exportHelperMessage: string | null = null;
+  let exportHelperVariant: 'error' | 'success' | 'info' = 'info';
+
+  if (!canRequestMailingListExport) {
+    exportHelperMessage = 'Supabase credentials are required to export mailing lists.';
+  } else if (exportError) {
+    exportHelperMessage = exportError;
+    exportHelperVariant = 'error';
+  } else if (exportJobError) {
+    exportHelperMessage = exportJobError;
+    exportHelperVariant = 'error';
+  } else if (exportInProgress) {
+    exportHelperMessage = 'Preparing export…';
+  } else if (exportStatus === 'completed' && (exportCsvUrl || exportXlsxUrl)) {
+    exportHelperMessage = 'Export ready. Download links expire in 60 minutes.';
+    exportHelperVariant = 'success';
+  } else if (exportStatus === 'completed') {
+    exportHelperMessage = 'Export finished, but no download links were generated.';
+    exportHelperVariant = 'error';
+  } else if (exportJob) {
+    exportHelperMessage = 'Export requested. Waiting for completion…';
+  } else {
+    exportHelperMessage = 'Generate CSV and XLSX mailing lists for the current filters and map region.';
+  }
+
+  const exportHelperClassName = `listing-table__actions-message${
+    exportHelperVariant === 'error'
+      ? ' listing-table__actions-message--error'
+      : exportHelperVariant === 'success'
+        ? ' listing-table__actions-message--success'
+        : ''
+  }`;
+
+  const exportActions = (
+    <>
+      <button
+        type="button"
+        className="listing-table__actions-button"
+        onClick={handleExportMailingList}
+        disabled={exportButtonDisabled}
+      >
+        {exportButtonLabel}
+      </button>
+      {exportCsvUrl || exportXlsxUrl ? (
+        <div className="listing-table__actions-links">
+          {exportCsvUrl ? (
+            <a
+              href={exportCsvUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="listing-table__actions-link"
+            >
+              Download CSV
+            </a>
+          ) : null}
+          {exportXlsxUrl ? (
+            <a
+              href={exportXlsxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="listing-table__actions-link"
+            >
+              Download XLSX
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+      {exportHelperMessage ? (
+        <p className={exportHelperClassName}>{exportHelperMessage}</p>
+      ) : null}
+    </>
+  );
+
   const handleListingFocus = useCallback(
     (listingId: string) => {
       const index = filteredListings.findIndex((listing) => listing.id === listingId);
@@ -533,6 +718,7 @@ function HomePage(): JSX.Element {
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          actions={exportActions}
         />
       </div>
     </>
