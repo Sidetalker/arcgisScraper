@@ -741,7 +741,7 @@ function MapToolbar({
         container,
       ) as HTMLButtonElement;
       toggleAllButton.type = 'button';
-      toggleAllButton.title = 'Toggle showing all properties or only properties within drawn regions';
+      toggleAllButton.title = 'Show all properties or only those within regions';
       toggleAllButton.textContent = 'Show all properties';
       toggleAllButton.dataset.action = 'toggle-all';
       toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
@@ -1130,7 +1130,11 @@ function RegionMap({
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
 
-  const displayedListings = showAllProperties && regions.length > 0 ? allListings : listings;
+  const displayedListings = useMemo(() => {
+    // When toggle is on and regions exist, show all filtered listings
+    // Otherwise show region-filtered listings (or all if no regions)
+    return showAllProperties && regions.length > 0 ? allListings : listings;
+  }, [showAllProperties, regions.length, allListings, listings]);
 
   useEffect(() => {
     if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
