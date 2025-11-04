@@ -20,6 +20,11 @@ vi.mock('@/services/listingStorage', () => ({
   replaceAllListings: vi.fn(() => Promise.resolve()),
 }));
 
+vi.mock('@/services/listingLocalCache', () => ({
+  loadListingsFromCache: vi.fn(() => Promise.resolve(null)),
+  saveListingsToCache: vi.fn(() => Promise.resolve(new Date())),
+}));
+
 describe('App', () => {
   const renderApp = () =>
     render(

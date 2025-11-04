@@ -13,7 +13,7 @@ export type LayoutOutletContext = {
 };
 
 function Layout(): JSX.Element {
-  const { loading, cachedAt, syncing, syncFromArcgis } = useListings();
+  const { loading, cachedAt, localCachedAt, isLocalCacheStale, syncing, syncFromArcgis } = useListings();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
 
   const handleStatusChange = useCallback((message: string) => {
@@ -27,16 +27,27 @@ function Layout(): JSX.Element {
     [handleStatusChange],
   );
 
-  const cacheSummary = useMemo(() => {
+  const supabaseSummary = useMemo(() => {
     if (!cachedAt) {
-      return 'No cached results';
+      return 'No Supabase sync yet';
     }
-    return `Cached ${cachedAt.toLocaleTimeString([], {
+    return `Synced ${cachedAt.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     })}`;
   }, [cachedAt]);
+
+  const localSummary = useMemo(() => {
+    if (!localCachedAt) {
+      return 'No local cache';
+    }
+    return `Cached locally ${localCachedAt.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })}`;
+  }, [localCachedAt]);
 
   return (
     <div className="app">
@@ -67,8 +78,14 @@ function Layout(): JSX.Element {
           >
             {syncing ? 'Syncing…' : 'Sync from ArcGIS'}
           </button>
-          <span className="app__cache" title={cacheSummary}>
-            {cacheSummary}
+          <span className="app__cache" title={localSummary}>
+            {localSummary}
+          </span>
+          <span
+            className={`app__cache${isLocalCacheStale ? ' app__cache--warn' : ''}`}
+            title={supabaseSummary}
+          >
+            {supabaseSummary}
           </span>
         </div>
       </header>

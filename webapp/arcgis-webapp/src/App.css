@@ -74,6 +74,12 @@
   border-radius: 0.65rem;
 }
 
+.app__cache--warn {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
 .app__status {
   width: min(1100px, 100%);
   background: rgba(15, 23, 42, 0.04);

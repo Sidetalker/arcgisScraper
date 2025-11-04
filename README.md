@@ -239,6 +239,11 @@ header) will fetch the entire dataset once, replace every row in Supabase, and
 subsequent browsing will only hit your database. Use this occasionally to
 refresh the data (quarterly is sufficient for Summit County).
 
+The client also mirrors the dataset inside the browser (IndexedDB) so return
+visits do not trigger another Supabase read. The header surfaces both the
+Supabase sync time and the local cache timestamp, highlighting when the local
+copy is older than the most recent sync.
+
 ## Troubleshooting
 
 Some corporate networks block anonymous requests to ArcGIS Online services. If

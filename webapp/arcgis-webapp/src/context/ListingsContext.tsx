@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { fetchListings } from '@/services/arcgisClient';
+import { loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
 import type { ListingRecord, RegionCircle } from '@/types';
@@ -21,6 +22,8 @@ export interface ListingsContextValue {
   error: string | null;
   regions: RegionCircle[];
   cachedAt: Date | null;
+  localCachedAt: Date | null;
+  isLocalCacheStale: boolean;
   onRegionsChange: (nextRegions: RegionCircle[]) => void;
   refresh: () => void;
   syncing: boolean;
@@ -35,6 +38,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [error, setError] = useState<string | null>(null);
   const [regions, setRegions] = useState<RegionCircle[]>([]);
   const [cachedAt, setCachedAt] = useState<Date | null>(null);
+  const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
@@ -116,13 +120,53 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     });
   }, []);
 
+  const persistLocalCache = useCallback(
+    async (records: ListingRecord[], supabaseUpdatedAt: Date | null) => {
+      try {
+        const savedAt = await saveListingsToCache(records, supabaseUpdatedAt);
+        setLocalCachedAt(savedAt);
+      } catch (storageError) {
+        console.warn('Unable to persist listings cache to IndexedDB.', storageError);
+      }
+    },
+    [],
+  );
+
+  const applyListingSnapshot = useCallback(
+    (records: ListingRecord[], supabaseUpdatedAt: Date | null, savedAt?: Date | null) => {
+      setListings(records);
+      if (supabaseUpdatedAt) {
+        setCachedAt(supabaseUpdatedAt);
+      }
+      if (savedAt) {
+        setLocalCachedAt(savedAt);
+      }
+    },
+    [],
+  );
+
+  const hydrateFromLocalCache = useCallback(async () => {
+    try {
+      const cached = await loadListingsFromCache();
+      if (!cached || cached.records.length === 0) {
+        return false;
+      }
+
+      applyListingSnapshot(cached.records, cached.supabaseUpdatedAt, cached.savedAt);
+      return true;
+    } catch (error) {
+      console.warn('Unable to restore listings from IndexedDB.', error);
+      return false;
+    }
+  }, [applyListingSnapshot]);
+
   const loadListingsFromSupabase = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const { records, latestUpdatedAt } = await fetchStoredListings();
-      setListings(records);
-      setCachedAt(latestUpdatedAt);
+      applyListingSnapshot(records, latestUpdatedAt ?? null, null);
+      await persistLocalCache(records, latestUpdatedAt ?? null);
     } catch (loadError) {
       console.error('Failed to fetch listings from Supabase.', loadError);
       const message =
@@ -130,16 +174,19 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
           ? loadError.message
           : 'Unable to load listings from Supabase.';
       setError(message);
-      setListings([]);
-      setCachedAt(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyListingSnapshot, persistLocalCache]);
 
   useEffect(() => {
-    loadListingsFromSupabase();
-  }, [loadListingsFromSupabase]);
+    void (async () => {
+      const hadLocal = await hydrateFromLocalCache();
+      if (!hadLocal) {
+        await loadListingsFromSupabase();
+      }
+    })();
+  }, [hydrateFromLocalCache, loadListingsFromSupabase]);
 
   const refresh = useCallback(() => {
     console.info('Refreshing listings from Supabase.');
@@ -168,8 +215,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       });
 
       await replaceAllListings(records);
+      const syncTimestamp = new Date();
       setListings(records);
-      setCachedAt(new Date());
+      setCachedAt(syncTimestamp);
+      await persistLocalCache(records, syncTimestamp);
       console.info('Supabase listings were synchronised successfully.', {
         listingCount: records.length,
       });
@@ -186,6 +235,13 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, []);
 
+  const isLocalCacheStale = useMemo(() => {
+    if (!localCachedAt || !cachedAt) {
+      return false;
+    }
+    return localCachedAt < cachedAt;
+  }, [localCachedAt, cachedAt]);
+
   const value = useMemo(
     () => ({
       listings,
@@ -193,12 +249,26 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       error,
       regions,
       cachedAt,
+      localCachedAt,
+      isLocalCacheStale,
       onRegionsChange: handleRegionsChange,
       refresh,
       syncing,
       syncFromArcgis,
     }),
-    [cachedAt, error, handleRegionsChange, listings, loading, refresh, regions, syncing, syncFromArcgis],
+    [
+      cachedAt,
+      error,
+      handleRegionsChange,
+      listings,
+      loading,
+      localCachedAt,
+      isLocalCacheStale,
+      refresh,
+      regions,
+      syncing,
+      syncFromArcgis,
+    ],
   );
 
   return <ListingsContext.Provider value={value}>{children}</ListingsContext.Provider>;
