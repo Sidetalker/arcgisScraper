@@ -494,6 +494,7 @@ export function toListingRecord(
     estimatedRenewalReference,
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
+    nearestEvStationDistanceMeters: null,
     raw: attributes,
   };
 }

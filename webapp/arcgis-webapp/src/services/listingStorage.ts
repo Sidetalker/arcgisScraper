@@ -191,6 +191,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
+    nearestEvStationDistanceMeters: typeof row.distance_to_ev_station_meters === 'number' ? row.distance_to_ev_station_meters : null,
     raw: rawAttributes,
   };
 }

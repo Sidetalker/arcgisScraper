@@ -72,6 +72,7 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
+    maxEvDistanceMiles: typeof filters?.maxEvDistanceMiles === 'number' ? filters.maxEvDistanceMiles : null,
   };
 }
 
