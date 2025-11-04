@@ -1,3 +1,6 @@
+-- Reset table so syncs rebuild a fresh dataset
+drop table if exists public.listings cascade;
+
 -- Base listings table that mirrors the structure expected by the scraper,
 -- Supabase sync worker, and the React client. The script is idempotent so it
 -- can be re-run to ensure required columns, grants, and triggers exist.
