@@ -43,16 +43,37 @@ const leafletWithDraw = L as typeof L & {
     Event: {
       EDITRESIZE: string;
     };
+    Polygon?: typeof L.Draw.Polygon;
+    Circle?: typeof L.Draw.Circle;
   };
   drawLocal?: {
     draw: {
+      toolbar?: {
+        buttons?: {
+          circle?: string;
+          polygon?: string;
+        };
+      };
       handlers: {
         circle: {
           radius: string;
         };
+        polygon?: {
+          tooltip?: {
+            start?: string;
+            cont?: string;
+            end?: string;
+          };
+        };
       };
     };
     edit: {
+      toolbar?: {
+        buttons?: {
+          edit?: string;
+          remove?: string;
+        };
+      };
       handlers: {
         edit: {
           tooltip: {
@@ -103,13 +124,35 @@ if (circleEditPrototype) {
   };
 }
 
-import type { ListingRecord, RegionCircle } from '@/types';
+const drawLocal = leafletWithDraw.drawLocal;
+if (drawLocal) {
+  const toolbarButtons = drawLocal.draw?.toolbar?.buttons;
+  if (toolbarButtons) {
+    toolbarButtons.polygon = 'Draw search polygon';
+    toolbarButtons.circle = 'Draw search circle';
+  }
+
+  const polygonTooltip = drawLocal.draw?.handlers?.polygon?.tooltip;
+  if (polygonTooltip) {
+    polygonTooltip.start = 'Click to start outlining your search area';
+    polygonTooltip.cont = 'Click to continue drawing the polygon';
+    polygonTooltip.end = 'Click the first point to finish the polygon';
+  }
+
+  const editButtons = drawLocal.edit?.toolbar?.buttons;
+  if (editButtons) {
+    editButtons.edit = 'Adjust shapes';
+    editButtons.remove = 'Delete shapes';
+  }
+}
+
+import type { ListingRecord, RegionShape } from '@/types';
 
 import './RegionMap.css';
 
 type RegionMapProps = {
-  regions: RegionCircle[];
-  onRegionsChange: (regions: RegionCircle[]) => void;
+  regions: RegionShape[];
+  onRegionsChange: (regions: RegionShape[]) => void;
   listings?: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
   totalListingCount?: number;
@@ -118,20 +161,71 @@ type RegionMapProps = {
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
 
-function toRegionCircle(layer: L.Circle): RegionCircle {
-  const center = layer.getLatLng();
-  return {
-    lat: center.lat,
-    lng: center.lng,
-    radius: layer.getRadius(),
-  };
+const REGION_STYLE: L.PathOptions = {
+  color: '#2563eb',
+  fillColor: '#3b82f6',
+  fillOpacity: 0.2,
+  weight: 2,
+};
+
+function toRegionShape(layer: L.Layer): RegionShape | null {
+  if (layer instanceof L.Circle) {
+    const center = layer.getLatLng();
+    const radius = layer.getRadius();
+    if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || !Number.isFinite(radius)) {
+      return null;
+    }
+    return { type: 'circle', lat: center.lat, lng: center.lng, radius };
+  }
+
+  if (layer instanceof L.Polygon) {
+    const latLngs = layer.getLatLngs();
+    const ring = Array.isArray(latLngs[0]) ? (latLngs[0] as L.LatLng[]) : (latLngs as unknown as L.LatLng[]);
+    const points = ring
+      .map((latLng) => ({ lat: latLng.lat, lng: latLng.lng }))
+      .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (Math.abs(first.lat - last.lat) < 1e-9 && Math.abs(first.lng - last.lng) < 1e-9) {
+      points.pop();
+    }
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    return { type: 'polygon', points };
+  }
+
+  return null;
 }
 
-function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
-  const results: RegionCircle[] = [];
+function createLayerFromRegion(region: RegionShape): L.Circle | L.Polygon {
+  if (region.type === 'circle') {
+    return L.circle([region.lat, region.lng], {
+      ...REGION_STYLE,
+      radius: region.radius,
+    });
+  }
+
+  const latLngs = region.points.map((point) => [point.lat, point.lng]);
+  return L.polygon(latLngs, {
+    ...REGION_STYLE,
+    smoothFactor: 0.2,
+  });
+}
+
+function collectRegions(featureGroup: L.FeatureGroup): RegionShape[] {
+  const results: RegionShape[] = [];
   featureGroup.eachLayer((layer) => {
-    if (layer instanceof L.Circle) {
-      results.push(toRegionCircle(layer));
+    const shape = toRegionShape(layer);
+    if (shape) {
+      results.push(shape);
     }
   });
   return results;
@@ -289,17 +383,145 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
 ListingSelectionPanel.displayName = 'ListingSelectionPanel';
 
 type DrawManagerProps = {
-  regions: RegionCircle[];
-  onRegionsChange: (regions: RegionCircle[]) => void;
+  regions: RegionShape[];
+  onRegionsChange: (regions: RegionShape[]) => void;
 };
+
+type MapToolbarProps = {
+  onDrawPolygon: () => void;
+  onDrawCircle: () => void;
+  onClearRegions: () => void;
+  onFitRegions: () => void;
+  hasRegions: boolean;
+};
+
+function MapToolbar({
+  onDrawPolygon,
+  onDrawCircle,
+  onClearRegions,
+  onFitRegions,
+  hasRegions,
+}: MapToolbarProps): null {
+  const map = useMap();
+  const buttonRefs = useRef<{ clearButton?: HTMLButtonElement; fitButton?: HTMLButtonElement } | null>(null);
+
+  useEffect(() => {
+    const control = L.control({ position: 'topright' });
+    control.onAdd = () => {
+      const container = L.DomUtil.create('div', 'leaflet-bar region-map__toolbar') as HTMLDivElement;
+      container.setAttribute('role', 'group');
+      container.setAttribute('aria-label', 'Drawing controls');
+
+      const polygonButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button region-map__toolbar-button--primary',
+        container,
+      ) as HTMLButtonElement;
+      polygonButton.type = 'button';
+      polygonButton.title = 'Draw a custom polygon';
+      polygonButton.textContent = 'Draw polygon';
+      polygonButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onDrawPolygon();
+      });
+
+      const circleButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      circleButton.type = 'button';
+      circleButton.title = 'Draw a circular search area';
+      circleButton.textContent = 'Draw circle';
+      circleButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onDrawCircle();
+      });
+
+      const fitButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      fitButton.type = 'button';
+      fitButton.title = 'Zoom the map to your drawn regions';
+      fitButton.textContent = 'Zoom to shapes';
+      fitButton.dataset.action = 'fit';
+      fitButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (!fitButton.disabled) {
+          onFitRegions();
+        }
+      });
+
+      const clearButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      clearButton.type = 'button';
+      clearButton.title = 'Remove all drawn regions';
+      clearButton.textContent = 'Clear shapes';
+      clearButton.dataset.action = 'clear';
+      clearButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (!clearButton.disabled) {
+          onClearRegions();
+        }
+      });
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      [clearButton, fitButton].forEach((button) => {
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+        button.classList.add('region-map__toolbar-button--disabled');
+      });
+
+      buttonRefs.current = { clearButton, fitButton };
+
+      return container;
+    };
+
+    control.addTo(map);
+
+    return () => {
+      buttonRefs.current = null;
+      control.remove();
+    };
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs) {
+      return;
+    }
+
+    const buttons = [refs.clearButton, refs.fitButton];
+    buttons.forEach((button) => {
+      if (!button) {
+        return;
+      }
+      const disabled = !hasRegions;
+      button.disabled = disabled;
+      button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      button.classList.toggle('region-map__toolbar-button--disabled', disabled);
+    });
+  }, [hasRegions]);
+
+  return null;
+}
 
 function DrawManager({
   regions,
   onRegionsChange,
-}: DrawManagerProps): null {
+}: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
   const drawControlRef = useRef<L.Control.Draw | null>(null);
+  const polygonDrawerRef = useRef<L.Draw.Polygon | null>(null);
+  const circleDrawerRef = useRef<L.Draw.Circle | null>(null);
   const previousCountRef = useRef(0);
 
   const initialiseLayers = useCallback(() => {
@@ -312,22 +534,9 @@ function DrawManager({
       drawControlRef.current = new L.Control.Draw({
         edit: {
           featureGroup: featureGroupRef.current,
+          poly: { allowIntersection: false },
         },
-        draw: {
-          circle: {
-            shapeOptions: {
-              color: '#2563eb',
-              fillColor: '#3b82f6',
-              fillOpacity: 0.2,
-              weight: 2,
-            },
-          },
-          polygon: false,
-          polyline: false,
-          rectangle: false,
-          marker: false,
-          circlemarker: false,
-        },
+        draw: false,
       });
       map.addControl(drawControlRef.current);
     }
@@ -346,6 +555,24 @@ function DrawManager({
   }, [map]);
 
   useEffect(() => {
+    polygonDrawerRef.current = new L.Draw.Polygon(map, {
+      allowIntersection: false,
+      showArea: true,
+      shapeOptions: REGION_STYLE,
+    });
+    circleDrawerRef.current = new L.Draw.Circle(map, {
+      shapeOptions: REGION_STYLE,
+    });
+
+    return () => {
+      polygonDrawerRef.current?.disable();
+      circleDrawerRef.current?.disable();
+      polygonDrawerRef.current = null;
+      circleDrawerRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
     initialiseLayers();
 
     const handleCreated = (event: L.DrawEvents.Created) => {
@@ -353,11 +580,14 @@ function DrawManager({
         return;
       }
 
-      const layer = event.layer;
-      if (layer instanceof L.Circle) {
-        featureGroupRef.current.addLayer(layer);
-        onRegionsChange(collectRegions(featureGroupRef.current));
+      const layer = event.layer as L.Layer;
+      const shape = toRegionShape(layer);
+      if (!shape) {
+        return;
       }
+
+      featureGroupRef.current.addLayer(layer);
+      onRegionsChange(collectRegions(featureGroupRef.current));
     };
 
     const handleEdited = () => {
@@ -393,14 +623,8 @@ function DrawManager({
 
     featureGroupRef.current.clearLayers();
     regions.forEach((region) => {
-      const circle = L.circle([region.lat, region.lng], {
-        radius: region.radius,
-        color: '#2563eb',
-        fillColor: '#3b82f6',
-        fillOpacity: 0.2,
-        weight: 2,
-      });
-      featureGroupRef.current?.addLayer(circle);
+      const layer = createLayerFromRegion(region);
+      featureGroupRef.current?.addLayer(layer);
     });
   }, [regions]);
 
@@ -418,8 +642,8 @@ function DrawManager({
 
     const bounds = new L.LatLngBounds([]);
     featureGroupRef.current.eachLayer((layer) => {
-      if (layer instanceof L.Circle) {
-        bounds.extend(layer.getBounds());
+      if ('getBounds' in layer && typeof (layer as L.Circle | L.Polygon).getBounds === 'function') {
+        bounds.extend((layer as L.Circle | L.Polygon).getBounds());
       }
     });
 
@@ -428,7 +652,50 @@ function DrawManager({
     }
   }, [map, regions]);
 
-  return null;
+  const startPolygon = useCallback(() => {
+    circleDrawerRef.current?.disable();
+    polygonDrawerRef.current?.enable();
+  }, []);
+
+  const startCircle = useCallback(() => {
+    polygonDrawerRef.current?.disable();
+    circleDrawerRef.current?.enable();
+  }, []);
+
+  const clearRegions = useCallback(() => {
+    if (!featureGroupRef.current) {
+      return;
+    }
+    featureGroupRef.current.clearLayers();
+    onRegionsChange([]);
+  }, [onRegionsChange]);
+
+  const fitRegions = useCallback(() => {
+    if (!featureGroupRef.current) {
+      return;
+    }
+
+    const bounds = new L.LatLngBounds([]);
+    featureGroupRef.current.eachLayer((layer) => {
+      if ('getBounds' in layer && typeof (layer as L.Circle | L.Polygon).getBounds === 'function') {
+        bounds.extend((layer as L.Circle | L.Polygon).getBounds());
+      }
+    });
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.25));
+    }
+  }, [map]);
+
+  return (
+    <MapToolbar
+      onDrawPolygon={startPolygon}
+      onDrawCircle={startCircle}
+      onClearRegions={clearRegions}
+      onFitRegions={fitRegions}
+      hasRegions={regions.length > 0}
+    />
+  );
 }
 
 type ListingMarkersProps = {
@@ -506,7 +773,7 @@ function RegionMap({
   totalListingCount = 0,
 }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
-  const subtitle = 'Draw circles on the map to filter listings by one or more regions.';
+  const subtitle = 'Use the toolbar to draw polygons or circles and focus on specific areas.';
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
 
@@ -553,7 +820,7 @@ function RegionMap({
     <section
       className="region-map"
       aria-label="Draw regions to filter listings"
-      title="Draw circles to focus the ArcGIS search on specific areas"
+      title="Draw polygons or circles to focus the ArcGIS search on specific areas"
     >
       <div>
         <h2 className="region-map__title">Search Regions</h2>

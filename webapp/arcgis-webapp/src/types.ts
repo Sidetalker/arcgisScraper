@@ -86,17 +86,30 @@ export interface ListingFilters {
   renewalMonths: string[];
 }
 
+export interface RegionPoint {
+  lat: number;
+  lng: number;
+}
+
 export interface RegionCircle {
+  type: 'circle';
   lat: number;
   lng: number;
   radius: number;
 }
 
+export interface RegionPolygon {
+  type: 'polygon';
+  points: RegionPoint[];
+}
+
+export type RegionShape = RegionCircle | RegionPolygon;
+
 export interface ConfigurationProfile {
   id: string;
   name: string;
   filters: ListingFilters;
-  regions: RegionCircle[];
+  regions: RegionShape[];
   table: ListingTableState;
   updatedAt: Date | null;
 }

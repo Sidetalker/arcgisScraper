@@ -1,4 +1,4 @@
-import type { QueryGeometry, RegionCircle } from '@/types';
+import type { QueryGeometry, RegionCircle, RegionPolygon, RegionShape } from '@/types';
 
 const METERS_PER_DEGREE_LAT = 111_320;
 const DEFAULT_SEGMENTS = 64;
@@ -30,16 +30,44 @@ function createRingFromCircle(circle: RegionCircle, segments: number): [number, 
   return ring;
 }
 
-export function circlesToPolygonGeometry(
-  circles: readonly RegionCircle[],
-  segments = DEFAULT_SEGMENTS,
-): QueryGeometry | undefined {
-  if (!Array.isArray(circles) || circles.length === 0) {
+function createRingFromPolygon(polygon: RegionPolygon): [number, number][] | undefined {
+  const { points } = polygon;
+  if (!Array.isArray(points) || points.length < 3) {
     return undefined;
   }
 
-  const rings = circles
-    .map((circle) => createRingFromCircle(circle, segments))
+  const ring: [number, number][] = points
+    .map((point) => [point.lng, point.lat] as [number, number])
+    .filter((entry) => Number.isFinite(entry[0]) && Number.isFinite(entry[1]));
+
+  if (ring.length < 3) {
+    return undefined;
+  }
+
+  const [firstLng, firstLat] = ring[0];
+  const [lastLng, lastLat] = ring[ring.length - 1];
+  if (firstLng !== lastLng || firstLat !== lastLat) {
+    ring.push([firstLng, firstLat]);
+  }
+
+  return ring;
+}
+
+export function regionsToPolygonGeometry(
+  regions: readonly RegionShape[],
+  segments = DEFAULT_SEGMENTS,
+): QueryGeometry | undefined {
+  if (!Array.isArray(regions) || regions.length === 0) {
+    return undefined;
+  }
+
+  const rings = regions
+    .map((region) => {
+      if (region.type === 'circle') {
+        return createRingFromCircle(region, segments);
+      }
+      return createRingFromPolygon(region);
+    })
     .filter((ring): ring is [number, number][] => Array.isArray(ring) && ring.length > 3);
 
   if (!rings.length) {
@@ -51,4 +79,11 @@ export function circlesToPolygonGeometry(
     spatialReference: { wkid: 4326 },
     geometryType: 'esriGeometryPolygon',
   } as QueryGeometry;
+}
+
+export function circlesToPolygonGeometry(
+  circles: readonly RegionCircle[],
+  segments = DEFAULT_SEGMENTS,
+): QueryGeometry | undefined {
+  return regionsToPolygonGeometry(circles, segments);
 }
