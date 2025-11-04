@@ -1744,10 +1744,15 @@ type ZoningDistrictHighlightsProps = {
   onZoneHover?: (zone: ZoningDistrictSummary | null) => void;
 };
 
+const MIN_ZONE_GLOW_RADIUS_METERS = 75;
+const MAX_ZONE_GLOW_RADIUS_METERS = 450;
+const HOVER_RADIUS_MULTIPLIER = 1.25;
+const HOVER_RADIUS_BOOST_METERS = 80;
+
 type ZoneBlurLayer = {
   summary: ZoningDistrictSummary;
-  group: L.FeatureGroup<L.CircleMarker>;
-  markers: Map<string, L.CircleMarker>;
+  circle: L.Circle;
+  baseRadius: number;
   handlers?: {
     mouseover: () => void;
     mouseout: () => void;
@@ -1784,19 +1789,21 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
   const applyGlowState = useCallback((layer: ZoneBlurLayer, hovered: boolean) => {
     const color = hovered ? layer.summary.glowHoverColor : layer.summary.glowColor;
     const fillOpacity = hovered ? 0.6 : 0.45;
-    const radius = hovered ? 24 : 18;
+    const baseRadius = layer.baseRadius;
+    const hoveredRadius = Math.min(
+      Math.max(baseRadius * HOVER_RADIUS_MULTIPLIER, baseRadius + HOVER_RADIUS_BOOST_METERS),
+      MAX_ZONE_GLOW_RADIUS_METERS,
+    );
 
-    layer.markers.forEach((marker) => {
-      marker.setStyle({
-        color,
-        fillColor: color,
-        fillOpacity,
-      });
-      marker.setRadius(radius);
-      if (hovered) {
-        marker.bringToFront();
-      }
+    layer.circle.setStyle({
+      color,
+      fillColor: color,
+      fillOpacity,
     });
+    layer.circle.setRadius(hovered ? hoveredRadius : baseRadius);
+    if (hovered) {
+      layer.circle.bringToFront();
+    }
   }, []);
 
   useEffect(() => {
@@ -1804,7 +1811,7 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
       const hoverCallback = hoverCallbackRef.current.onZoneHover;
       hoverCallback?.(null);
       zoneLayersRef.current.forEach((layer) => {
-        layer.group.clearLayers();
+        layer.circle.remove();
       });
       zoneLayersRef.current.clear();
       return () => {
@@ -1851,16 +1858,16 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
     for (const [key, layer] of Array.from(zoneLayers.entries())) {
       if (!zoneLookup.has(key)) {
         if (layer.handlers) {
-          layer.group.off('mouseover', layer.handlers.mouseover);
-          layer.group.off('mouseout', layer.handlers.mouseout);
+          layer.circle.off('mouseover', layer.handlers.mouseover);
+          layer.circle.off('mouseout', layer.handlers.mouseout);
         }
-        glowGroup.removeLayer(layer.group);
-        layer.group.remove();
+        glowGroup.removeLayer(layer.circle);
+        layer.circle.remove();
         zoneLayers.delete(key);
       }
     }
 
-    const processedByZone = new Map<string, Set<string>>();
+    const zoneBuckets = new Map<string, { summary: ZoningDistrictSummary; points: L.LatLng[] }>();
 
     listings.forEach((listing) => {
       if (listing.latitude === null || listing.longitude === null) {
@@ -1877,14 +1884,59 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
         return;
       }
 
+      const bucket = zoneBuckets.get(zoneKey);
+      const latlng = L.latLng(listing.latitude, listing.longitude);
+
+      if (bucket) {
+        bucket.summary = summary;
+        bucket.points.push(latlng);
+      } else {
+        zoneBuckets.set(zoneKey, { summary, points: [latlng] });
+      }
+    });
+
+    const processedZones = new Set<string>();
+
+    for (const [zoneKey, bucket] of zoneBuckets.entries()) {
+      const { summary, points } = bucket;
+      if (!points.length) {
+        continue;
+      }
+
+      const centroidLat = points.reduce((acc, point) => acc + point.lat, 0) / points.length;
+      const centroidLng = points.reduce((acc, point) => acc + point.lng, 0) / points.length;
+      const centroid = L.latLng(centroidLat, centroidLng);
+
+      let radius = 0;
+      points.forEach((point) => {
+        radius = Math.max(radius, centroid.distanceTo(point));
+      });
+
+      const clampedRadius = Math.min(
+        Math.max(radius, MIN_ZONE_GLOW_RADIUS_METERS),
+        MAX_ZONE_GLOW_RADIUS_METERS,
+      );
+
+      const baseStyle: L.PathOptions = {
+        color: summary.glowColor,
+        fillColor: summary.glowColor,
+        fillOpacity: 0.45,
+        weight: 0,
+        className: 'region-map__zone-glow-marker',
+        pane: 'zoneGlowPane',
+        bubblingMouseEvents: false,
+      };
+
       let layer = zoneLayers.get(zoneKey);
       if (!layer) {
-        const group = L.featureGroup<L.CircleMarker>();
-        group.addTo(glowGroup);
+        const circle = L.circle(centroid, {
+          ...baseStyle,
+          radius: clampedRadius,
+        });
         const newLayer: ZoneBlurLayer = {
           summary,
-          group,
-          markers: new Map<string, L.CircleMarker>(),
+          circle,
+          baseRadius: clampedRadius,
         };
         const handleMouseover = () => {
           applyGlowState(newLayer, true);
@@ -1895,75 +1947,33 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
           hoverCallbackRef.current.onZoneHover?.(null);
         };
         newLayer.handlers = { mouseover: handleMouseover, mouseout: handleMouseout };
-        group.on('mouseover', handleMouseover);
-        group.on('mouseout', handleMouseout);
+        circle.on('mouseover', handleMouseover);
+        circle.on('mouseout', handleMouseout);
+        circle.addTo(glowGroup);
         zoneLayers.set(zoneKey, newLayer);
         layer = newLayer;
-      }
-
-      layer.summary = summary;
-
-      const markerKey = listing.id;
-      if (!markerKey) {
-        return;
-      }
-
-      let marker = layer.markers.get(markerKey);
-      const markerColor = summary.glowColor;
-      const baseStyle: L.PathOptions = {
-        color: markerColor,
-        fillColor: markerColor,
-        fillOpacity: 0.45,
-        weight: 0,
-        className: 'region-map__zone-glow-marker',
-        pane: 'zoneGlowPane',
-        bubblingMouseEvents: false,
-      };
-
-      if (marker) {
-        marker.setLatLng([listing.latitude, listing.longitude]);
-        marker.setStyle(baseStyle);
       } else {
-        marker = L.circleMarker([listing.latitude, listing.longitude], {
-          ...baseStyle,
-          radius: 18,
-        });
-        marker.addTo(layer.group);
-        layer.markers.set(markerKey, marker);
+        layer.summary = summary;
+        layer.baseRadius = clampedRadius;
+        layer.circle.setLatLng(centroid);
+        layer.circle.setRadius(clampedRadius);
+        layer.circle.setStyle(baseStyle);
       }
 
-      marker.setRadius(18);
-
-      let processed = processedByZone.get(zoneKey);
-      if (!processed) {
-        processed = new Set<string>();
-        processedByZone.set(zoneKey, processed);
-      }
-      processed.add(markerKey);
-    });
+      applyGlowState(layer, false);
+      processedZones.add(zoneKey);
+    }
 
     for (const [zoneKey, layer] of Array.from(zoneLayers.entries())) {
-      const processed = processedByZone.get(zoneKey) ?? new Set<string>();
-
-      for (const [markerKey, marker] of Array.from(layer.markers.entries())) {
-        if (!processed.has(markerKey)) {
-          layer.group.removeLayer(marker);
-          marker.remove();
-          layer.markers.delete(markerKey);
-        }
-      }
-
-      if (layer.markers.size === 0) {
+      if (!processedZones.has(zoneKey)) {
         if (layer.handlers) {
-          layer.group.off('mouseover', layer.handlers.mouseover);
-          layer.group.off('mouseout', layer.handlers.mouseout);
+          layer.circle.off('mouseover', layer.handlers.mouseover);
+          layer.circle.off('mouseout', layer.handlers.mouseout);
         }
         hoverCallbackRef.current.onZoneHover?.(null);
-        glowGroup.removeLayer(layer.group);
-        layer.group.remove();
+        glowGroup.removeLayer(layer.circle);
+        layer.circle.remove();
         zoneLayers.delete(zoneKey);
-      } else {
-        applyGlowState(layer, false);
       }
     }
 
