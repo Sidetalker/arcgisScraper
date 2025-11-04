@@ -1,3 +1,6 @@
+-- Reset table so syncs rebuild a fresh dataset
+drop table if exists public.listings cascade;
+
 -- Primary listings table storing the denormalised Summit County STR dataset
 create table if not exists public.listings (
   id text primary key,
