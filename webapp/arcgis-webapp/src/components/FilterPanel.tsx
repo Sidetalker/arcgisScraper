@@ -98,7 +98,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('subdivisions', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Subdivision</span>
                 <span className="filters__chip-value">{value}</span>
@@ -115,7 +114,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('renewalCategories', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Renewal urgency</span>
                 <span className="filters__chip-value">{value}</span>
@@ -132,7 +130,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('renewalMethods', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Renewal signal</span>
                 <span className="filters__chip-value">{value}</span>
@@ -149,7 +146,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('renewalMonths', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Renewal month</span>
                 <span className="filters__chip-value">{value}</span>
