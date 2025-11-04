@@ -1,5 +1,13 @@
 -- Aggregated metrics for listings
 
+-- Reset tables so syncs rebuild a fresh dataset
+drop table if exists public.listing_subdivision_metrics cascade;
+drop table if exists public.listing_zoning_metrics cascade;
+drop table if exists public.listing_land_use_metrics cascade;
+drop table if exists public.listing_renewal_metrics cascade;
+drop table if exists public.listing_renewal_summary cascade;
+drop table if exists public.listing_renewal_method_summary cascade;
+
 -- Subdivision metrics store the latest counts per subdivision and allow the
 -- frontend to highlight neighbourhood saturation.
 create table if not exists public.listing_subdivision_metrics (

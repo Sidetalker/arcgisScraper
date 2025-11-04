@@ -1,3 +1,6 @@
+-- Reset table so syncs rebuild a fresh dataset
+drop table if exists public.configuration_profiles cascade;
+
 -- Create configuration_profiles table to store shared listing filters and map regions
 create table if not exists public.configuration_profiles (
   id uuid primary key default gen_random_uuid(),
