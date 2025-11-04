@@ -223,6 +223,7 @@ type RegionMapProps = {
   regions: RegionShape[];
   onRegionsChange: (regions: RegionShape[]) => void;
   listings?: ListingRecord[];
+  allListings?: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
   totalListingCount?: number;
 };
@@ -630,6 +631,8 @@ ListingSelectionPanel.displayName = 'ListingSelectionPanel';
 type DrawManagerProps = {
   regions: RegionShape[];
   onRegionsChange: (regions: RegionShape[]) => void;
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
 };
 
 type MapToolbarProps = {
@@ -639,6 +642,8 @@ type MapToolbarProps = {
   onFitRegions: () => void;
   hasRegions: boolean;
   activeTool: 'polygon' | 'circle' | null;
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
 };
 
 function MapToolbar({
@@ -648,6 +653,8 @@ function MapToolbar({
   onFitRegions,
   hasRegions,
   activeTool,
+  showAllProperties,
+  onToggleShowAll,
 }: MapToolbarProps): null {
   const map = useMap();
   const buttonRefs = useRef<
@@ -656,6 +663,7 @@ function MapToolbar({
         fitButton?: HTMLButtonElement;
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
+        toggleAllButton?: HTMLButtonElement;
       }
     | null
   >(null);
@@ -727,6 +735,24 @@ function MapToolbar({
         }
       });
 
+      const toggleAllButton = L.DomUtil.create(
+        'button',
+        'region-map__toolbar-button',
+        container,
+      ) as HTMLButtonElement;
+      toggleAllButton.type = 'button';
+      toggleAllButton.title = 'Show all properties or only those within regions';
+      toggleAllButton.textContent = 'Show all properties';
+      toggleAllButton.dataset.action = 'toggle-all';
+      toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+      if (showAllProperties) {
+        toggleAllButton.classList.add('region-map__toolbar-button--active');
+      }
+      toggleAllButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggleShowAll();
+      });
+
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
 
@@ -736,7 +762,7 @@ function MapToolbar({
         button.classList.add('region-map__toolbar-button--disabled');
       });
 
-      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton };
+      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton, toggleAllButton };
 
       return container;
     };
@@ -747,7 +773,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, showAllProperties]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -766,6 +792,16 @@ function MapToolbar({
       button.classList.toggle('region-map__toolbar-button--disabled', disabled);
     });
   }, [hasRegions]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs || !refs.toggleAllButton) {
+      return;
+    }
+
+    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
+    refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+  }, [showAllProperties]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -791,6 +827,8 @@ function MapToolbar({
 function DrawManager({
   regions,
   onRegionsChange,
+  showAllProperties,
+  onToggleShowAll,
 }: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
@@ -1005,6 +1043,8 @@ function DrawManager({
       onFitRegions={fitRegions}
       hasRegions={regions.length > 0}
       activeTool={activeTool}
+      showAllProperties={showAllProperties}
+      onToggleShowAll={onToggleShowAll}
     />
   );
 }
@@ -1080,6 +1120,7 @@ function RegionMap({
   regions,
   onRegionsChange,
   listings = [],
+  allListings = [],
   onListingSelect,
   totalListingCount = 0,
 }: RegionMapProps): JSX.Element {
@@ -1087,24 +1128,31 @@ function RegionMap({
   const subtitle = 'Use the toolbar to draw polygons or circles and focus on specific areas.';
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
+  const [showAllProperties, setShowAllProperties] = useState(false);
+
+  const displayedListings = useMemo(() => {
+    // When toggle is on and regions exist, show all filtered listings
+    // Otherwise show region-filtered listings (or all if no regions)
+    return showAllProperties && regions.length > 0 ? allListings : listings;
+  }, [showAllProperties, regions.length, allListings, listings]);
 
   useEffect(() => {
-    if (selectedListingId && !listings.some((listing) => listing.id === selectedListingId)) {
+    if (selectedListingId && !displayedListings.some((listing) => listing.id === selectedListingId)) {
       setSelectedListingId(null);
     }
-  }, [listings, selectedListingId]);
+  }, [displayedListings, selectedListingId]);
 
   useEffect(() => {
-    if (hoveredListingId && !listings.some((listing) => listing.id === hoveredListingId)) {
+    if (hoveredListingId && !displayedListings.some((listing) => listing.id === hoveredListingId)) {
       setHoveredListingId(null);
     }
-  }, [hoveredListingId, listings]);
+  }, [hoveredListingId, displayedListings]);
 
   useEffect(() => {
-    if (!selectedListingId && listings.length === 1) {
-      setSelectedListingId(listings[0]?.id ?? null);
+    if (!selectedListingId && displayedListings.length === 1) {
+      setSelectedListingId(displayedListings[0]?.id ?? null);
     }
-  }, [listings, selectedListingId]);
+  }, [displayedListings, selectedListingId]);
 
   const activeListingId = hoveredListingId ?? selectedListingId;
 
@@ -1112,8 +1160,8 @@ function RegionMap({
     if (!activeListingId) {
       return null;
     }
-    return listings.find((listing) => listing.id === activeListingId) ?? null;
-  }, [activeListingId, listings]);
+    return displayedListings.find((listing) => listing.id === activeListingId) ?? null;
+  }, [activeListingId, displayedListings]);
 
   const handleMarkerSelect = useCallback(
     (listingId: string) => {
@@ -1125,6 +1173,10 @@ function RegionMap({
 
   const handleMarkerHover = useCallback((listingId: string | null) => {
     setHoveredListingId(listingId);
+  }, []);
+
+  const handleToggleShowAll = useCallback(() => {
+    setShowAllProperties((prev) => !prev);
   }, []);
 
   return (
@@ -1142,7 +1194,7 @@ function RegionMap({
       <div className="region-map__selection-wrapper">
         <ListingSelectionPanel
           listing={activeListing}
-          hasListings={listings.length > 0}
+          hasListings={displayedListings.length > 0}
           totalListingCount={totalListingCount}
         />
       </div>
@@ -1157,10 +1209,12 @@ function RegionMap({
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
+          showAllProperties={showAllProperties}
+          onToggleShowAll={handleToggleShowAll}
         />
-        {listings.length ? (
+        {displayedListings.length ? (
           <ListingMarkers
-            listings={listings}
+            listings={displayedListings}
             onListingSelect={handleMarkerSelect}
             selectedListingId={selectedListingId}
             hoveredListingId={hoveredListingId}
