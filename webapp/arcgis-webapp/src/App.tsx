@@ -708,11 +708,18 @@ function App(): JSX.Element {
         });
       })
       .catch((fetchError) => {
-        if (controller.signal.aborted) {
+        const errorName =
+          fetchError && typeof fetchError === 'object' && 'name' in fetchError
+            ? String((fetchError as { name?: unknown }).name)
+            : '';
+        const isAbortError = controller.signal.aborted || errorName === 'AbortError';
+
+        if (isAbortError) {
           console.warn('ArcGIS listings request aborted.');
           endGroup();
           return;
         }
+
         const message =
           fetchError instanceof Error ? fetchError.message : 'Unable to load listings from ArcGIS.';
         console.error('ArcGIS listings request failed.', fetchError);

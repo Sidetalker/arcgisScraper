@@ -229,6 +229,19 @@ function buildQueryParams({
     const geometryType = inferGeometryType(preparedGeometry) ?? 'esriGeometryEnvelope';
     params.set('geometryType', geometryType);
     params.set('geometry', JSON.stringify(preparedGeometry));
+
+    const spatialReference = (preparedGeometry as {
+      spatialReference?: { wkid?: number; latestWkid?: number; wkt?: string };
+    }).spatialReference;
+    if (spatialReference) {
+      if (typeof spatialReference.wkid === 'number') {
+        params.set('inSR', String(spatialReference.wkid));
+      } else if (typeof spatialReference.latestWkid === 'number') {
+        params.set('inSR', String(spatialReference.latestWkid));
+      } else if (typeof spatialReference.wkt === 'string' && spatialReference.wkt.trim()) {
+        params.set('inSR', JSON.stringify({ wkt: spatialReference.wkt }));
+      }
+    }
   }
 
   if (token) {
