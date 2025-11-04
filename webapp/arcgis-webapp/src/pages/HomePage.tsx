@@ -5,6 +5,7 @@ import FilterPanel from '@/components/FilterPanel';
 import ListingTable from '@/components/ListingTable';
 import RegionMap from '@/components/RegionMap';
 import ConfigurationProfiles from '@/components/ConfigurationProfiles';
+import ListingInsights from '@/components/ListingInsights';
 import { type LayoutOutletContext } from '@/App';
 import { DEFAULT_FILTERS, DEFAULT_PAGE_SIZE } from '@/constants/listings';
 import {
@@ -500,6 +501,7 @@ function HomePage(): JSX.Element {
         onListingSelect={handleListingFocus}
         totalListingCount={filteredListings.length}
       />
+      <ListingInsights supabaseAvailable={supabaseAvailable} />
       <div className="app__listings">
         <ConfigurationProfiles
           profiles={profiles}
