@@ -213,6 +213,9 @@ export function ListingTable({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
+  const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
+  const columnPickerRef = useRef<HTMLDivElement | null>(null);
+  const columnPickerButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -235,6 +238,59 @@ export function ListingTable({
       autoScrollIntervalRef.current = null;
     }
   }, []);
+
+  const closeColumnPicker = useCallback(() => {
+    setIsColumnPickerOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isColumnPickerOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const picker = columnPickerRef.current;
+      const button = columnPickerButtonRef.current;
+      if (!picker || !button) {
+        return;
+      }
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (picker.contains(target) || button.contains(target)) {
+        return;
+      }
+      closeColumnPicker();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeColumnPicker();
+        columnPickerButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeColumnPicker, isColumnPickerOpen]);
+
+  useEffect(() => {
+    if (!isColumnPickerOpen) {
+      return;
+    }
+    const picker = columnPickerRef.current;
+    if (!picker) {
+      return;
+    }
+    const firstFocusable = picker.querySelector<HTMLInputElement>('input');
+    firstFocusable?.focus();
+  }, [isColumnPickerOpen]);
 
   const startAutoScroll = useCallback(
     (direction: 'left' | 'right') => {
@@ -484,6 +540,21 @@ export function ListingTable({
     stopAutoScroll();
   }, [stopAutoScroll]);
 
+  const handleColumnVisibilityChange = useCallback(
+    (columnKey: ColumnKey, isVisible: boolean) => {
+      if (isVisible) {
+        handleUnhideColumn(columnKey);
+      } else {
+        handleHideColumn(columnKey);
+      }
+    },
+    [handleHideColumn, handleUnhideColumn],
+  );
+
+  const toggleColumnPicker = useCallback(() => {
+    setIsColumnPickerOpen((previous) => !previous);
+  }, []);
+
   const rowRefs = useRef<Map<string, HTMLTableRowElement | null>>(new Map());
   const registerRow = (id: string) => (element: HTMLTableRowElement | null) => {
     if (element) {
@@ -573,6 +644,56 @@ export function ListingTable({
         title="Tabular summary of listings that match the current filters and map region"
       >
         <div className="listing-table__scroll-indicator-container">
+          <button
+            type="button"
+            className="listing-table__column-picker-toggle"
+            onClick={toggleColumnPicker}
+            aria-expanded={isColumnPickerOpen}
+            aria-controls="listing-table-column-picker"
+            aria-haspopup="dialog"
+            ref={columnPickerButtonRef}
+          >
+            Columns
+          </button>
+          {isColumnPickerOpen ? (
+            <div
+              id="listing-table-column-picker"
+              className="listing-table__column-picker"
+              ref={columnPickerRef}
+              role="dialog"
+              aria-modal="false"
+            >
+              <div className="listing-table__column-picker-header">
+                <strong>Select columns</strong>
+                <button
+                  type="button"
+                  className="listing-table__column-picker-close"
+                  onClick={closeColumnPicker}
+                >
+                  Done
+                </button>
+              </div>
+              <div className="listing-table__column-picker-list" role="group" aria-label="Toggle table columns">
+                {COLUMN_DEFINITIONS.map((definition) => {
+                  const isVisible = !hiddenColumns.includes(definition.key);
+                  const isOnlyVisibleColumn = isVisible && visibleColumns.length <= 1;
+                  return (
+                    <label key={`column-picker-${definition.key}`} className="listing-table__column-picker-item">
+                      <input
+                        type="checkbox"
+                        checked={isVisible}
+                        disabled={isOnlyVisibleColumn}
+                        onChange={(event) =>
+                          handleColumnVisibilityChange(definition.key, event.target.checked)
+                        }
+                      />
+                      <span>{definition.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <div
             className={`listing-table__scroll-indicator${
               canScrollRight ? ' listing-table__scroll-indicator--active' : ''
