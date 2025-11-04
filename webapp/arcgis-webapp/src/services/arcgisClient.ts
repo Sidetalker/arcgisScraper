@@ -73,6 +73,22 @@ function ensureSpatialReference(geometry?: QueryGeometry): QueryGeometry | undef
   } as QueryGeometry;
 }
 
+const SENSITIVE_PARAM_KEYS = new Set([
+  'token',
+  'password',
+  'client_id',
+  'client_secret',
+  'username',
+]);
+
+function sanitiseParams(params: URLSearchParams): Record<string, string> {
+  const entries: Record<string, string> = {};
+  params.forEach((value, key) => {
+    entries[key] = SENSITIVE_PARAM_KEYS.has(key) ? '<redacted>' : value;
+  });
+  return entries;
+}
+
 async function fetchJson(
   url: string,
   params: URLSearchParams,
@@ -84,6 +100,11 @@ async function fetchJson(
     signal?: AbortSignal;
   },
 ): Promise<Record<string, unknown>> {
+  console.info('[ArcGIS] Sending request', {
+    url,
+    params: sanitiseParams(params),
+  });
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -94,15 +115,35 @@ async function fetchJson(
     signal,
   });
 
+  console.info('[ArcGIS] Received response', {
+    url,
+    status: response.status,
+    ok: response.ok,
+  });
+
   if (!response.ok) {
     const text = await response.text();
+    console.error('[ArcGIS] Request failed', {
+      url,
+      status: response.status,
+      body: text,
+    });
     throw new Error(`ArcGIS request failed with status ${response.status}: ${text}`);
   }
 
   const data = (await response.json()) as Record<string, unknown>;
   if ('error' in data && data.error) {
+    console.error('[ArcGIS] Response error payload', {
+      url,
+      error: data.error,
+    });
     throw new Error(`ArcGIS request error: ${JSON.stringify(data.error)}`);
   }
+
+  console.debug('[ArcGIS] Response payload sample', {
+    url,
+    keys: Object.keys(data).slice(0, 5),
+  });
 
   return data;
 }
@@ -115,6 +156,9 @@ async function fetchLayerInfo(
 ): Promise<ArcgisLayerInfo> {
   const cacheKey = `${layerUrl}?token=${token ?? ''}`;
   if (!layerInfoCache.has(cacheKey)) {
+    console.info('[ArcGIS] Fetching layer info', {
+      layerUrl,
+    });
     const params = new URLSearchParams({ f: 'json' });
     if (token) {
       params.set('token', token);
@@ -140,18 +184,24 @@ async function generateToken(
   signal?: AbortSignal,
 ): Promise<string | undefined> {
   if (authentication.token) {
+    console.info('[ArcGIS] Using provided token for authentication');
     return authentication.token;
   }
 
   if (authentication.apiKey) {
+    console.info('[ArcGIS] Using provided API key for authentication');
     return authentication.apiKey;
   }
 
   if (!authentication.username || !authentication.password) {
+    console.info('[ArcGIS] No authentication credentials supplied; requesting public data');
     return undefined;
   }
 
   const tokenUrl = `${portalUrl.replace(/\/?$/, '')}/sharing/rest/generateToken`;
+  console.info('[ArcGIS] Generating token via credentials', {
+    portalUrl,
+  });
   const params = new URLSearchParams({
     f: 'json',
     username: authentication.username,
@@ -276,7 +326,20 @@ async function queryFeatures(
 
   while (true) {
     const params = buildQueryParams({ filters, geometry, pageSize, offset, token });
+    console.info('[ArcGIS] Querying features', {
+      layerUrl,
+      offset,
+      pageSize,
+    });
     const page = (await fetchJson(`${layerUrl}/query`, params, { referer, signal })) as ListingFeatureSet;
+
+    const featureCount = page.features?.length ?? 0;
+    console.info('[ArcGIS] Received feature page', {
+      layerUrl,
+      offset,
+      featureCount,
+      exceededTransferLimit: page.exceededTransferLimit ?? false,
+    });
 
     if (!template) {
       const { features: _ignored, ...rest } = page;
@@ -377,11 +440,25 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
   const cacheKey = createCacheKey({ ...params, layerUrl, portalUrl, referer, token });
 
   if (useCache && requestCache.has(cacheKey)) {
+    console.info('[ArcGIS] Returning cached listings response', {
+      layerUrl,
+      portalUrl,
+    });
     return requestCache.get(cacheKey)!;
   }
 
   const promise = (async () => {
+    console.info('[ArcGIS] Fetching listings', {
+      layerUrl,
+      portalUrl,
+      geometryType: geometry ? inferGeometryType(geometry) : 'none',
+      hasFilters: Boolean(filters),
+    });
     const pageSize = await resolvePageSize(layerUrl, referer, token, filters, signal);
+    console.info('[ArcGIS] Resolved page size', {
+      layerUrl,
+      pageSize,
+    });
     const result = await queryFeatures(layerUrl, referer, {
       filters,
       geometry,
@@ -399,6 +476,19 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
       requestCache.delete(cacheKey);
     });
   }
+
+  promise
+    .then((featureSet) => {
+      console.info('[ArcGIS] Listings request complete', {
+        featureCount: featureSet.features?.length ?? 0,
+        exceededTransferLimit: featureSet.exceededTransferLimit ?? false,
+      });
+    })
+    .catch((error) => {
+      console.error('[ArcGIS] Listings request failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
 
   return promise;
 }
