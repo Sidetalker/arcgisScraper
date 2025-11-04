@@ -62,6 +62,7 @@ export interface ListingRecord {
   mailingZip5: string;
   mailingZip9: string;
   subdivision: string;
+  zone: string;
   scheduleNumber: string;
   publicDetailUrl: string;
   physicalAddress: string;

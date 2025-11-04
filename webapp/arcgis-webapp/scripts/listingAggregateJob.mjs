@@ -114,6 +114,14 @@ function normaliseSubdivision(value) {
   return trimmed.length > 0 ? trimmed : 'Unknown subdivision';
 }
 
+function normaliseZone(value) {
+  if (!value || typeof value !== 'string') {
+    return 'Unknown zone';
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : 'Unknown zone';
+}
+
 function sanitiseOwnerDisplay(value) {
   const trimmed = value.trim().replace(/\s+/g, ' ');
   const withoutEtAl = trimmed.replace(/\bET\s*AL\.?$/i, '').trim();
@@ -435,7 +443,7 @@ async function fetchListings(supabase, pageSize, logger) {
     const { data, error } = await supabase
       .from('listings')
       .select(
-        'id, subdivision, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
+        'id, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
       )
       .order('id', { ascending: true })
       .range(from, to);
@@ -481,6 +489,33 @@ async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
   }
 
   const { error: insertError } = await supabase.from('listing_subdivision_metrics').insert(payload);
+  if (insertError) {
+    throw insertError;
+  }
+}
+
+async function writeZoneMetrics(supabase, rows, refreshedAt) {
+  const payload = rows.map((row) => ({
+    zone: row.zone,
+    total_listings: row.totalListings,
+    business_owner_count: row.businessOwners,
+    individual_owner_count: row.individualOwners,
+    updated_at: refreshedAt,
+  }));
+
+  const { error: deleteError } = await supabase
+    .from('listing_zone_metrics')
+    .delete()
+    .neq('zone', '');
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (payload.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase.from('listing_zone_metrics').insert(payload);
   if (insertError) {
     throw insertError;
   }
@@ -600,6 +635,7 @@ export async function refreshListingAggregates(
   logger.info?.(`[metrics] Loaded ${listings.length.toLocaleString()} listing records.`);
 
   const subdivisions = new Map();
+  const zones = new Map();
   const owners = new Map();
   const renewalBuckets = new Map();
   const methodCounts = new Map();
@@ -647,6 +683,14 @@ export async function refreshListingAggregates(
       stats.business += 1;
     }
     subdivisions.set(subdivision, stats);
+
+    const zone = normaliseZone(listing.zone);
+    const zoneStats = zones.get(zone) || { total: 0, business: 0 };
+    zoneStats.total += 1;
+    if (listingIsBusiness) {
+      zoneStats.business += 1;
+    }
+    zones.set(zone, zoneStats);
 
     if (ownerCandidates.length > 0) {
       const seen = new Set();
@@ -760,6 +804,15 @@ export async function refreshListingAggregates(
     }))
     .sort((a, b) => b.totalListings - a.totalListings || a.subdivision.localeCompare(b.subdivision));
 
+  const zoneRows = Array.from(zones.entries())
+    .map(([zone, stats]) => ({
+      zone,
+      totalListings: stats.total,
+      businessOwners: stats.business,
+      individualOwners: stats.total - stats.business,
+    }))
+    .sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
+
   const renewalRows = Array.from(renewalBuckets.entries())
     .map(([month, bucket]) => ({
       month,
@@ -799,6 +852,8 @@ export async function refreshListingAggregates(
 
   logger.info?.('[metrics] Writing subdivision metrics…');
   await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt);
+  logger.info?.('[metrics] Writing zone distribution…');
+  await writeZoneMetrics(supabase, zoneRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal timeline…');
   await writeRenewalTimeline(supabase, renewalRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal summary…');
@@ -817,6 +872,7 @@ export async function refreshListingAggregates(
     refreshedAt,
     listingsProcessed: listings.length,
     subdivisionsWritten: subdivisionRows.length,
+    zonesWritten: zoneRows.length,
     renewalTimelineBuckets: renewalRows.length,
     renewalSummaryBuckets: summaryRows.length,
     renewalMethodBuckets: methodRows.length,
