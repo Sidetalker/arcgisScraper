@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
-    "test": "vitest"
+    "test": "vitest",
+    "refresh-metrics": "node scripts/computeListingAggregates.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
