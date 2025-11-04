@@ -1744,10 +1744,16 @@ type ZoningDistrictHighlightsProps = {
   onZoneHover?: (zone: ZoningDistrictSummary | null) => void;
 };
 
+const MIN_ZONE_GLOW_RADIUS_METERS = 75;
+const MAX_ZONE_GLOW_RADIUS_METERS = 450;
+const HOVER_RADIUS_MULTIPLIER = 1.25;
+const HOVER_RADIUS_BOOST_METERS = 80;
+
 type ZoneBlurLayer = {
   summary: ZoningDistrictSummary;
-  group: L.FeatureGroup<L.CircleMarker>;
-  markers: Map<string, L.CircleMarker>;
+  shape: L.Circle | L.Polygon;
+  geometryKind: 'circle' | 'polygon';
+  baseRadius?: number;
   handlers?: {
     mouseover: () => void;
     mouseout: () => void;
@@ -1784,27 +1790,176 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
   const applyGlowState = useCallback((layer: ZoneBlurLayer, hovered: boolean) => {
     const color = hovered ? layer.summary.glowHoverColor : layer.summary.glowColor;
     const fillOpacity = hovered ? 0.6 : 0.45;
-    const radius = hovered ? 24 : 18;
 
-    layer.markers.forEach((marker) => {
-      marker.setStyle({
-        color,
-        fillColor: color,
-        fillOpacity,
-      });
-      marker.setRadius(radius);
-      if (hovered) {
-        marker.bringToFront();
-      }
+    layer.shape.setStyle({
+      color,
+      fillColor: color,
+      fillOpacity,
+      weight: hovered && layer.geometryKind === 'polygon' ? 1.5 : 0,
     });
+
+    if (layer.geometryKind === 'circle' && typeof layer.baseRadius === 'number' && 'setRadius' in layer.shape) {
+      const hoveredRadius = Math.min(
+        Math.max(layer.baseRadius * HOVER_RADIUS_MULTIPLIER, layer.baseRadius + HOVER_RADIUS_BOOST_METERS),
+        MAX_ZONE_GLOW_RADIUS_METERS,
+      );
+      layer.shape.setRadius(hovered ? hoveredRadius : layer.baseRadius);
+    }
+
+    if (hovered && 'bringToFront' in layer.shape) {
+      layer.shape.bringToFront();
+    }
   }, []);
+
+  const toMetersPerDegree = useCallback((latitude: number) => {
+    const radians = (latitude * Math.PI) / 180;
+    const metersPerLat = 111_320;
+    const metersPerLng = Math.cos(radians) * 111_320;
+    return { metersPerLat, metersPerLng };
+  }, []);
+
+  const computeConvexHull = useCallback((points: L.LatLng[]): L.LatLng[] => {
+    if (points.length <= 1) {
+      return points.slice();
+    }
+
+    const sorted = points
+      .slice()
+      .sort((a, b) => (a.lng === b.lng ? a.lat - b.lat : a.lng - b.lng));
+
+    const cross = (o: L.LatLng, a: L.LatLng, b: L.LatLng) => (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
+
+    const lower: L.LatLng[] = [];
+    for (const point of sorted) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+        lower.pop();
+      }
+      lower.push(point);
+    }
+
+    const upper: L.LatLng[] = [];
+    for (let i = sorted.length - 1; i >= 0; i -= 1) {
+      const point = sorted[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+        upper.pop();
+      }
+      upper.push(point);
+    }
+
+    upper.pop();
+    lower.pop();
+
+    return lower.concat(upper);
+  }, []);
+
+  const computePolygonAreaMeters = useCallback(
+    (points: L.LatLng[]) => {
+      if (points.length < 3) {
+        return 0;
+      }
+
+      const centroidLat = points.reduce((acc, point) => acc + point.lat, 0) / points.length;
+      const centroidLng = points.reduce((acc, point) => acc + point.lng, 0) / points.length;
+      const { metersPerLat, metersPerLng } = toMetersPerDegree(centroidLat);
+
+      const coords = points.map((point) => ({
+        x: (point.lng - centroidLng) * metersPerLng,
+        y: (point.lat - centroidLat) * metersPerLat,
+      }));
+
+      let area = 0;
+      for (let i = 0; i < coords.length; i += 1) {
+        const current = coords[i];
+        const next = coords[(i + 1) % coords.length];
+        area += current.x * next.y - next.x * current.y;
+      }
+
+      return Math.abs(area / 2);
+    },
+    [toMetersPerDegree],
+  );
+
+  const expandPolygon = useCallback(
+    (points: L.LatLng[], expandMeters: number) => {
+      if (points.length === 0 || expandMeters <= 0) {
+        return points;
+      }
+
+      const centroidLat = points.reduce((acc, point) => acc + point.lat, 0) / points.length;
+      const centroidLng = points.reduce((acc, point) => acc + point.lng, 0) / points.length;
+      const { metersPerLat, metersPerLng } = toMetersPerDegree(centroidLat);
+
+      return points.map((point) => {
+        const deltaX = (point.lng - centroidLng) * metersPerLng;
+        const deltaY = (point.lat - centroidLat) * metersPerLat;
+        const length = Math.sqrt(deltaX ** 2 + deltaY ** 2);
+
+        if (length === 0) {
+          return L.latLng(point.lat, point.lng);
+        }
+
+        const scale = (length + expandMeters) / length;
+        const expandedX = deltaX * scale;
+        const expandedY = deltaY * scale;
+
+        return L.latLng(centroidLat + expandedY / metersPerLat, centroidLng + expandedX / metersPerLng);
+      });
+    },
+    [toMetersPerDegree],
+  );
+
+  const computeZoneGeometry = useCallback(
+    (points: L.LatLng[]):
+      | {
+          kind: 'polygon';
+          latlngs: L.LatLng[];
+        }
+      | {
+          kind: 'circle';
+          center: L.LatLng;
+          radius: number;
+        }
+      | null => {
+      if (!points.length) {
+        return null;
+      }
+
+      const centroidLat = points.reduce((acc, point) => acc + point.lat, 0) / points.length;
+      const centroidLng = points.reduce((acc, point) => acc + point.lng, 0) / points.length;
+      const centroid = L.latLng(centroidLat, centroidLng);
+
+      if (points.length >= 3) {
+        const hull = computeConvexHull(points);
+        if (hull.length >= 3) {
+          const area = computePolygonAreaMeters(hull);
+          if (area > 1) {
+            const expandedHull = expandPolygon(hull, Math.min(60, Math.max(25, Math.sqrt(area))));
+            return { kind: 'polygon', latlngs: expandedHull };
+          }
+        }
+      }
+
+      let radius = 0;
+      points.forEach((point) => {
+        radius = Math.max(radius, centroid.distanceTo(point));
+      });
+
+      const clampedRadius = Math.min(
+        Math.max(radius + 40, MIN_ZONE_GLOW_RADIUS_METERS),
+        MAX_ZONE_GLOW_RADIUS_METERS,
+      );
+
+      return { kind: 'circle', center: centroid, radius: clampedRadius };
+    },
+    [computeConvexHull, computePolygonAreaMeters, expandPolygon],
+  );
 
   useEffect(() => {
     if (IS_TEST_ENV) {
       const hoverCallback = hoverCallbackRef.current.onZoneHover;
       hoverCallback?.(null);
       zoneLayersRef.current.forEach((layer) => {
-        layer.group.clearLayers();
+        layer.shape.remove();
       });
       zoneLayersRef.current.clear();
       return () => {
@@ -1851,16 +2006,16 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
     for (const [key, layer] of Array.from(zoneLayers.entries())) {
       if (!zoneLookup.has(key)) {
         if (layer.handlers) {
-          layer.group.off('mouseover', layer.handlers.mouseover);
-          layer.group.off('mouseout', layer.handlers.mouseout);
+          layer.shape.off('mouseover', layer.handlers.mouseover);
+          layer.shape.off('mouseout', layer.handlers.mouseout);
         }
-        glowGroup.removeLayer(layer.group);
-        layer.group.remove();
+        glowGroup.removeLayer(layer.shape);
+        layer.shape.remove();
         zoneLayers.delete(key);
       }
     }
 
-    const processedByZone = new Map<string, Set<string>>();
+    const zoneBuckets = new Map<string, { summary: ZoningDistrictSummary; points: L.LatLng[] }>();
 
     listings.forEach((listing) => {
       if (listing.latitude === null || listing.longitude === null) {
@@ -1877,14 +2032,70 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
         return;
       }
 
+      const bucket = zoneBuckets.get(zoneKey);
+      const latlng = L.latLng(listing.latitude, listing.longitude);
+
+      if (bucket) {
+        bucket.summary = summary;
+        bucket.points.push(latlng);
+      } else {
+        zoneBuckets.set(zoneKey, { summary, points: [latlng] });
+      }
+    });
+
+    const processedZones = new Set<string>();
+
+    for (const [zoneKey, bucket] of zoneBuckets.entries()) {
+      const { summary, points } = bucket;
+      if (!points.length) {
+        continue;
+      }
+
+      const baseStyle: L.PathOptions = {
+        color: summary.glowColor,
+        fillColor: summary.glowColor,
+        fillOpacity: 0.45,
+        weight: 0,
+        className: 'region-map__zone-glow-marker',
+        pane: 'zoneGlowPane',
+        bubblingMouseEvents: false,
+      };
+
+      const geometry = computeZoneGeometry(points);
+      if (!geometry) {
+        continue;
+      }
+
       let layer = zoneLayers.get(zoneKey);
+      const shouldReplaceLayer =
+        layer &&
+        ((geometry.kind === 'polygon' && layer.geometryKind !== 'polygon') ||
+          (geometry.kind === 'circle' && layer.geometryKind !== 'circle'));
+
+      if (layer && shouldReplaceLayer) {
+        if (layer.handlers) {
+          layer.shape.off('mouseover', layer.handlers.mouseover);
+          layer.shape.off('mouseout', layer.handlers.mouseout);
+        }
+        glowGroup.removeLayer(layer.shape);
+        layer.shape.remove();
+        zoneLayers.delete(zoneKey);
+        layer = undefined;
+      }
+
       if (!layer) {
-        const group = L.featureGroup<L.CircleMarker>();
-        group.addTo(glowGroup);
+        const shape =
+          geometry.kind === 'polygon'
+            ? L.polygon(geometry.latlngs, baseStyle)
+            : L.circle(geometry.center, {
+                ...baseStyle,
+                radius: geometry.radius,
+              });
         const newLayer: ZoneBlurLayer = {
           summary,
-          group,
-          markers: new Map<string, L.CircleMarker>(),
+          shape,
+          geometryKind: geometry.kind,
+          baseRadius: geometry.kind === 'circle' ? geometry.radius : undefined,
         };
         const handleMouseover = () => {
           applyGlowState(newLayer, true);
@@ -1895,75 +2106,39 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
           hoverCallbackRef.current.onZoneHover?.(null);
         };
         newLayer.handlers = { mouseover: handleMouseover, mouseout: handleMouseout };
-        group.on('mouseover', handleMouseover);
-        group.on('mouseout', handleMouseout);
+        shape.on('mouseover', handleMouseover);
+        shape.on('mouseout', handleMouseout);
+        shape.addTo(glowGroup);
         zoneLayers.set(zoneKey, newLayer);
         layer = newLayer;
-      }
-
-      layer.summary = summary;
-
-      const markerKey = listing.id;
-      if (!markerKey) {
-        return;
-      }
-
-      let marker = layer.markers.get(markerKey);
-      const markerColor = summary.glowColor;
-      const baseStyle: L.PathOptions = {
-        color: markerColor,
-        fillColor: markerColor,
-        fillOpacity: 0.45,
-        weight: 0,
-        className: 'region-map__zone-glow-marker',
-        pane: 'zoneGlowPane',
-        bubblingMouseEvents: false,
-      };
-
-      if (marker) {
-        marker.setLatLng([listing.latitude, listing.longitude]);
-        marker.setStyle(baseStyle);
       } else {
-        marker = L.circleMarker([listing.latitude, listing.longitude], {
-          ...baseStyle,
-          radius: 18,
-        });
-        marker.addTo(layer.group);
-        layer.markers.set(markerKey, marker);
+        layer.summary = summary;
+        layer.geometryKind = geometry.kind;
+        if (geometry.kind === 'polygon') {
+          (layer.shape as L.Polygon).setLatLngs(geometry.latlngs);
+          layer.baseRadius = undefined;
+        } else {
+          (layer.shape as L.Circle).setLatLng(geometry.center);
+          (layer.shape as L.Circle).setRadius(geometry.radius);
+          layer.baseRadius = geometry.radius;
+        }
+        layer.shape.setStyle(baseStyle);
       }
 
-      marker.setRadius(18);
-
-      let processed = processedByZone.get(zoneKey);
-      if (!processed) {
-        processed = new Set<string>();
-        processedByZone.set(zoneKey, processed);
-      }
-      processed.add(markerKey);
-    });
+      applyGlowState(layer, false);
+      processedZones.add(zoneKey);
+    }
 
     for (const [zoneKey, layer] of Array.from(zoneLayers.entries())) {
-      const processed = processedByZone.get(zoneKey) ?? new Set<string>();
-
-      for (const [markerKey, marker] of Array.from(layer.markers.entries())) {
-        if (!processed.has(markerKey)) {
-          layer.group.removeLayer(marker);
-          marker.remove();
-          layer.markers.delete(markerKey);
-        }
-      }
-
-      if (layer.markers.size === 0) {
+      if (!processedZones.has(zoneKey)) {
         if (layer.handlers) {
-          layer.group.off('mouseover', layer.handlers.mouseover);
-          layer.group.off('mouseout', layer.handlers.mouseout);
+          layer.shape.off('mouseover', layer.handlers.mouseover);
+          layer.shape.off('mouseout', layer.handlers.mouseout);
         }
         hoverCallbackRef.current.onZoneHover?.(null);
-        glowGroup.removeLayer(layer.group);
-        layer.group.remove();
+        glowGroup.removeLayer(layer.shape);
+        layer.shape.remove();
         zoneLayers.delete(zoneKey);
-      } else {
-        applyGlowState(layer, false);
       }
     }
 
@@ -1980,6 +2155,9 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
         glowGroupRef.current.removeFrom(map);
         glowGroupRef.current = null;
       }
+      zoneLayers.forEach((layer) => {
+        layer.shape.remove();
+      });
       zoneLayers.clear();
     };
   }, [map]);
@@ -2000,6 +2178,7 @@ function RegionMap({
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
 
   useEffect(() => {
@@ -2104,6 +2283,23 @@ function RegionMap({
     return displayedListings.find((listing) => listing.id === activeListingId) ?? null;
   }, [activeListingId, displayedListings]);
 
+  const zoneDetailHighlight = useMemo(() => {
+    if (hoveredZone) {
+      return hoveredZone;
+    }
+
+    if (!activeListing) {
+      return null;
+    }
+
+    const zoneKey = normaliseZoneKey(activeListing.zone);
+    if (!zoneKey) {
+      return null;
+    }
+
+    return zoneStyleLookup.get(zoneKey) ?? null;
+  }, [activeListing, hoveredZone, zoneStyleLookup]);
+
   const handleMarkerSelect = useCallback(
     (listingId: string) => {
       setHoveredZone(null);
@@ -2124,9 +2320,19 @@ function RegionMap({
     setShowAllProperties((prev) => !prev);
   }, []);
 
+  const handleZoneHover = useCallback(
+    (zone: ZoningDistrictSummary | null) => {
+      setHoveredZone(zone);
+      if (zone) {
+        setHoveredListingId(null);
+      }
+    },
+    [setHoveredListingId],
+  );
+
   const handleLayerChange = useCallback((layer: MapLayerType) => {
     setCurrentLayer(layer);
-  }, []);
+  }, [setCurrentLayer]);
 
   const currentLayerConfig = MAP_LAYERS[currentLayer];
 
