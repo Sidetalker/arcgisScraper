@@ -435,6 +435,16 @@
   box-shadow: none;
 }
 
+.insight-card__list-item--static {
+  cursor: default;
+}
+
+.insight-card__list-item--static:hover,
+.insight-card__list-item--static:focus-visible {
+  transform: none;
+  box-shadow: none;
+}
+
 .insight-card__list-line {
   display: flex;
   justify-content: space-between;

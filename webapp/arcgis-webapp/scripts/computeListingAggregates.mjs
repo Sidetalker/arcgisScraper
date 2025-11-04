@@ -87,8 +87,9 @@ async function main() {
   console.info('[metrics] Aggregates refreshed successfully.');
   const landBaronsWritten =
     typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
+  const zonesWritten = typeof result.zonesWritten === 'number' ? result.zonesWritten : 0;
   console.info(
-    `Processed ${result.listingsProcessed.toLocaleString()} listings → ${result.subdivisionsWritten} subdivisions, ${landBaronsWritten} land barons, ${result.renewalTimelineBuckets} timeline buckets, ${result.renewalSummaryBuckets} summary buckets, ${result.renewalMethodBuckets} method buckets.`,
+    `Processed ${result.listingsProcessed.toLocaleString()} listings → ${result.subdivisionsWritten} subdivisions, ${zonesWritten} zones, ${landBaronsWritten} land barons, ${result.renewalTimelineBuckets} timeline buckets, ${result.renewalSummaryBuckets} summary buckets, ${result.renewalMethodBuckets} method buckets.`,
   );
 }
 

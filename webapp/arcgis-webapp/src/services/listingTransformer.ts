@@ -447,6 +447,9 @@ export function toListingRecord(
     typeof attributes.SubdivisionName === 'string' ? attributes.SubdivisionName : '';
   const subdivision = subdivisionRaw ? titleCase(subdivisionRaw.trim()) : '';
 
+  const zoneRaw = typeof attributes.ZoneName === 'string' ? attributes.ZoneName : '';
+  const zone = zoneRaw.trim();
+
   const detailIdRaw =
     (typeof attributes.HC_RegistrationsOriginalCleaned === 'string'
       ? attributes.HC_RegistrationsOriginalCleaned
@@ -482,6 +485,7 @@ export function toListingRecord(
     mailingZip5: zip5,
     mailingZip9: postcode,
     subdivision,
+    zone,
     scheduleNumber,
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
@@ -508,6 +512,7 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.physicalAddress,
       listing.scheduleNumber,
       listing.subdivision,
+      listing.zone,
       listing.mailingAddress,
     ]
       .join(' ')
