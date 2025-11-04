@@ -110,8 +110,6 @@ import './RegionMap.css';
 type RegionMapProps = {
   regions: RegionCircle[];
   onRegionsChange: (regions: RegionCircle[]) => void;
-  pinDropMode?: boolean;
-  onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
   listings?: ListingRecord[];
   onListingSelect?: (listingId: string) => void;
 };
@@ -141,15 +139,11 @@ function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
 type DrawManagerProps = {
   regions: RegionCircle[];
   onRegionsChange: (regions: RegionCircle[]) => void;
-  pinDropMode?: boolean;
-  onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
 };
 
 function DrawManager({
   regions,
   onRegionsChange,
-  pinDropMode = false,
-  onPinLocationSelect,
 }: DrawManagerProps): null {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
@@ -282,29 +276,6 @@ function DrawManager({
     }
   }, [map, regions]);
 
-  useEffect(() => {
-    if (!pinDropMode) {
-      return undefined;
-    }
-
-    const container = map.getContainer();
-    container.classList.add('region-map__map--drop');
-
-    const handlePinClick = (event: L.LeafletMouseEvent) => {
-      onPinLocationSelect?.({
-        lat: event.latlng.lat,
-        lng: event.latlng.lng,
-      });
-    };
-
-    map.on('click', handlePinClick);
-
-    return () => {
-      map.off('click', handlePinClick);
-      container.classList.remove('region-map__map--drop');
-    };
-  }, [map, onPinLocationSelect, pinDropMode]);
-
   return null;
 }
 
@@ -375,15 +346,11 @@ function ListingMarkers({ listings, onListingSelect }: ListingMarkersProps): nul
 function RegionMap({
   regions,
   onRegionsChange,
-  pinDropMode = false,
-  onPinLocationSelect,
   listings = [],
   onListingSelect,
 }: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
-  const subtitle = pinDropMode
-    ? 'Click anywhere on the map to drop your pin. The radius filter will apply automatically.'
-    : 'Draw circles to focus the ArcGIS search on specific areas of Summit County.';
+  const subtitle = 'Draw circles on the map to filter listings by one or more regions.';
 
   return (
     <section
@@ -393,7 +360,7 @@ function RegionMap({
     >
       <div>
         <h2 className="region-map__title">Search Regions</h2>
-        <p className={`region-map__subtitle${pinDropMode ? ' region-map__subtitle--active' : ''}`}>
+        <p className="region-map__subtitle">
           {subtitle}
         </p>
       </div>
@@ -407,8 +374,6 @@ function RegionMap({
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
-          pinDropMode={pinDropMode}
-          onPinLocationSelect={onPinLocationSelect}
         />
         {listings.length ? (
           <ListingMarkers listings={listings} onListingSelect={onListingSelect} />
