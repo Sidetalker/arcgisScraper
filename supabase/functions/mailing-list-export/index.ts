@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.207.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0?target=deno';
+import type { User } from 'https://esm.sh/@supabase/supabase-js@2.48.0?target=deno';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5?target=deno&deno-std=0.207.0';
 
 import { applyFilters, toListingRecord } from '../../../webapp/arcgis-webapp/shared/listingTransformer.ts';
@@ -15,6 +16,7 @@ import type {
 
 interface MailingListExportRow {
   id: string;
+  user_id: string;
   status: MailingListExportStatus;
   filters: ListingFilters;
   regions: RegionCircle[];
@@ -36,14 +38,35 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Supabase service role configuration is required for mailing-list-export function.');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+  throw new Error('Supabase configuration is required for mailing-list-export function.');
 }
 
 const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
+
+async function getAuthenticatedUser(request: Request): Promise<User | null> {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    return null;
+  }
+
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data, error } = await client.auth.getUser();
+  if (error) {
+    console.error('Failed to authenticate user', { error });
+    return null;
+  }
+
+  return data.user ?? null;
+}
 
 function normaliseFilters(input: unknown): ListingFilters {
   const source = (typeof input === 'object' && input) || {};
@@ -144,7 +167,7 @@ function serialiseJob(row: MailingListExportRow, downloadUrls?: { csv?: string |
 async function fetchJob(jobId: string): Promise<MailingListExportRow | null> {
   const { data, error } = await serviceClient
     .from('mailing_list_exports')
-    .select('id, status, filters, regions, file_paths, error, created_at, updated_at')
+    .select('id, user_id, status, filters, regions, file_paths, error, created_at, updated_at')
     .eq('id', jobId)
     .single();
 
@@ -176,17 +199,18 @@ async function updateJob(jobId: string, patch: Partial<MailingListExportRow>): P
   }
 }
 
-async function createJob(filters: ListingFilters, regions: RegionCircle[]): Promise<MailingListExportRow> {
+async function createJob(userId: string, filters: ListingFilters, regions: RegionCircle[]): Promise<MailingListExportRow> {
   const { data, error } = await serviceClient
     .from('mailing_list_exports')
     .insert({
+      user_id: userId,
       status: 'pending',
       filters,
       regions,
       error: null,
       file_paths: null,
     })
-    .select('id, status, filters, regions, file_paths, error, created_at, updated_at')
+    .select('id, user_id, status, filters, regions, file_paths, error, created_at, updated_at')
     .single();
 
   if (error) {
@@ -333,11 +357,11 @@ async function createSignedUrls(filePaths: { csv?: string | null; xlsx?: string 
   return signed;
 }
 
-async function handleCreate(filtersInput: unknown, regionsInput: unknown): Promise<Response> {
+async function handleCreate(user: User, filtersInput: unknown, regionsInput: unknown): Promise<Response> {
   const filters = normaliseFilters(filtersInput);
   const regions = normaliseRegions(regionsInput);
 
-  const job = await createJob(filters, regions);
+  const job = await createJob(user.id, filters, regions);
 
   processMailingListJob(job).catch((error) => {
     console.error('Unhandled mailing list export failure', { jobId: job.id, error });
@@ -350,7 +374,7 @@ async function handleCreate(filtersInput: unknown, regionsInput: unknown): Promi
   });
 }
 
-async function handleStatus(jobId: unknown): Promise<Response> {
+async function handleStatus(user: User, jobId: unknown): Promise<Response> {
   if (typeof jobId !== 'string' || jobId.length === 0) {
     return new Response(JSON.stringify({ error: 'jobId is required.' }), {
       status: 400,
@@ -359,7 +383,7 @@ async function handleStatus(jobId: unknown): Promise<Response> {
   }
 
   const job = await fetchJob(jobId);
-  if (!job) {
+  if (!job || job.user_id !== user.id) {
     return new Response(JSON.stringify({ error: 'Job not found.' }), {
       status: 404,
       headers: { 'content-type': 'application/json' },
@@ -394,11 +418,19 @@ serve(async (request) => {
   }
 
   const action = body.action;
-  if (action === 'create') {
-    return await handleCreate(body.filters, body.regions);
-  }
-  if (action === 'status') {
-    return await handleStatus(body.jobId);
+  if (action === 'create' || action === 'status') {
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (action === 'create') {
+      return await handleCreate(user, body.filters, body.regions);
+    }
+    return await handleStatus(user, body.jobId);
   }
 
   return new Response(JSON.stringify({ error: 'Unsupported action.' }), {
