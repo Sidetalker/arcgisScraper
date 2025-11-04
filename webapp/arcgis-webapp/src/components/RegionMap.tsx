@@ -288,8 +288,7 @@ function ListingSelectionPanel({ listing, hasListings, totalListingCount }: List
         </dl>
       </div>
     );
-  },
-);
+}
 
 ListingSelectionPanel.displayName = 'ListingSelectionPanel';
 
