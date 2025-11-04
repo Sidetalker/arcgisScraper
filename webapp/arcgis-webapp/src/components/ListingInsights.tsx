@@ -353,7 +353,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     const metricsList: ZoneMetric[] = metrics?.zones ?? [];
     const usedMetricIndexes = new Set<number>();
 
-    const rows = RESIDENTIAL_ZONES.map((definition) => {
+    const rows: ZoneOverviewRow[] = RESIDENTIAL_ZONES.map((definition) => {
       const metricIndex = metricsList.findIndex((metric) => {
         const match = findResidentialZoneDefinition(metric.zone);
         return match?.code === definition.code;
@@ -367,7 +367,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
         metric,
         filterValue: metric ? metric.zone : definition.code,
         fallback: false,
-      } satisfies ZoneOverviewRow;
+      };
     });
 
     metricsList.forEach((metric, index) => {
