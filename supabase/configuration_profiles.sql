@@ -1,9 +1,16 @@
--- Create configuration_profiles table to store shared listing filters and map regions
+-- Start by wiping existing configuration profile data so the table definition can be
+-- recreated safely. This will remove the table and any dependent objects before
+-- creating it again with the latest structure.
+drop table if exists public.configuration_profiles cascade;
+
+-- Create configuration_profiles table to store shared listing filters, map regions,
+-- and the saved listing table state
 create table if not exists public.configuration_profiles (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   filters jsonb not null default '{}'::jsonb,
   regions jsonb not null default '[]'::jsonb,
+  table_state jsonb default null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
