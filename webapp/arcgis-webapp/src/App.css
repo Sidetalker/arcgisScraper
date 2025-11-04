@@ -346,6 +346,23 @@
   gap: 0.9rem;
 }
 
+.insight-card__leaderboard-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.insight-card__leaderboard-section + .insight-card__leaderboard-section {
+  margin-top: 1.5rem;
+}
+
+.insight-card__leaderboard-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
 .insight-card__leaderboard-item {
   display: flex;
   align-items: stretch;
