@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import type { LatLngTuple } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
@@ -106,6 +107,7 @@ if (circleEditPrototype) {
 import type { ListingRecord, RegionCircle } from '@/types';
 
 import './RegionMap.css';
+import { SUMMIT_COUNTY_BOUNDARY } from '@/constants/summitCountyBoundary';
 
 type RegionMapProps = {
   regions: RegionCircle[];
@@ -117,6 +119,116 @@ type RegionMapProps = {
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
+const WORLD_MASK_BOUNDS: LatLngTuple[] = [
+  [90, -190],
+  [90, 190],
+  [-90, 190],
+  [-90, -190],
+];
+const MASK_PANE = 'summit-county-mask';
+const MASK_OUTLINE_PANE = 'summit-county-mask-outline';
+type SatelliteLayerDefinition = {
+  key: string;
+  url: string;
+  attribution: string;
+  pane?: string;
+  opacity?: number;
+};
+
+type TileLayerOptionMap = {
+  streets: {
+    label: string;
+    url: string;
+    attribution: string;
+  };
+  satellite: {
+    label: string;
+    layers: SatelliteLayerDefinition[];
+  };
+};
+
+const TILE_LAYER_OPTIONS: TileLayerOptionMap = {
+  streets: {
+    label: 'Map',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors',
+  },
+  satellite: {
+    label: 'Satellite',
+    layers: [
+      {
+        key: 'imagery',
+        url:
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution:
+          'Tiles &copy; Esri &mdash; Source: Esri, Airbus, NGA, USGS, USDA, AeroGRID, IGN, and the GIS User Community',
+      },
+      {
+        key: 'labels',
+        url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        attribution: 'Boundaries &copy; Esri',
+        pane: 'overlayPane' as const,
+        opacity: 0.75,
+      },
+    ],
+  },
+} as const;
+
+type MapStyle = keyof typeof TILE_LAYER_OPTIONS;
+
+function SummitCountyMask(): null {
+  const map = useMap();
+  const maskRef = useRef<L.Polygon | null>(null);
+  const outlineRef = useRef<L.Polygon | null>(null);
+  const maskOuter = useMemo(
+    () => WORLD_MASK_BOUNDS.map(([lat, lng]) => [lat, lng] as LatLngTuple),
+    [],
+  );
+  const boundaryRing = useMemo(
+    () => SUMMIT_COUNTY_BOUNDARY.map(([lat, lng]) => [lat, lng] as LatLngTuple),
+    [],
+  );
+
+  useEffect(() => {
+    const maskPane = map.getPane(MASK_PANE) ?? map.createPane(MASK_PANE);
+    if (maskPane) {
+      maskPane.style.zIndex = '350';
+      maskPane.style.pointerEvents = 'none';
+    }
+
+    const outlinePane = map.getPane(MASK_OUTLINE_PANE) ?? map.createPane(MASK_OUTLINE_PANE);
+    if (outlinePane) {
+      outlinePane.style.zIndex = '351';
+      outlinePane.style.pointerEvents = 'none';
+    }
+
+    const reversedBoundary = [...boundaryRing].reverse();
+    maskRef.current = L.polygon([maskOuter.slice(), reversedBoundary], {
+      stroke: false,
+      fillColor: '#0f172a',
+      fillOpacity: 0.65,
+      pane: MASK_PANE,
+      interactive: false,
+    }).addTo(map);
+
+    outlineRef.current = L.polygon(boundaryRing.slice(), {
+      color: '#f8fafc',
+      weight: 2,
+      fillOpacity: 0,
+      pane: MASK_OUTLINE_PANE,
+      interactive: false,
+    }).addTo(map);
+
+    return () => {
+      maskRef.current?.remove();
+      outlineRef.current?.remove();
+      maskRef.current = null;
+      outlineRef.current = null;
+    };
+  }, [boundaryRing, map, maskOuter]);
+
+  return null;
+}
 
 function toRegionCircle(layer: L.Circle): RegionCircle {
   const center = layer.getLatLng();
@@ -509,6 +621,7 @@ function RegionMap({
   const subtitle = 'Draw circles on the map to filter listings by one or more regions.';
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
+  const [mapStyle, setMapStyle] = useState<MapStyle>('streets');
 
   useEffect(() => {
     if (selectedListingId && !listings.some((listing) => listing.id === selectedListingId)) {
@@ -568,27 +681,68 @@ function RegionMap({
           totalListingCount={totalListingCount}
         />
       </div>
-      <MapContainer
-        className="region-map__map"
-        center={mapCenter}
-        zoom={DEFAULT_ZOOM}
-        scrollWheelZoom
-      >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-        <DrawManager
-          regions={regions}
-          onRegionsChange={onRegionsChange}
-        />
-        {listings.length ? (
-          <ListingMarkers
-            listings={listings}
-            onListingSelect={handleMarkerSelect}
-            selectedListingId={selectedListingId}
-            hoveredListingId={hoveredListingId}
-            onListingHover={handleMarkerHover}
+      <div className="region-map__map-wrapper">
+        <div className="region-map__layer-toggle" role="group" aria-label="Toggle base map style">
+          {Object.entries(TILE_LAYER_OPTIONS).map(([styleKey, layerOption]) => {
+            const style = styleKey as MapStyle;
+            const isActive = mapStyle === style;
+
+            return (
+              <button
+                key={style}
+                type="button"
+                className={
+                  isActive
+                    ? 'region-map__layer-toggle-button region-map__layer-toggle-button--active'
+                    : 'region-map__layer-toggle-button'
+                }
+                onClick={() => setMapStyle(style)}
+                aria-pressed={isActive}
+              >
+                {layerOption.label}
+              </button>
+            );
+          })}
+        </div>
+        <MapContainer
+          className="region-map__map"
+          center={mapCenter}
+          zoom={DEFAULT_ZOOM}
+          scrollWheelZoom
+        >
+          {mapStyle === 'satellite'
+            ? TILE_LAYER_OPTIONS.satellite.layers.map((layer) => (
+                <TileLayer
+                  key={layer.key}
+                  url={layer.url}
+                  attribution={layer.attribution}
+                  pane={layer.pane}
+                  opacity={layer.opacity}
+                />
+              ))
+            : (
+                <TileLayer
+                  key="streets"
+                  url={TILE_LAYER_OPTIONS.streets.url}
+                  attribution={TILE_LAYER_OPTIONS.streets.attribution}
+                />
+              )}
+          <SummitCountyMask />
+          <DrawManager
+            regions={regions}
+            onRegionsChange={onRegionsChange}
           />
-        ) : null}
-      </MapContainer>
+          {listings.length ? (
+            <ListingMarkers
+              listings={listings}
+              onListingSelect={handleMarkerSelect}
+              selectedListingId={selectedListingId}
+              hoveredListingId={hoveredListingId}
+              onListingHover={handleMarkerHover}
+            />
+          ) : null}
+        </MapContainer>
+      </div>
     </section>
   );
 }

@@ -28,6 +28,53 @@
   overflow: hidden;
 }
 
+.region-map__map-wrapper {
+  position: relative;
+}
+
+.region-map__layer-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+}
+
+.region-map__layer-toggle-button {
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.35rem 0.9rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.region-map__layer-toggle-button:hover,
+.region-map__layer-toggle-button:focus {
+  color: #f8fafc;
+  background: rgba(59, 130, 246, 0.35);
+  outline: none;
+}
+
+.region-map__layer-toggle-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.8);
+}
+
+.region-map__layer-toggle-button--active {
+  background: rgba(37, 99, 235, 0.95);
+  color: #f8fafc;
+  box-shadow: 0 16px 36px -26px rgba(37, 99, 235, 0.95);
+}
+
 .region-map__selection-wrapper {
   width: 100%;
   display: flex;
