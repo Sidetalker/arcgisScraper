@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import './App.css';
 import FilterPanel from './components/FilterPanel';
+import RegionMap from './components/RegionMap';
 import ListingTable from './components/ListingTable';
 import { fetchListings } from './services/arcgisClient';
-import type { ArcgisFeature, ListingAttributes, ListingFilters, ListingRecord } from './types';
+import { circlesToPolygonGeometry } from './services/regionGeometry';
+import type {
+  ArcgisFeature,
+  ListingAttributes,
+  ListingFilters,
+  ListingRecord,
+  RegionCircle,
+} from './types';
 
 const DEFAULT_FILTERS: ListingFilters = {
   searchTerm: '',
@@ -25,6 +33,7 @@ const BATH_KEYS = ['Bathrooms', 'BATHROOMS', 'Baths', 'BATHS'];
 const STATUS_KEYS = ['STATUS', 'Status', 'LICENSESTATUS', 'LicenseStatus'];
 const OCCUPANCY_KEYS = ['Occupancy', 'OCCUPANCY', 'MaxOccupancy', 'MAXOCCUPANCY'];
 const ID_KEYS = ['OBJECTID', 'OBJECTID_1', 'GlobalID', 'GLOBALID', 'License', 'LICENSE'];
+const REGION_STORAGE_KEY = 'arcgis-regions:v1';
 
 function pickString(attributes: ListingAttributes, keys: string[]): string | null {
   for (const key of keys) {
@@ -122,6 +131,87 @@ function App(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [regions, setRegions] = useState<RegionCircle[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const stored = window.localStorage.getItem(REGION_STORAGE_KEY);
+      if (!stored) {
+        return;
+      }
+
+      const parsed = JSON.parse(stored) as RegionCircle[];
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+
+      const normalised = parsed
+        .filter((region) =>
+          region &&
+          typeof region.lat === 'number' &&
+          typeof region.lng === 'number' &&
+          typeof region.radius === 'number' &&
+          Number.isFinite(region.lat) &&
+          Number.isFinite(region.lng) &&
+          Number.isFinite(region.radius) &&
+          region.radius > 0,
+        )
+        .map((region) => ({
+          lat: region.lat,
+          lng: region.lng,
+          radius: region.radius,
+        }));
+
+      if (normalised.length) {
+        setRegions(normalised);
+      }
+    } catch (storageError) {
+      console.warn('Unable to restore saved regions from localStorage.', storageError);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      if (regions.length === 0) {
+        window.localStorage.removeItem(REGION_STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(REGION_STORAGE_KEY, JSON.stringify(regions));
+    } catch (storageError) {
+      console.warn('Unable to persist regions to localStorage.', storageError);
+    }
+  }, [regions]);
+
+  const handleRegionsChange = useCallback((nextRegions: RegionCircle[]) => {
+    setRegions((current) => {
+      if (
+        current.length === nextRegions.length &&
+        current.every((region, index) => {
+          const next = nextRegions[index];
+          return (
+            next &&
+            region.lat === next.lat &&
+            region.lng === next.lng &&
+            region.radius === next.radius
+          );
+        })
+      ) {
+        return current;
+      }
+
+      return nextRegions.map((region) => ({ ...region }));
+    });
+  }, []);
+
+  const queryGeometry = useMemo(() => circlesToPolygonGeometry(regions), [regions]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,6 +220,7 @@ function App(): JSX.Element {
 
     fetchListings({
       filters: { returnGeometry: false },
+      geometry: queryGeometry,
       signal: controller.signal,
     })
       .then((featureSet) => {
@@ -154,11 +245,11 @@ function App(): JSX.Element {
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [queryGeometry]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters]);
+  }, [filters, regions]);
 
   const filteredListings = useMemo(() => {
     return listings.filter((listing) => applyFilters(listing, filters));
@@ -190,14 +281,17 @@ function App(): JSX.Element {
           statusOptions={statusOptions}
           disabled={loading}
         />
-        <ListingTable
-          listings={filteredListings}
-          pageSize={PAGE_SIZE}
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          isLoading={loading}
-          error={error}
-        />
+        <div className="app__main">
+          <RegionMap regions={regions} onRegionsChange={handleRegionsChange} />
+          <ListingTable
+            listings={filteredListings}
+            pageSize={PAGE_SIZE}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            isLoading={loading}
+            error={error}
+          />
+        </div>
       </main>
     </div>
   );

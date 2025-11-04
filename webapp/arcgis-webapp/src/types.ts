@@ -65,6 +65,12 @@ export interface ListingFilters {
   status: string | null;
 }
 
+export interface RegionCircle {
+  lat: number;
+  lng: number;
+  radius: number;
+}
+
 export interface ArcgisLayerInfo {
   id?: number;
   name?: string;
