@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 
-import { fetchListings } from '@/services/arcgisClient';
+import { ArcgisDefaults, fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
@@ -234,13 +234,19 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     try {
       const featureSet = await fetchListings({
         filters: { returnGeometry: true },
+        layerPresetId: ArcgisDefaults.layerPresetId,
         useCache: false,
       });
       const features = featureSet.features ?? [];
       const seen = new Set<string>();
       const records: ListingRecord[] = [];
+      const resolvedLayerUrl = featureSet.layerUrl ?? ArcgisDefaults.layerUrl;
+      const resolvedPresetId = featureSet.layerPresetId ?? ArcgisDefaults.layerPresetId ?? null;
       features.forEach((feature, index) => {
-        const record = toListingRecord(feature, index);
+        const record = toListingRecord(feature, index, {
+          sourceLayerUrl: resolvedLayerUrl,
+          sourcePresetId: resolvedPresetId,
+        });
         if (seen.has(record.id)) {
           return;
         }

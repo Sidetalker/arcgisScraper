@@ -13,6 +13,7 @@ import re
 import sys
 from dataclasses import dataclass
 from html import unescape
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, TextIO, Tuple
 
 from arcgis.features import FeatureLayer
@@ -21,12 +22,58 @@ from arcgis.geometry import Geometry
 from arcgis.geometry.filters import intersects
 
 
+def _load_layer_presets() -> Dict[str, Dict[str, Any]]:
+    """Load shared layer preset metadata from the repository."""
+
+    presets_path = (
+        Path(__file__)
+        .resolve()
+        .parent
+        / "webapp"
+        / "arcgis-webapp"
+        / "src"
+        / "constants"
+        / "serviceLayers.json"
+    )
+
+    try:
+        with presets_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:  # pragma: no cover - repository invariant
+        logging.debug("TRACE: _load_layer_presets() missing presets file at %s", presets_path)
+        return {}
+    except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
+        logging.debug("TRACE: _load_layer_presets() invalid JSON: %s", exc)
+        return {}
+
+    result: Dict[str, Dict[str, Any]] = {}
+    for key, value in data.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        url = value.get("url")
+        if not isinstance(url, str) or not url.strip():
+            continue
+        normalised = dict(value)
+        normalised["url"] = url.strip()
+        result[key] = normalised
+
+    return result
+
+
+LAYER_PRESETS: Dict[str, Dict[str, Any]] = _load_layer_presets()
+DEFAULT_LAYER_PRESET = "owner_contacts"
+OWNER_LAYER_PRESET = "owner_contacts"
+
+
 # The hosted feature layer that powers the Summit County, CO Short-Term Rental
 # public map. The layer exposes individual rental properties keyed by their
 # Summit County schedule number (``Schno``) alongside permit metadata.
 DEFAULT_LAYER_URL = (
-    "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/"
-    "STR_Licenses_October_2025_public_view_layer/FeatureServer/0"
+    LAYER_PRESETS.get(DEFAULT_LAYER_PRESET, {}).get("url")
+    or (
+        "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/"
+        "STR_Licenses_October_2025_public_view_layer/FeatureServer/0"
+    )
 )
 
 # Connecting to the county's ArcGIS Online organization makes it easy to reuse
@@ -242,6 +289,20 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
             "ArcGIS Python API and dump the raw JSON response for inspection."
         )
     )
+    preset_choices = sorted(
+        LAYER_PRESETS.items(), key=lambda item: item[1].get("name", item[0]).lower()
+    )
+    if preset_choices:
+        parser.add_argument(
+            "--layer-preset",
+            choices=[key for key, _ in preset_choices],
+            help=(
+                "Predefined layer alias. Options: "
+                + ", ".join(
+                    f"{key} ({value.get('name', key)})" for key, value in preset_choices
+                )
+            ),
+        )
     parser.add_argument("lat", type=float, nargs="?", help="Latitude in decimal degrees")
     parser.add_argument("lng", type=float, nargs="?", help="Longitude in decimal degrees")
     parser.add_argument(
@@ -381,7 +442,22 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "--rewrite-output",
         help="Optional destination for the rewritten workbook (defaults to in-place overwrite).",
     )
-    return parser.parse_args(argv)
+
+    args = parser.parse_args(argv)
+
+    layer_preset = getattr(args, "layer_preset", None)
+    if layer_preset:
+        preset = LAYER_PRESETS.get(layer_preset)
+        if preset:
+            args.layer_url = preset.get("url", args.layer_url)
+            preset_referer = preset.get("referer")
+            if preset_referer and args.referer == DEFAULT_REFERER:
+                args.referer = preset_referer
+
+    if args.lat is None and args.lng is None and not args.owner_table:
+        parser.error("Latitude and longitude are required unless --owner-table is supplied.")
+
+    return args
 
 
 def main():

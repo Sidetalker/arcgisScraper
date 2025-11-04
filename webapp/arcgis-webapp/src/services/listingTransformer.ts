@@ -364,8 +364,19 @@ function fromWebMercator(x: number, y: number): { lat: number; lng: number } {
 export function toListingRecord(
   feature: ArcgisFeature<ListingAttributes>,
   index: number,
+  options: { sourceLayerUrl?: string; sourcePresetId?: string | null } = {},
 ): ListingRecord {
   const attributes = feature.attributes ?? {};
+  const rawAttributes: ListingAttributes = { ...attributes };
+  const metadata = {
+    layerUrl: options.sourceLayerUrl ?? null,
+    presetId: options.sourcePresetId ?? null,
+  };
+  if (metadata.layerUrl || metadata.presetId) {
+    (rawAttributes as ListingAttributes & {
+      __layerMetadata?: { layerUrl: string | null; presetId: string | null };
+    }).__layerMetadata = metadata;
+  }
   let latitude: number | null = null;
   let longitude: number | null = null;
 
@@ -477,7 +488,9 @@ export function toListingRecord(
     isBusinessOwner,
     latitude,
     longitude,
-    raw: attributes,
+    raw: rawAttributes,
+    sourceLayerUrl: typeof options.sourceLayerUrl === 'string' ? options.sourceLayerUrl : null,
+    sourcePresetId: typeof options.sourcePresetId === 'string' ? options.sourcePresetId : null,
   };
 }
 

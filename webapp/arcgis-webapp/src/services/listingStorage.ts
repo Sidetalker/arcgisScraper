@@ -33,6 +33,17 @@ export interface StoredListingSet {
 }
 
 function toListingRow(record: ListingRecord): ListingRow {
+  const rawPayload = {
+    ...(record.raw as Record<string, unknown> | null | undefined),
+  } as Record<string, unknown> & {
+    __layerMetadata?: { layerUrl?: string | null; presetId?: string | null };
+  };
+  const existingMetadata = rawPayload.__layerMetadata ?? { layerUrl: null, presetId: null };
+  rawPayload.__layerMetadata = {
+    layerUrl: record.sourceLayerUrl ?? existingMetadata.layerUrl ?? null,
+    presetId: record.sourcePresetId ?? existingMetadata.presetId ?? null,
+  };
+
   return {
     id: record.id,
     complex: record.complex || null,
@@ -53,11 +64,18 @@ function toListingRow(record: ListingRecord): ListingRow {
     is_business_owner: record.isBusinessOwner,
     latitude: typeof record.latitude === 'number' ? record.latitude : null,
     longitude: typeof record.longitude === 'number' ? record.longitude : null,
-    raw: (record.raw as Record<string, unknown>) ?? null,
+    raw: rawPayload,
   };
 }
 
 function fromListingRow(row: ListingRow): ListingRecord {
+  const rawAttributes = (row.raw as ListingAttributes | null) ?? {};
+  const metadata = (rawAttributes as ListingAttributes & {
+    __layerMetadata?: { layerUrl?: string | null; presetId?: string | null };
+  }).__layerMetadata;
+  const sourceLayerUrl = metadata && typeof metadata.layerUrl === 'string' ? metadata.layerUrl : null;
+  const sourcePresetId = metadata && typeof metadata.presetId === 'string' ? metadata.presetId : null;
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -78,7 +96,9 @@ function fromListingRow(row: ListingRow): ListingRecord {
     isBusinessOwner: Boolean(row.is_business_owner),
     latitude: typeof row.latitude === 'number' ? row.latitude : null,
     longitude: typeof row.longitude === 'number' ? row.longitude : null,
-    raw: (row.raw as ListingAttributes | null) ?? {},
+    raw: rawAttributes,
+    sourceLayerUrl,
+    sourcePresetId,
   };
 }
 

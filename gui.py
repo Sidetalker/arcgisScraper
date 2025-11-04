@@ -13,7 +13,10 @@ from tkinter.scrolledtext import ScrolledText
 import scrape_arcgis
 
 
-OWNER_LAYER_URL = (
+PRESET_METADATA = scrape_arcgis.LAYER_PRESETS
+DEFAULT_LAYER_PRESET = scrape_arcgis.DEFAULT_LAYER_PRESET
+OWNER_LAYER_PRESET = scrape_arcgis.OWNER_LAYER_PRESET
+OWNER_LAYER_FALLBACK_URL = (
     "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/"
     "PrISM_APParcelPts_View_Layer_for_Query/FeatureServer/0"
 )
@@ -91,10 +94,28 @@ class ScraperGUI:
         self.where_var = tk.StringVar(value="")
         self.out_fields_var = tk.StringVar(value="*")
         self.portal_var = tk.StringVar(value=scrape_arcgis.DEFAULT_PORTAL_URL)
-        self.layer_var = tk.StringVar(value=OWNER_LAYER_URL)
+        self._preset_labels = self._build_preset_labels()
+        self._label_to_key = {label: key for key, label in self._preset_labels.items()}
+        self._label_to_key["Custom layer"] = ""
+        default_preset = self._initial_preset()
+        if default_preset and default_preset not in self._preset_labels:
+            default_preset = ""
+        if not default_preset and self._preset_labels:
+            default_preset = next(iter(self._preset_labels))
+        default_label = self._preset_labels.get(default_preset, "Custom layer")
+        default_layer_url = self._resolve_preset_url(default_preset)
+        if not default_layer_url:
+            if default_preset == OWNER_LAYER_PRESET:
+                default_layer_url = OWNER_LAYER_FALLBACK_URL
+            else:
+                default_layer_url = scrape_arcgis.DEFAULT_LAYER_URL
+
+        self.layer_var = tk.StringVar(value=default_layer_url)
         self.item_id_var = tk.StringVar(value="")
         self.layer_index_var = tk.StringVar(value="0")
         self.referer_var = tk.StringVar(value=scrape_arcgis.DEFAULT_REFERER)
+        self.layer_preset_var = tk.StringVar(value=default_preset)
+        self.layer_preset_display_var = tk.StringVar(value=default_label)
         self.api_key_var = tk.StringVar(value="")
         self.username_var = tk.StringVar(value="")
         self.password_var = tk.StringVar(value="")
@@ -107,6 +128,9 @@ class ScraperGUI:
         self.status_var = tk.StringVar(value="Fill in the fields and click Run Query.")
         self.last_output: str = ""
         self.last_is_csv = False
+
+        if default_preset:
+            self._apply_preset(default_preset)
 
         self._build_layout()
 
@@ -138,11 +162,28 @@ class ScraperGUI:
 
         row += 2
         add_entry(row, "Portal URL", self.portal_var, width=60)
-        add_entry(row + 1, "Layer URL", self.layer_var, width=60)
-        add_entry(row + 2, "Item ID (optional)", self.item_id_var, width=60)
-        add_entry(row + 3, "Layer index", self.layer_index_var)
+        preset_row_offset = 0
+        ttk.Label(form, text="Layer preset").grid(row=row + 1, column=0, sticky=tk.W, pady=2)
+        preset_values = list(self._preset_labels.values())
+        if "Custom layer" not in preset_values:
+            preset_values.append("Custom layer")
+        state = "readonly" if preset_values else tk.DISABLED
+        self.layer_preset_combo = ttk.Combobox(
+            form,
+            textvariable=self.layer_preset_display_var,
+            values=preset_values,
+            state=state,
+            width=57,
+        )
+        self.layer_preset_combo.grid(row=row + 1, column=1, sticky=tk.W, pady=2, padx=(8, 24))
+        self.layer_preset_combo.bind("<<ComboboxSelected>>", self._handle_preset_selection)
+        preset_row_offset = 1
 
-        row += 4
+        add_entry(row + 1 + preset_row_offset, "Layer URL", self.layer_var, width=60)
+        add_entry(row + 2 + preset_row_offset, "Item ID (optional)", self.item_id_var, width=60)
+        add_entry(row + 3 + preset_row_offset, "Layer index", self.layer_index_var)
+
+        row += 4 + preset_row_offset
         add_entry(row, "Referer", self.referer_var, width=60)
         add_entry(row + 1, "API key", self.api_key_var, width=60)
         add_entry(row + 2, "Username", self.username_var, width=30)
@@ -182,14 +223,82 @@ class ScraperGUI:
         status_bar = ttk.Label(main, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W, padding=4)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
+    def _initial_preset(self) -> str:
+        if OWNER_LAYER_PRESET in PRESET_METADATA:
+            return OWNER_LAYER_PRESET
+        if DEFAULT_LAYER_PRESET in PRESET_METADATA:
+            return DEFAULT_LAYER_PRESET
+        return ""
+
+    def _build_preset_labels(self) -> dict[str, str]:
+        entries = []
+        for key, meta in PRESET_METADATA.items():
+            if isinstance(meta, dict):
+                name = meta.get("name")
+            else:
+                name = None
+            display = name.strip() if isinstance(name, str) and name.strip() else key
+            entries.append((key, display))
+        entries.sort(key=lambda item: item[1].lower())
+        return {key: f"{label} ({key})" for key, label in entries}
+
+    def _resolve_preset_url(self, preset: str) -> str:
+        meta = PRESET_METADATA.get(preset)
+        if isinstance(meta, dict):
+            url = meta.get("url")
+            if isinstance(url, str) and url.strip():
+                return url.strip()
+        return ""
+
+    def _resolve_preset_referer(self, preset: str) -> str:
+        meta = PRESET_METADATA.get(preset)
+        if isinstance(meta, dict):
+            referer = meta.get("referer")
+            if isinstance(referer, str) and referer.strip():
+                return referer.strip()
+        return ""
+
+    def _handle_preset_selection(self, _event: tk.Event) -> None:  # type: ignore[override]
+        label = self.layer_preset_display_var.get()
+        preset = self._label_to_key.get(label)
+        if preset:
+            self._apply_preset(preset)
+
+    def _apply_preset(self, preset: str) -> None:
+        if not preset or preset not in self._preset_labels:
+            self.layer_preset_var.set(preset or "")
+            self.layer_preset_display_var.set("Custom layer")
+            return
+
+        self.layer_preset_var.set(preset)
+        self.layer_preset_display_var.set(self._preset_labels[preset])
+
+        url = self._resolve_preset_url(preset)
+        if url:
+            self.layer_var.set(url)
+
+        referer = self._resolve_preset_referer(preset)
+        if referer:
+            self.referer_var.set(referer)
+        elif preset == DEFAULT_LAYER_PRESET:
+            self.referer_var.set(scrape_arcgis.DEFAULT_REFERER)
+
     def _is_macos(self) -> bool:
         return self.root.tk.call("tk", "windowingsystem") == "aqua"
 
     def _set_default_layer(self) -> None:
-        self.layer_var.set(scrape_arcgis.DEFAULT_LAYER_URL)
+        if DEFAULT_LAYER_PRESET in self._preset_labels:
+            self._apply_preset(DEFAULT_LAYER_PRESET)
+        else:
+            self.layer_var.set(scrape_arcgis.DEFAULT_LAYER_URL)
+            self._apply_preset("")
 
     def _set_owner_layer(self) -> None:
-        self.layer_var.set(OWNER_LAYER_URL)
+        if OWNER_LAYER_PRESET in self._preset_labels:
+            self._apply_preset(OWNER_LAYER_PRESET)
+        else:
+            self.layer_var.set(OWNER_LAYER_FALLBACK_URL)
+            self._apply_preset("")
 
     def start_query(self) -> None:
         try:

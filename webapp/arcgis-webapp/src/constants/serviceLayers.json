@@ -1,0 +1,48 @@
+{
+  "str_public": {
+    "name": "STR Licenses (Public view layer)",
+    "url": "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/STR_Licenses_October_2025_public_view_layer/FeatureServer/0",
+    "description": "Summit County-hosted short-term rental licenses published for the public dashboard.",
+    "supportsOwnerTable": false
+  },
+  "str_prototype": {
+    "name": "STR Licenses (Prototype)",
+    "url": "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/STR_Licenses_prototype_Map_WFL1/FeatureServer/0",
+    "description": "Experimental STR license schema used for Summit County prototyping.",
+    "supportsOwnerTable": false
+  },
+  "owner_contacts": {
+    "name": "Parcel contacts (PrISM view)",
+    "url": "https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/PrISM_APParcelPts_View_Layer_for_Query/FeatureServer/0",
+    "description": "Owner contact view containing mailing addresses suitable for mail-merge tables.",
+    "supportsOwnerTable": true
+  },
+  "resort_overlay_zone": {
+    "name": "Resort overlay zone",
+    "url": "https://gis.summitcountyco.gov/arcgis/rest/services/STR/STR/Resort_Overlay_Zone/FeatureServer/0",
+    "description": "Summit County resort overlay boundaries for short-term rental regulation.",
+    "referer": "https://gis.summitcountyco.gov/",
+    "supportsOwnerTable": false
+  },
+  "basin_boundaries": {
+    "name": "Basin boundaries",
+    "url": "https://gis.summitcountyco.gov/arcgis/rest/services/GIS_Base_Data/GIS_Base_Data/Basin_Boundaries/FeatureServer/0",
+    "description": "Hydrologic basin boundary polygons maintained by Summit County GIS.",
+    "referer": "https://gis.summitcountyco.gov/",
+    "supportsOwnerTable": false
+  },
+  "elections_precincts": {
+    "name": "Elections (AGO precincts)",
+    "url": "https://gis.summitcountyco.gov/arcgis/rest/services/AGO_GIS/AGO_GIS/Elections/FeatureServer/0",
+    "description": "ArcGIS Online elections layer exposing current precinct boundaries and metadata.",
+    "referer": "https://gis.summitcountyco.gov/",
+    "supportsOwnerTable": false
+  },
+  "elections_summit": {
+    "name": "Summit County elections",
+    "url": "https://gis.summitcountyco.gov/arcgis/rest/services/Elections/Elections/Summit_County_Elections/FeatureServer/0",
+    "description": "Summit County election services FeatureServer used for ballot and precinct information.",
+    "referer": "https://gis.summitcountyco.gov/",
+    "supportsOwnerTable": false
+  }
+}
