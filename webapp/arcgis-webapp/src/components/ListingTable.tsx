@@ -3,9 +3,11 @@ import './ListingTable.css';
 import {
   type ChangeEvent,
   type DragEvent,
+  type FormEvent,
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -23,6 +25,7 @@ interface ListingTableProps {
   pageSize: number;
   currentPage: number;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   isLoading: boolean;
   error?: string | null;
   highlightedListingId?: string;
@@ -206,11 +209,14 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
 ];
 
+const MAX_PAGE_SIZE = 1000;
+
 export function ListingTable({
   listings,
   pageSize,
   currentPage,
   onPageChange,
+  onPageSizeChange,
   isLoading,
   error,
   highlightedListingId,
@@ -234,6 +240,13 @@ export function ListingTable({
   const [columnPanelActiveDragSource, setColumnPanelActiveDragSource] = useState<ColumnKey | null>(
     null,
   );
+  const pageSizeInputId = useId();
+  const pageJumpInputId = useId();
+  const [pageSizeInputValue, setPageSizeInputValue] = useState(() => pageSize.toString());
+  const [isPageJumpOpen, setIsPageJumpOpen] = useState(false);
+  const [pageJumpValue, setPageJumpValue] = useState('');
+  const pageJumpContainerRef = useRef<HTMLDivElement | null>(null);
+  const pageJumpInputRef = useRef<HTMLInputElement | null>(null);
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -339,10 +352,10 @@ export function ListingTable({
     );
   }, [columnDefinitionMap, columnFilters, listings]);
 
-  const effectivePageSize =
-    Number.isFinite(pageSize) && pageSize > 0
-      ? Math.floor(pageSize)
-      : Math.max(filteredListings.length, 1);
+  const fallbackPageSize = filteredListings.length > 0 ? filteredListings.length : 1;
+  const resolvedPageSize =
+    Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : fallbackPageSize;
+  const effectivePageSize = Math.min(Math.max(resolvedPageSize, 1), MAX_PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(filteredListings.length / effectivePageSize) || 1);
   const clampPage = (value: number) => Math.min(Math.max(value, 1), totalPages);
   const requestedPage = Number.isFinite(currentPage) ? Math.floor(currentPage) : 1;
@@ -381,10 +394,152 @@ export function ListingTable({
     }
   }, [requestedPage, safePage, onPageChange]);
 
+  useEffect(() => {
+    setPageSizeInputValue(pageSize.toString());
+  }, [pageSize]);
+
+  useEffect(() => {
+    if (!isPageJumpOpen) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const input = pageJumpInputRef.current;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isPageJumpOpen]);
+
+  useEffect(() => {
+    if (!isPageJumpOpen) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (pageJumpContainerRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      closePageJump();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePageJump();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPageJumpOpen, closePageJump]);
+
+  useEffect(() => {
+    if (isPageJumpOpen) {
+      setPageJumpValue(safePage.toString());
+    }
+  }, [safePage, isPageJumpOpen]);
+
   const handlePageChange = (page: number) => {
     const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
     onPageChange(clampPage(sanitisedPage));
   };
+
+  const closePageJump = useCallback(() => {
+    setIsPageJumpOpen(false);
+    setPageJumpValue('');
+  }, []);
+
+  const openPageJump = useCallback(() => {
+    setPageJumpValue(safePage.toString());
+    setIsPageJumpOpen(true);
+  }, [safePage]);
+
+  const handlePageJumpToggle = useCallback(() => {
+    if (isPageJumpOpen) {
+      closePageJump();
+      return;
+    }
+    openPageJump();
+  }, [isPageJumpOpen, closePageJump, openPageJump]);
+
+  const commitPageSize = useCallback(() => {
+    const trimmed = pageSizeInputValue.trim();
+    const parsed = Number.parseInt(trimmed, 10);
+
+    if (!Number.isFinite(parsed)) {
+      setPageSizeInputValue(pageSize.toString());
+      return;
+    }
+
+    const clamped = Math.min(Math.max(parsed, 1), MAX_PAGE_SIZE);
+
+    if (clamped !== pageSize) {
+      onPageSizeChange(clamped);
+      if (safePage !== 1) {
+        onPageChange(1);
+      }
+    }
+
+    setPageSizeInputValue(clamped.toString());
+  }, [pageSizeInputValue, pageSize, onPageSizeChange, safePage, onPageChange]);
+
+  const handlePageSizeSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      commitPageSize();
+    },
+    [commitPageSize],
+  );
+
+  const handlePageSizeInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setPageSizeInputValue(event.target.value);
+    },
+    [],
+  );
+
+  const handlePageSizeBlur = useCallback(() => {
+    commitPageSize();
+  }, [commitPageSize]);
+
+  const handlePageJumpInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextValue = event.target.value.replace(/[^0-9]/g, '');
+      setPageJumpValue(nextValue);
+    },
+    [],
+  );
+
+  const handlePageJumpSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (pageJumpValue.trim().length === 0) {
+        closePageJump();
+        return;
+      }
+
+      const parsed = Number.parseInt(pageJumpValue, 10);
+
+      if (Number.isFinite(parsed)) {
+        const target = Math.min(Math.max(parsed, 1), totalPages);
+        onPageChange(target);
+      }
+
+      closePageJump();
+    },
+    [pageJumpValue, totalPages, onPageChange, closePageJump],
+  );
 
   const handleFilterChange = useCallback(
     (columnKey: ColumnKey, options?: { normalize?: (value: string) => string }) =>
@@ -1089,29 +1244,81 @@ export function ListingTable({
       </div>
 
       <nav className="listing-table__pagination" aria-label="Listing pagination">
-        <button type="button" onClick={() => handlePageChange(1)} disabled={safePage === 1}>
-          « First
-        </button>
-        <button type="button" onClick={() => handlePageChange(safePage - 1)} disabled={safePage === 1}>
-          ‹ Prev
-        </button>
-        <span>
-          Page {safePage} of {totalPages}
-        </span>
-        <button
-          type="button"
-          onClick={() => handlePageChange(safePage + 1)}
-          disabled={safePage === totalPages || listings.length === 0}
-        >
-          Next ›
-        </button>
-        <button
-          type="button"
-          onClick={() => handlePageChange(totalPages)}
-          disabled={safePage === totalPages || listings.length === 0}
-        >
-          Last »
-        </button>
+        <form className="listing-table__page-size-form" onSubmit={handlePageSizeSubmit}>
+          <label htmlFor={pageSizeInputId}>Rows per page</label>
+          <input
+            id={pageSizeInputId}
+            type="number"
+            min={1}
+            max={MAX_PAGE_SIZE}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={pageSizeInputValue}
+            onChange={handlePageSizeInputChange}
+            onBlur={handlePageSizeBlur}
+            className="listing-table__page-size-input"
+            aria-describedby={`${pageSizeInputId}-hint`}
+          />
+          <span id={`${pageSizeInputId}-hint`} className="listing-table__page-size-hint">
+            Max {MAX_PAGE_SIZE.toLocaleString()}
+          </span>
+        </form>
+        <div className="listing-table__page-controls">
+          <button type="button" onClick={() => handlePageChange(1)} disabled={safePage === 1}>
+            « First
+          </button>
+          <button type="button" onClick={() => handlePageChange(safePage - 1)} disabled={safePage === 1}>
+            ‹ Prev
+          </button>
+          <div className="listing-table__page-jump" ref={pageJumpContainerRef}>
+            <button
+              type="button"
+              className="listing-table__page-jump-button"
+              onClick={handlePageJumpToggle}
+              aria-haspopup="dialog"
+              aria-expanded={isPageJumpOpen}
+            >
+              Page {safePage} of {totalPages}
+            </button>
+            {isPageJumpOpen ? (
+              <form className="listing-table__page-jump-popover" onSubmit={handlePageJumpSubmit}>
+                <label className="listing-table__sr-only" htmlFor={pageJumpInputId}>
+                  Go to page
+                </label>
+                <input
+                  id={pageJumpInputId}
+                  ref={pageJumpInputRef}
+                  className="listing-table__page-jump-input"
+                  type="number"
+                  value={pageJumpValue}
+                  onChange={handlePageJumpInputChange}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  min={1}
+                  max={totalPages}
+                  aria-describedby={`${pageJumpInputId}-hint`}
+                />
+                <span id={`${pageJumpInputId}-hint`} className="listing-table__page-jump-hint">
+                  Press Enter to jump
+                </span>
+              </form>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => handlePageChange(safePage + 1)}
+            disabled={safePage === totalPages || listings.length === 0}
+          >
+            Next ›
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePageChange(totalPages)}
+            disabled={safePage === totalPages || listings.length === 0}
+          >
+            Last »
+          </button>
+        </div>
       </nav>
     </section>
   );
