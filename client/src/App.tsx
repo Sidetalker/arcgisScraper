@@ -186,6 +186,7 @@ export default function App() {
           <DataTable
             features={filteredFeatures}
             fields={fields}
+            isLoading={isLoading}
             selectedFeatureId={selectedFeatureId}
             onSelectFeature={handleSelectFeature}
           />

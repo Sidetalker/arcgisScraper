@@ -17,7 +17,8 @@ export function Toolbar({ isRefreshing, onRefresh, lastUpdated }: ToolbarProps) 
           <span className="toolbar__timestamp">No cached data</span>
         )}
         <button type="button" onClick={onRefresh} disabled={isRefreshing}>
-          {isRefreshing ? 'Refreshing…' : 'Update All Data'}
+          {isRefreshing && <span className="spinner spinner--inline" aria-hidden="true" />}
+          <span>{isRefreshing ? 'Refreshing…' : 'Update All Data'}</span>
         </button>
       </div>
     </header>
