@@ -664,7 +664,16 @@ export function ListingTable({
                           className="listing-table__detail-link"
                           aria-label="Open listing details in a new tab"
                         >
-                          <span aria-hidden="true">ℹ️</span>
+                          <svg
+                            className="listing-table__detail-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                            focusable="false"
+                          >
+                            <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                            <circle cx="12" cy="8" r="1" fill="currentColor" />
+                            <path d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z" fill="currentColor" />
+                          </svg>
                         </a>
                       ) : (
                         <span aria-hidden="true">—</span>
