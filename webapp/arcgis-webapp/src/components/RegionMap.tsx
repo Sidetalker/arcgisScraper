@@ -215,6 +215,12 @@ if (drawLocal) {
 }
 
 import type { ListingRecord, RegionShape } from '@/types';
+import {
+  adjustColorBrightness,
+  computeTopZoningDistricts,
+  DEFAULT_MARKER_COLOR,
+  type ZoningDistrictMap,
+} from '@/utils/zoningDistricts';
 import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
 
 import './RegionMap.css';
@@ -431,6 +437,8 @@ function SummitCountyOverlay(): JSX.Element | null {
   const maskGeometry = useMemo(() => createInvertedMask(overlayGeometry), [overlayGeometry]);
   const map = useMap();
   const fittedSourceRef = useRef<string | null>(null);
+  const isJsdom =
+    typeof window !== 'undefined' && /jsdom/i.test(window.navigator?.userAgent ?? '');
 
   useEffect(() => {
     if (!overlayGeometry || !overlayRef.current) {
@@ -466,6 +474,10 @@ function SummitCountyOverlay(): JSX.Element | null {
   }, [map, overlayGeometry]);
 
   if (!overlayGeometry) {
+    return null;
+  }
+
+  if (isJsdom) {
     return null;
   }
 
@@ -651,12 +663,12 @@ function ListingSelectionPanel({
   }
 
   if (!listing) {
-      const formattedCount = totalListingCount.toLocaleString();
-      const pluralised = totalListingCount === 1 ? 'property matches' : 'properties match';
-      const countMessage =
-        totalListingCount === 0
-          ? 'No properties match the current filters.'
-          : `${formattedCount} ${pluralised} the current filters.`;
+    const formattedCount = totalListingCount.toLocaleString();
+    const pluralised = totalListingCount === 1 ? 'property matches' : 'properties match';
+    const countMessage =
+      totalListingCount === 0
+        ? 'No properties match the current filters.'
+        : `${formattedCount} ${pluralised} the current filters.`;
     return (
       <div className="region-map__selection region-map__selection--empty" aria-live="polite">
         <p className="region-map__selection-empty-primary">
@@ -679,18 +691,18 @@ function ListingSelectionPanel({
     );
   }
 
-    const title =
-      listing.complex?.trim() ||
-      listing.physicalAddress?.trim() ||
-      listing.ownerName?.trim() ||
-      listing.scheduleNumber?.trim() ||
-      'Listing';
+  const title =
+    listing.complex?.trim() ||
+    listing.physicalAddress?.trim() ||
+    listing.ownerName?.trim() ||
+    listing.scheduleNumber?.trim() ||
+    'Listing';
 
-    const owners = getUniqueOwners(listing);
-    const mailingAddressLines = splitLines(listing.mailingAddress);
-    const detailUrl = normaliseDetailUrl(listing.publicDetailUrl);
+  const owners = getUniqueOwners(listing);
+  const mailingAddressLines = splitLines(listing.mailingAddress);
+  const detailUrl = normaliseDetailUrl(listing.publicDetailUrl);
 
-    return (
+  return (
       <div className="region-map__selection" aria-live="polite">
         <div className="region-map__selection-header">
           <div className="region-map__selection-heading">
@@ -1174,57 +1186,22 @@ function DrawManager({
   );
 }
 
-type ZoningDistrictInfo = {
-  name: string;
-  count: number;
-  color: string;
+const DISTRICT_BLUR_PANE = 'district-blur-pane';
+const DISTRICT_HOVER_PANE = 'district-hover-pane';
+
+type PaneOptions = {
+  pointerEvents?: 'auto' | 'none';
 };
 
-type ZoningDistrictMap = Map<string, ZoningDistrictInfo>;
+function ensurePane(map: L.Map, paneName: string, zIndex: number, options?: PaneOptions): string {
+  const pane = map.getPane(paneName) ?? map.createPane(paneName);
+  pane.style.zIndex = zIndex.toString();
 
-const DISTRICT_COLORS = [
-  '#e74c3c', // Red
-  '#3498db', // Blue
-  '#2ecc71', // Green
-  '#f39c12', // Orange
-  '#9b59b6', // Purple
-  '#1abc9c', // Turquoise
-  '#e67e22', // Carrot
-  '#34495e', // Dark Blue Gray
-  '#16a085', // Green Sea
-  '#c0392b', // Dark Red
-];
+  if (options?.pointerEvents) {
+    pane.style.pointerEvents = options.pointerEvents;
+  }
 
-const DEFAULT_MARKER_COLOR = '#3b82f6'; // Blue fallback
-
-function computeTopZoningDistricts(listings: ListingRecord[]): ZoningDistrictMap {
-  const districtCounts = new Map<string, number>();
-  
-  // Count properties per district
-  listings.forEach((listing) => {
-    if (listing.zoningDistrict) {
-      const count = districtCounts.get(listing.zoningDistrict) || 0;
-      districtCounts.set(listing.zoningDistrict, count + 1);
-    }
-  });
-
-  // Filter districts with > 100 properties and get top 10
-  const qualifiedDistricts = Array.from(districtCounts.entries())
-    .filter(([, count]) => count > 100)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-
-  // Create map with assigned colors
-  const districtMap = new Map<string, ZoningDistrictInfo>();
-  qualifiedDistricts.forEach(([name, count], index) => {
-    districtMap.set(name, {
-      name,
-      count,
-      color: DISTRICT_COLORS[index] || DISTRICT_COLORS[0],
-    });
-  });
-
-  return districtMap;
+  return paneName;
 }
 
 type ListingMarkersProps = {
@@ -1237,11 +1214,11 @@ type ListingMarkersProps = {
   hoveredDistrict?: string | null;
 };
 
-function ListingMarkers({ 
-  listings, 
-  onListingSelect, 
-  selectedListingId, 
-  hoveredListingId, 
+function ListingMarkers({
+  listings,
+  onListingSelect,
+  selectedListingId,
+  hoveredListingId,
   onListingHover,
   zoningDistricts,
   hoveredDistrict,
@@ -1249,21 +1226,21 @@ function ListingMarkers({
   const map = useMap();
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const blurLayerRef = useRef<L.LayerGroup | null>(null);
-
   // Render blur effects for zoning districts
   useEffect(() => {
-    if (!blurLayerRef.current) {
-      // Create blur layer below markers
-      blurLayerRef.current = L.layerGroup().addTo(map);
-      blurLayerRef.current.getPane()!.style.zIndex = '400'; // Below markerPane (600)
-    }
-    
-    const blurGroup = blurLayerRef.current;
-    blurGroup.clearLayers();
-
     if (zoningDistricts.size === 0) {
+      blurLayerRef.current?.clearLayers();
       return;
     }
+
+    const blurPaneName = ensurePane(map, DISTRICT_BLUR_PANE, 420, { pointerEvents: 'none' });
+
+    if (!blurLayerRef.current) {
+      blurLayerRef.current = L.layerGroup([], { pane: blurPaneName }).addTo(map);
+    }
+
+    const blurGroup = blurLayerRef.current;
+    blurGroup.clearLayers();
 
     // Group listings by district
     const listingsByDistrict = new Map<string, ListingRecord[]>();
@@ -1301,6 +1278,7 @@ function ListingMarkers({
           fillColor: blurColor,
           fillOpacity: blurOpacity,
           className: 'district-blur',
+          pane: blurPaneName,
         });
 
         blurCircle.addTo(blurGroup);
@@ -1354,6 +1332,11 @@ function ListingMarkers({
 
       marker.on('mouseover', () => {
         onListingHover?.(listing.id);
+        marker.bringToFront();
+      });
+
+      marker.on('mouseout', () => {
+        onListingHover?.(null);
       });
 
       if (isActive) {
@@ -1380,51 +1363,33 @@ function ListingMarkers({
   return null;
 }
 
-// Helper function to adjust color brightness
-function adjustColorBrightness(color: string, percent: number): string {
-  const hex = color.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  const adjust = (value: number) => {
-    const adjusted = value + (value * percent) / 100;
-    return Math.max(0, Math.min(255, Math.round(adjusted)));
-  };
-
-  const newR = adjust(r).toString(16).padStart(2, '0');
-  const newG = adjust(g).toString(16).padStart(2, '0');
-  const newB = adjust(b).toString(16).padStart(2, '0');
-
-  return `#${newR}${newG}${newB}`;
-}
-
 type DistrictHoverZonesProps = {
   listings: ListingRecord[];
   zoningDistricts: ZoningDistrictMap;
   onDistrictHover?: (districtName: string | null) => void;
 };
 
-function DistrictHoverZones({ 
-  listings, 
+function DistrictHoverZones({
+  listings,
   zoningDistricts,
   onDistrictHover,
 }: DistrictHoverZonesProps): null {
   const map = useMap();
   const zonesLayerRef = useRef<L.LayerGroup | null>(null);
-
   useEffect(() => {
-    if (!zonesLayerRef.current) {
-      zonesLayerRef.current = L.layerGroup().addTo(map);
-      zonesLayerRef.current.getPane()!.style.zIndex = '450'; // Between blur and markers
-    }
-    
-    const zonesGroup = zonesLayerRef.current;
-    zonesGroup.clearLayers();
-
     if (zoningDistricts.size === 0) {
+      zonesLayerRef.current?.clearLayers();
       return;
     }
+
+    const hoverPaneName = ensurePane(map, DISTRICT_HOVER_PANE, 500);
+
+    if (!zonesLayerRef.current) {
+      zonesLayerRef.current = L.layerGroup([], { pane: hoverPaneName }).addTo(map);
+    }
+
+    const zonesGroup = zonesLayerRef.current;
+    zonesGroup.clearLayers();
 
     // Group listings by district
     const listingsByDistrict = new Map<string, ListingRecord[]>();
@@ -1455,6 +1420,7 @@ function DistrictHoverZones({
           fillColor: 'transparent',
           fillOpacity: 0,
           interactive: true,
+          pane: hoverPaneName,
         });
 
         hoverZone.on('mouseover', (event: L.LeafletMouseEvent) => {
@@ -1463,14 +1429,15 @@ function DistrictHoverZones({
           const markerLatLng = marker.getLatLng();
           const mousePoint = map.latLngToContainerPoint(event.latlng);
           const markerPoint = map.latLngToContainerPoint(markerLatLng);
-          
+
           const distance = Math.sqrt(
-            Math.pow(mousePoint.x - markerPoint.x, 2) + 
+            Math.pow(mousePoint.x - markerPoint.x, 2) +
             Math.pow(mousePoint.y - markerPoint.y, 2)
           );
 
           // If within 20px (marker hitbox), don't trigger district hover
           if (distance <= 20) {
+            onDistrictHover?.(null);
             return;
           }
 
