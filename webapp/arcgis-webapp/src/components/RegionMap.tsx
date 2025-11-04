@@ -2000,6 +2000,7 @@ function RegionMap({
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
 
   useEffect(() => {
@@ -2104,6 +2105,23 @@ function RegionMap({
     return displayedListings.find((listing) => listing.id === activeListingId) ?? null;
   }, [activeListingId, displayedListings]);
 
+  const zoneDetailHighlight = useMemo(() => {
+    if (hoveredZone) {
+      return hoveredZone;
+    }
+
+    if (!activeListing) {
+      return null;
+    }
+
+    const zoneKey = normaliseZoneKey(activeListing.zone);
+    if (!zoneKey) {
+      return null;
+    }
+
+    return zoneStyleLookup.get(zoneKey) ?? null;
+  }, [activeListing, hoveredZone, zoneStyleLookup]);
+
   const handleMarkerSelect = useCallback(
     (listingId: string) => {
       setHoveredZone(null);
@@ -2124,9 +2142,19 @@ function RegionMap({
     setShowAllProperties((prev) => !prev);
   }, []);
 
+  const handleZoneHover = useCallback(
+    (zone: ZoningDistrictSummary | null) => {
+      setHoveredZone(zone);
+      if (zone) {
+        setHoveredListingId(null);
+      }
+    },
+    [setHoveredListingId],
+  );
+
   const handleLayerChange = useCallback((layer: MapLayerType) => {
     setCurrentLayer(layer);
-  }, []);
+  }, [setCurrentLayer]);
 
   const currentLayerConfig = MAP_LAYERS[currentLayer];
 
