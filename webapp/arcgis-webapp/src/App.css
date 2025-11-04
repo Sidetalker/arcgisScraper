@@ -1,47 +1,180 @@
 .app {
   min-height: 100vh;
+  padding: 3rem 1.5rem 4rem;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  color: #1a1a1a;
-  background: radial-gradient(circle at top, #f0f4ff, #ffffff 60%);
+  color: #102a43;
+  background: radial-gradient(circle at top, #f0f4ff, #ffffff 65%);
 }
 
 .app__header {
-  text-align: center;
-  padding: 2rem;
+  width: min(960px, 100%);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2.25rem 2.5rem;
   border-radius: 1.5rem;
-  background-color: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 20px 25px -15px rgba(15, 23, 42, 0.35);
+  background-color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 20px 35px -24px rgba(15, 23, 42, 0.45);
 }
 
-.app__logo {
-  height: 8rem;
-  width: 8rem;
-  will-change: filter;
-  transition: filter 300ms ease;
+.app__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 2.4vw, 2.75rem);
 }
 
-.app__logo:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-h1 {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
-}
-
-p {
-  font-size: 1.125rem;
+.app__header p {
+  margin: 0;
+  font-size: 1.05rem;
   line-height: 1.6;
-  max-width: 35ch;
-  margin: 0 auto;
+  max-width: 38ch;
 }
 
-code {
-  font-size: 0.95em;
-  background-color: rgba(15, 23, 42, 0.08);
-  padding: 0.2em 0.4em;
-  border-radius: 0.4em;
+.app__refresh-all {
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  border: none;
+  background: linear-gradient(120deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 12px 22px -16px rgba(37, 99, 235, 0.8);
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+.app__refresh-all:disabled {
+  opacity: 0.6;
+  cursor: progress;
+  box-shadow: none;
+}
+
+.app__refresh-all:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 24px -18px rgba(29, 78, 216, 0.9);
+}
+
+.app__content {
+  width: min(960px, 100%);
+  margin-top: 2.5rem;
+}
+
+.regions h2 {
+  margin: 0 0 1.5rem;
+  font-size: 1.65rem;
+}
+
+.regions__list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.region-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 28px -26px rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.region-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.region-card__header h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  color: #0f172a;
+}
+
+.region-card__description {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.region-card__refresh {
+  border: none;
+  border-radius: 0.75rem;
+  background: linear-gradient(120deg, #0ea5e9, #0284c7);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.65rem 1.25rem;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+  box-shadow: 0 12px 20px -16px rgba(14, 165, 233, 0.8);
+}
+
+.region-card__refresh:disabled {
+  opacity: 0.6;
+  cursor: progress;
+  box-shadow: none;
+}
+
+.region-card__refresh:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 24px -18px rgba(2, 132, 199, 0.9);
+}
+
+.region-card__error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background-color: rgba(220, 38, 38, 0.12);
+  color: #991b1b;
+  font-size: 0.95rem;
+}
+
+.region-card__body dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem 1.25rem;
+}
+
+.region-card__body dt {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+
+.region-card__body dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 2rem 1.25rem 3rem;
+  }
+
+  .app__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app__refresh-all {
+    align-self: stretch;
+    text-align: center;
+  }
 }
