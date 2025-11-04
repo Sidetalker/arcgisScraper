@@ -37,9 +37,9 @@ function Layout(): JSX.Element {
 
   const supabaseSummary = useMemo(() => {
     if (!cachedAt) {
-      return 'No Supabase sync yet';
+      return 'ArcGIS source of truth sync pending';
     }
-    return `Synced ${cachedAt.toLocaleTimeString([], {
+    return `ArcGIS source of truth synced ${cachedAt.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
