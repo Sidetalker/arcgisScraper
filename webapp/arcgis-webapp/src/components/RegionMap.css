@@ -256,13 +256,15 @@
   text-decoration: underline;
 }
 
-.leaflet-zoneGlowPane-pane {
+.leaflet-zoneGlowPane-pane,
+.region-map__zone-glow-pane {
   mix-blend-mode: screen;
   opacity: 0.9;
   pointer-events: auto;
 }
 
-.leaflet-zoneGlowPane-pane .region-map__zone-glow-marker {
+.leaflet-zoneGlowPane-pane .region-map__zone-glow-marker,
+.region-map__zone-glow-pane .region-map__zone-glow-marker {
   filter: blur(18px);
   transition: fill 0.2s ease, fill-opacity 0.2s ease, stroke 0.2s ease;
 }
