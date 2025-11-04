@@ -583,6 +583,19 @@ export function ListingTable({
         aria-busy={isLoading}
         title="Tabular summary of listings that match the current filters and map region"
       >
+        <div className="listing-table__scroll-indicator-container">
+          <div
+            className={`listing-table__scroll-indicator${
+              canScrollRight ? ' listing-table__scroll-indicator--active' : ''
+            }`}
+            aria-hidden="true"
+          >
+            <span>Scroll</span>
+            <span className="listing-table__scroll-indicator-arrow" aria-hidden="true">
+              →
+            </span>
+          </div>
+        </div>
         <div className="listing-table__scroll" ref={scrollContainerRef}>
           <table>
             <thead>
@@ -721,17 +734,6 @@ export function ListingTable({
             )}
           </tbody>
           </table>
-        </div>
-        <div
-          className={`listing-table__scroll-indicator${
-            canScrollRight ? ' listing-table__scroll-indicator--active' : ''
-          }`}
-          aria-hidden="true"
-        >
-          <span>Scroll</span>
-          <span className="listing-table__scroll-indicator-arrow" aria-hidden="true">
-            →
-          </span>
         </div>
       </div>
 
