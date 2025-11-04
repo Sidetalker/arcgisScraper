@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ArcgisClient } from './arcgisClient';
+import { buildOwnerFields, formatOwnerTable } from './ownerTable';
 
 export interface PropertiesRouterOptions {
   client: ArcgisClient;
@@ -13,7 +14,11 @@ export function createPropertiesRouter(options: PropertiesRouterOptions): Router
       const payload = await options.client.fetchAllFeatures({
         returnGeometry: true,
       });
-      res.json(payload);
+      const formattedFeatures = formatOwnerTable(payload.features ?? []);
+      res.json({
+        features: formattedFeatures,
+        fields: buildOwnerFields(),
+      });
     } catch (error) {
       next(error);
     }

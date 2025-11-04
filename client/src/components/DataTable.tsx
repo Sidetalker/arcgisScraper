@@ -1,25 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArcgisFeature } from '../types';
+import { FieldDefinition } from '../utils/fields';
 import { getFeatureId } from '../utils/features';
 
 interface DataTableProps {
   features: ArcgisFeature[];
+  fields: FieldDefinition[];
   selectedFeatureId: string | null;
   onSelectFeature: (featureId: string | null) => void;
 }
 
 const PAGE_SIZE = 25;
 
-export function DataTable({ features, selectedFeatureId, onSelectFeature }: DataTableProps) {
+export function DataTable({
+  features,
+  fields,
+  selectedFeatureId,
+  onSelectFeature,
+}: DataTableProps) {
   const [page, setPage] = useState(0);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   const columns = useMemo(() => {
-    if (!features.length) {
-      return [] as string[];
+    if (fields.length) {
+      return fields.map((field) => ({ name: field.name, label: field.label }));
     }
-    return Object.keys(features[0].attributes ?? {});
-  }, [features]);
+    if (features.length) {
+      const keys = Object.keys(features[0].attributes ?? {});
+      return keys.map((key) => ({ name: key, label: key }));
+    }
+    return [] as { name: string; label: string }[];
+  }, [fields, features]);
 
   const featureIds = useMemo(() => features.map((feature) => getFeatureId(feature)), [features]);
 
@@ -101,7 +112,7 @@ export function DataTable({ features, selectedFeatureId, onSelectFeature }: Data
           <thead>
             <tr>
               {columns.map((column) => (
-                <th key={column}>{column}</th>
+                <th key={column.name}>{column.label}</th>
               ))}
             </tr>
           </thead>
@@ -117,7 +128,7 @@ export function DataTable({ features, selectedFeatureId, onSelectFeature }: Data
                   onClick={() => onSelectFeature(isSelected ? null : featureId)}
                 >
                   {columns.map((column) => (
-                    <td key={column}>{String(feature.attributes[column] ?? '')}</td>
+                    <td key={column.name}>{String(feature.attributes[column.name] ?? '')}</td>
                   ))}
                 </tr>
               );

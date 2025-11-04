@@ -7,7 +7,7 @@ interface ToolbarProps {
 export function Toolbar({ isRefreshing, onRefresh, lastUpdated }: ToolbarProps) {
   return (
     <header className="toolbar">
-      <h1>Summit County Rental Explorer</h1>
+      <h1>ArcGIS Explorer (but doesn't suck ass)</h1>
       <div className="toolbar__actions">
         {lastUpdated ? (
           <span className="toolbar__timestamp">
