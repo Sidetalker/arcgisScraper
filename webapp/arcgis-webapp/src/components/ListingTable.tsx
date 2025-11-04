@@ -19,15 +19,18 @@ export function ListingTable({
   isLoading,
   error,
 }: ListingTableProps) {
-  const totalPages = Math.max(1, Math.ceil(listings.length / pageSize) || 1);
-  const safePage = Math.min(Math.max(currentPage, 1), totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, listings.length);
+  const effectivePageSize =
+    Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Math.max(listings.length, 1);
+  const totalPages = Math.max(1, Math.ceil(listings.length / effectivePageSize) || 1);
+  const clampPage = (value: number) => Math.min(Math.max(value, 1), totalPages);
+  const safePage = clampPage(Number.isFinite(currentPage) ? Math.floor(currentPage) : 1);
+  const startIndex = (safePage - 1) * effectivePageSize;
+  const endIndex = Math.min(startIndex + effectivePageSize, listings.length);
   const pageListings = listings.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number) => {
-    const nextPage = Math.min(Math.max(page, 1), totalPages);
-    onPageChange(nextPage);
+    const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
+    onPageChange(clampPage(sanitisedPage));
   };
 
   return (

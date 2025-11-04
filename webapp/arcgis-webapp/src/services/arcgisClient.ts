@@ -11,7 +11,7 @@ import {
 } from '@/types';
 
 const DEFAULT_LAYER_URL =
-  'https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/STR_Licenses_October_2025_public_view_layer/FeatureServer/0';
+  'https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/PrISM_APParcelPts_View_Layer_for_Query/FeatureServer/0';
 const DEFAULT_PORTAL_URL = 'https://summitcountyco.maps.arcgis.com';
 const DEFAULT_REFERER =
   'https://experience.arcgis.com/experience/706a6886322445479abadb904db00bc0/';
