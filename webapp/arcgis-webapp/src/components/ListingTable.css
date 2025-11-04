@@ -51,7 +51,7 @@
 .listing-table table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 720px;
+  min-width: 1100px;
 }
 
 .listing-table thead {
@@ -78,9 +78,32 @@
   background-color: rgba(248, 250, 252, 0.65);
 }
 
-.listing-table__address {
+.listing-table__owner {
   font-weight: 600;
   color: #0f172a;
+}
+
+.listing-table__owner-count {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+}
+
+.listing-table__multiline {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.listing-table__link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.listing-table__link:hover,
+.listing-table__link:focus {
+  text-decoration: underline;
 }
 
 .listing-table__loading,
@@ -129,7 +152,7 @@
   }
 
   .listing-table table {
-    min-width: 600px;
+    min-width: 900px;
   }
 
   .listing-table__pagination {

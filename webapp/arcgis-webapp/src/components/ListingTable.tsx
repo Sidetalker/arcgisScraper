@@ -69,67 +69,85 @@ export function ListingTable({
         <table>
           <thead>
             <tr>
-              <th scope="col">Address</th>
-              <th scope="col">City</th>
-              <th scope="col">Nightly rate</th>
-              <th scope="col">Beds</th>
-              <th scope="col">Baths</th>
-              <th scope="col">Status</th>
-              <th scope="col">Occupancy</th>
+              <th scope="col">Complex</th>
+              <th scope="col">Unit</th>
+              <th scope="col">Owner(s)</th>
+              <th scope="col">Business</th>
+              <th scope="col">Mailing address</th>
+              <th scope="col">Mailing city</th>
+              <th scope="col">State</th>
+              <th scope="col">ZIP</th>
+              <th scope="col">Subdivision</th>
+              <th scope="col">Schedule #</th>
+              <th scope="col">Physical address</th>
+              <th scope="col">Details</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="listing-table__loading">
+                <td colSpan={12} className="listing-table__loading">
                   Loading…
                 </td>
               </tr>
             ) : pageListings.length === 0 ? (
               <tr>
-                <td colSpan={7} className="listing-table__empty">
+                <td colSpan={12} className="listing-table__empty">
                   No listings match the current filters.
                 </td>
               </tr>
             ) : (
               pageListings.map((listing) => {
-                const nightlyRate =
-                  listing.nightlyRate === null
-                    ? '—'
-                    : `$${listing.nightlyRate.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}`;
-
-                const beds =
-                  listing.bedrooms === null
-                    ? '—'
-                    : listing.bedrooms.toLocaleString(undefined, {
-                        maximumFractionDigits: 1,
-                      });
-                const baths =
-                  listing.bathrooms === null
-                    ? '—'
-                    : listing.bathrooms.toLocaleString(undefined, {
-                        maximumFractionDigits: 1,
-                      });
-                const occupancy =
-                  listing.occupancy === null
-                    ? '—'
-                    : listing.occupancy.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      });
+                const ownerDisplay = listing.ownerName || '—';
+                const businessLabel = listing.isBusinessOwner ? 'Yes' : 'No';
+                const mailingLines = listing.mailingAddress
+                  ? listing.mailingAddress.split('\n')
+                  : [];
+                const zipDisplay = listing.mailingZip9 || listing.mailingZip5 || '—';
+                const detailLink = listing.publicDetailUrl ? (
+                  <a
+                    href={listing.publicDetailUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="listing-table__link"
+                  >
+                    View
+                  </a>
+                ) : (
+                  '—'
+                );
 
                 return (
                   <tr key={listing.id}>
+                    <td>{listing.complex || '—'}</td>
+                    <td>{listing.unit || '—'}</td>
                     <td>
-                      <div className="listing-table__address">{listing.address || 'Address unavailable'}</div>
+                      <div className="listing-table__owner">{ownerDisplay}</div>
+                      {listing.ownerNames.length > 1 ? (
+                        <div className="listing-table__owner-count">
+                          {listing.ownerNames.length} owners
+                        </div>
+                      ) : null}
                     </td>
-                    <td>{listing.city || '—'}</td>
-                    <td>{nightlyRate}</td>
-                    <td>{beds}</td>
-                    <td>{baths}</td>
-                    <td>{listing.status || '—'}</td>
-                    <td>{occupancy}</td>
+                    <td>{businessLabel}</td>
+                    <td>
+                      {mailingLines.length ? (
+                        <span className="listing-table__multiline">
+                          {mailingLines.map((line, index) => (
+                            <span key={index}>{line}</span>
+                          ))}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>{listing.mailingCity || '—'}</td>
+                    <td>{listing.mailingState || '—'}</td>
+                    <td>{zipDisplay}</td>
+                    <td>{listing.subdivision || '—'}</td>
+                    <td>{listing.scheduleNumber || '—'}</td>
+                    <td>{listing.physicalAddress || '—'}</td>
+                    <td>{detailLink}</td>
                   </tr>
                 );
               })
