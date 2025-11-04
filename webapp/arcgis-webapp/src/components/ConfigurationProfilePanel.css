@@ -1,0 +1,136 @@
+.profile-panel {
+  margin: 1.5rem 0;
+  padding: 1.5rem;
+  background-color: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.profile-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.profile-panel__header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.profile-panel__header p {
+  margin: 0.25rem 0 0;
+  max-width: 48rem;
+  color: #1f2937;
+}
+
+.profile-panel__actions button {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid #3b82f6;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.profile-panel__actions button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.profile-panel__content {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .profile-panel__content {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.profile-panel__fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-panel__fieldset label {
+  font-weight: 600;
+}
+
+.profile-panel__fieldset input,
+.profile-panel__fieldset select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5f5;
+  font-size: 1rem;
+}
+
+.profile-panel__fieldset input:disabled,
+.profile-panel__fieldset select:disabled,
+.profile-panel__buttons button[disabled],
+.profile-panel__loader button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.profile-panel__status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.profile-panel__status--warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.profile-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.profile-panel__buttons button,
+.profile-panel__loader button {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid #3b82f6;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-panel__loader {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.profile-panel__loader select {
+  flex: 1;
+}
+
+.profile-panel__hint {
+  margin: 0;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+
+.profile-panel__error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}

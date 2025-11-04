@@ -73,6 +73,25 @@ export interface ListingFilters {
   owner: string;
 }
 
+export type ListingTableColumnKey =
+  | 'complex'
+  | 'unit'
+  | 'owners'
+  | 'business'
+  | 'mailingAddress'
+  | 'mailingCity'
+  | 'mailingState'
+  | 'mailingZip'
+  | 'subdivision'
+  | 'scheduleNumber'
+  | 'physicalAddress';
+
+export interface ListingTableViewState {
+  columnOrder: ListingTableColumnKey[];
+  hiddenColumns: ListingTableColumnKey[];
+  columnFilters: Record<ListingTableColumnKey, string>;
+}
+
 export interface RegionCircle {
   lat: number;
   lng: number;
@@ -118,4 +137,18 @@ export interface SearchEnvelopeOptions {
   latitude: number;
   longitude: number;
   radiusMeters: number;
+}
+
+export interface ProfileConfiguration {
+  filters: ListingFilters;
+  regions: RegionCircle[];
+  table: ListingTableViewState;
+}
+
+export interface ConfigurationProfile {
+  id: string;
+  name: string;
+  configuration: ProfileConfiguration;
+  createdAt: Date | null;
+  updatedAt: Date | null;
 }

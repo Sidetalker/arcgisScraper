@@ -12,7 +12,8 @@ import {
 } from 'react';
 import { Link } from 'react-router-dom';
 
-import type { ListingRecord } from '@/types';
+import { createDefaultListingTableViewState, normaliseListingTableViewState } from '@/constants/listingTable';
+import type { ListingRecord, ListingTableColumnKey, ListingTableViewState } from '@/types';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -22,23 +23,12 @@ interface ListingTableProps {
   isLoading: boolean;
   error?: string | null;
   highlightedListingId?: string;
+  viewState?: ListingTableViewState;
+  onViewStateChange?: (state: ListingTableViewState) => void;
 }
 
-type ColumnKey =
-  | 'complex'
-  | 'unit'
-  | 'owners'
-  | 'business'
-  | 'mailingAddress'
-  | 'mailingCity'
-  | 'mailingState'
-  | 'mailingZip'
-  | 'subdivision'
-  | 'scheduleNumber'
-  | 'physicalAddress';
-
 interface ColumnDefinition {
-  key: ColumnKey;
+  key: ListingTableColumnKey;
   label: string;
   render: (listing: ListingRecord) => ReactNode;
   getFilterValue: (listing: ListingRecord) => string;
@@ -79,6 +69,42 @@ function fuzzyMatch(haystack: string, needle: string): boolean {
   }
 
   return true;
+}
+
+function cloneViewState(state: ListingTableViewState): ListingTableViewState {
+  return {
+    columnOrder: [...state.columnOrder],
+    hiddenColumns: [...state.hiddenColumns],
+    columnFilters: { ...state.columnFilters },
+  };
+}
+
+function areArraysEqual<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((value, index) => value === b[index]);
+}
+
+function areColumnFiltersEqual(
+  a: ListingTableViewState['columnFilters'],
+  b: ListingTableViewState['columnFilters'],
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key as ListingTableColumnKey] !== b[key as ListingTableColumnKey]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areViewStatesEqual(a: ListingTableViewState, b: ListingTableViewState): boolean {
+  return (
+    areArraysEqual(a.columnOrder, b.columnOrder) &&
+    areArraysEqual(a.hiddenColumns, b.hiddenColumns) &&
+    areColumnFiltersEqual(a.columnFilters, b.columnFilters)
+  );
 }
 
 const COLUMN_DEFINITIONS: ColumnDefinition[] = [
@@ -192,15 +218,6 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
 ];
 
-type ColumnFilters = Record<ColumnKey, string>;
-
-function createInitialFilters(): ColumnFilters {
-  return COLUMN_DEFINITIONS.reduce<ColumnFilters>((acc, column) => {
-    acc[column.key] = '';
-    return acc;
-  }, {} as ColumnFilters);
-}
-
 export function ListingTable({
   listings,
   pageSize,
@@ -209,17 +226,52 @@ export function ListingTable({
   isLoading,
   error,
   highlightedListingId,
+  viewState,
+  onViewStateChange,
 }: ListingTableProps) {
-  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(() =>
-    COLUMN_DEFINITIONS.map((definition) => definition.key),
+  const [viewStateInternal, setViewStateInternal] = useState<ListingTableViewState>(() =>
+    viewState ? normaliseListingTableViewState(viewState) : createDefaultListingTableViewState(),
   );
-  const [hiddenColumns, setHiddenColumns] = useState<ColumnKey[]>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFilters>(() => createInitialFilters());
-  const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
-  const dragSource = useRef<ColumnKey | null>(null);
+  const [dragTarget, setDragTarget] = useState<ListingTableColumnKey | null>(null);
+  const dragSource = useRef<ListingTableColumnKey | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!viewState) {
+      return;
+    }
+    setViewStateInternal((current) => {
+      const normalised = normaliseListingTableViewState(viewState);
+      return areViewStatesEqual(current, normalised) ? current : normalised;
+    });
+  }, [viewState]);
+
+  const handleViewStateUpdate = useCallback(
+    (
+      updater:
+        | ListingTableViewState
+        | ((state: ListingTableViewState) => ListingTableViewState),
+    ) => {
+      setViewStateInternal((previous) => {
+        const workingState = cloneViewState(previous);
+        const proposed =
+          typeof updater === 'function'
+            ? (updater as (state: ListingTableViewState) => ListingTableViewState)(workingState)
+            : updater;
+        const nextState = normaliseListingTableViewState(proposed);
+        if (areViewStatesEqual(previous, nextState)) {
+          return previous;
+        }
+        onViewStateChange?.(cloneViewState(nextState));
+        return nextState;
+      });
+    },
+    [onViewStateChange],
+  );
+
+  const { columnOrder, hiddenColumns, columnFilters } = viewStateInternal;
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -270,7 +322,7 @@ export function ListingTable({
   }, [updateScrollIndicators]);
 
   const columnDefinitionMap = useMemo(() => {
-    return new Map<ColumnKey, ColumnDefinition>(
+    return new Map<ListingTableColumnKey, ColumnDefinition>(
       COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]),
     );
   }, []);
@@ -287,7 +339,7 @@ export function ListingTable({
 
   const filteredListings = useMemo(() => {
     const activeEntries = Object.entries(columnFilters).filter(([, value]) => value.trim().length > 0) as [
-      ColumnKey,
+      ListingTableColumnKey,
       string,
     ][];
 
@@ -354,48 +406,59 @@ export function ListingTable({
   };
 
   const handleFilterChange = useCallback(
-    (columnKey: ColumnKey) => (event: ChangeEvent<HTMLInputElement>) => {
+    (columnKey: ListingTableColumnKey) => (event: ChangeEvent<HTMLInputElement>) => {
       const nextValue = event.target.value;
-      setColumnFilters((previous) => {
-        if (previous[columnKey] === nextValue) {
-          return previous;
+      handleViewStateUpdate((current) => {
+        if (current.columnFilters[columnKey] === nextValue) {
+          return current;
         }
-        return { ...previous, [columnKey]: nextValue };
+        return {
+          ...current,
+          columnFilters: {
+            ...current.columnFilters,
+            [columnKey]: nextValue,
+          },
+        };
       });
       onPageChange(1);
     },
-    [onPageChange],
+    [handleViewStateUpdate, onPageChange],
   );
 
   const handleHideColumn = useCallback(
-    (columnKey: ColumnKey) => {
-      setHiddenColumns((previous) => {
-        if (previous.includes(columnKey)) {
-          return previous;
+    (columnKey: ListingTableColumnKey) => {
+      handleViewStateUpdate((current) => {
+        const alreadyHidden = current.hiddenColumns.includes(columnKey);
+        const nextFilters = { ...current.columnFilters };
+        if (nextFilters[columnKey]) {
+          nextFilters[columnKey] = '';
         }
-        return [...previous, columnKey];
-      });
-      setColumnFilters((previous) => {
-        if (!previous[columnKey]) {
-          return previous;
-        }
-        return { ...previous, [columnKey]: '' };
+        return {
+          ...current,
+          hiddenColumns: alreadyHidden
+            ? current.hiddenColumns
+            : [...current.hiddenColumns, columnKey],
+          columnFilters: nextFilters,
+        };
       });
       scheduleScrollIndicatorUpdate();
     },
-    [scheduleScrollIndicatorUpdate],
+    [handleViewStateUpdate, scheduleScrollIndicatorUpdate],
   );
 
   const handleUnhideColumn = useCallback(
-    (columnKey: ColumnKey) => {
-      setHiddenColumns((previous) => previous.filter((key) => key !== columnKey));
+    (columnKey: ListingTableColumnKey) => {
+      handleViewStateUpdate((current) => ({
+        ...current,
+        hiddenColumns: current.hiddenColumns.filter((key) => key !== columnKey),
+      }));
       scheduleScrollIndicatorUpdate();
     },
-    [scheduleScrollIndicatorUpdate],
+    [handleViewStateUpdate, scheduleScrollIndicatorUpdate],
   );
 
   const handleDragStart = useCallback(
-    (columnKey: ColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
+    (columnKey: ListingTableColumnKey) => (event: DragEvent<HTMLButtonElement>) => {
       stopAutoScroll();
       dragSource.current = columnKey;
       setDragTarget(columnKey);
@@ -406,7 +469,7 @@ export function ListingTable({
   );
 
   const handleDragOver = useCallback(
-    (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+    (columnKey: ListingTableColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
       event.preventDefault();
       if (dragTarget !== columnKey) {
         setDragTarget(columnKey);
@@ -439,7 +502,7 @@ export function ListingTable({
   );
 
   const handleDragLeave = useCallback(
-    (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+    (columnKey: ListingTableColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
       const nextTarget = event.relatedTarget as Node | null;
       if (nextTarget && event.currentTarget.contains(nextTarget)) {
         return;
@@ -453,7 +516,7 @@ export function ListingTable({
   );
 
   const handleDrop = useCallback(
-    (columnKey: ColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
+    (columnKey: ListingTableColumnKey) => (event: DragEvent<HTMLTableCellElement>) => {
       event.preventDefault();
       stopAutoScroll();
       const sourceColumn = dragSource.current;
@@ -463,18 +526,21 @@ export function ListingTable({
         return;
       }
 
-      setColumnOrder((previous) => {
-        const nextOrder = previous.filter((key) => key !== sourceColumn);
+      handleViewStateUpdate((current) => {
+        const nextOrder = current.columnOrder.filter((key) => key !== sourceColumn);
         const insertIndex = nextOrder.indexOf(columnKey);
         if (insertIndex === -1) {
-          return previous;
+          return current;
         }
         nextOrder.splice(insertIndex, 0, sourceColumn);
-        return [...nextOrder];
+        return {
+          ...current,
+          columnOrder: nextOrder,
+        };
       });
       scheduleScrollIndicatorUpdate();
     },
-    [scheduleScrollIndicatorUpdate, stopAutoScroll],
+    [handleViewStateUpdate, scheduleScrollIndicatorUpdate, stopAutoScroll],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -581,13 +647,13 @@ export function ListingTable({
                 {visibleColumnDefinitions.map((definition) => (
                   <th
                     key={definition.key}
-                  scope="col"
-                  onDragOver={handleDragOver(definition.key)}
-                  onDrop={handleDrop(definition.key)}
-                  onDragLeave={handleDragLeave(definition.key)}
-                  data-drop-target={dragTarget === definition.key}
-                >
-                  <div className="listing-table__column-header">
+                    scope="col"
+                    onDragOver={handleDragOver(definition.key)}
+                    onDrop={handleDrop(definition.key)}
+                    onDragLeave={handleDragLeave(definition.key)}
+                    data-drop-target={dragTarget === definition.key}
+                  >
+                    <div className="listing-table__column-header">
                     <button
                       type="button"
                       className="listing-table__drag-handle"
