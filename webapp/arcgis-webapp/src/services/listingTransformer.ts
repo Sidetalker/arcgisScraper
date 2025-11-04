@@ -1,5 +1,6 @@
 import type { ArcgisFeature } from '@/types';
 import type { ListingAttributes, ListingFilters, ListingRecord } from '@/types';
+import { categoriseRenewal } from '@/services/renewalEstimator';
 
 const BUSINESS_KEYWORDS = [
   ' LLC',
@@ -364,19 +365,8 @@ function fromWebMercator(x: number, y: number): { lat: number; lng: number } {
 export function toListingRecord(
   feature: ArcgisFeature<ListingAttributes>,
   index: number,
-  options: { sourceLayerUrl?: string; sourcePresetId?: string | null } = {},
 ): ListingRecord {
   const attributes = feature.attributes ?? {};
-  const rawAttributes: ListingAttributes = { ...attributes };
-  const metadata = {
-    layerUrl: options.sourceLayerUrl ?? null,
-    presetId: options.sourcePresetId ?? null,
-  };
-  if (metadata.layerUrl || metadata.presetId) {
-    (rawAttributes as ListingAttributes & {
-      __layerMetadata?: { layerUrl: string | null; presetId: string | null };
-    }).__layerMetadata = metadata;
-  }
   let latitude: number | null = null;
   let longitude: number | null = null;
 
@@ -468,6 +458,13 @@ export function toListingRecord(
       attributes.BriefPropertyDescription.trim()) ||
     '';
 
+  const renewalSnapshot = categoriseRenewal(attributes);
+  const estimatedRenewalDate = renewalSnapshot.estimate?.date ?? null;
+  const estimatedRenewalMethod = renewalSnapshot.estimate?.method ?? null;
+  const estimatedRenewalReference = renewalSnapshot.estimate?.reference ?? null;
+  const estimatedRenewalCategory = renewalSnapshot.category;
+  const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
+
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -488,9 +485,12 @@ export function toListingRecord(
     isBusinessOwner,
     latitude,
     longitude,
-    raw: rawAttributes,
-    sourceLayerUrl: typeof options.sourceLayerUrl === 'string' ? options.sourceLayerUrl : null,
-    sourcePresetId: typeof options.sourcePresetId === 'string' ? options.sourcePresetId : null,
+    estimatedRenewalDate,
+    estimatedRenewalMethod,
+    estimatedRenewalReference,
+    estimatedRenewalCategory,
+    estimatedRenewalMonthKey,
+    raw: attributes,
   };
 }
 
@@ -526,6 +526,43 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.ownerNames.some((name) => name.toLowerCase().includes(ownerQuery)) ||
       listing.ownerName.toLowerCase().includes(ownerQuery);
     if (!ownerMatches) {
+      return false;
+    }
+  }
+
+  if (filters.subdivisions.length > 0) {
+    const listingSubdivision = (listing.subdivision ?? '').toLowerCase();
+    const subdivisionMatch = filters.subdivisions.some(
+      (value) => listingSubdivision === value.toLowerCase(),
+    );
+    if (!subdivisionMatch) {
+      return false;
+    }
+  }
+
+  if (filters.renewalCategories.length > 0) {
+    const category = listing.estimatedRenewalCategory ?? 'missing';
+    if (!filters.renewalCategories.some((value) => value === category)) {
+      return false;
+    }
+  }
+
+  if (filters.renewalMethods.length > 0) {
+    const method = listing.estimatedRenewalMethod ?? 'missing';
+    if (!filters.renewalMethods.some((value) => value === method)) {
+      return false;
+    }
+  }
+
+  if (filters.renewalMonths.length > 0) {
+    const monthKey = listing.estimatedRenewalMonthKey;
+    if (!monthKey) {
+      return false;
+    }
+    const monthMatch = filters.renewalMonths.some(
+      (value) => value.toLowerCase() === monthKey.toLowerCase(),
+    );
+    if (!monthMatch) {
       return false;
     }
   }
