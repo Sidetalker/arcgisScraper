@@ -460,6 +460,7 @@ type MapToolbarProps = {
   onClearRegions: () => void;
   onFitRegions: () => void;
   hasRegions: boolean;
+  activeTool: 'polygon' | 'circle' | null;
 };
 
 function MapToolbar({
@@ -468,9 +469,18 @@ function MapToolbar({
   onClearRegions,
   onFitRegions,
   hasRegions,
+  activeTool,
 }: MapToolbarProps): null {
   const map = useMap();
-  const buttonRefs = useRef<{ clearButton?: HTMLButtonElement; fitButton?: HTMLButtonElement } | null>(null);
+  const buttonRefs = useRef<
+    | {
+        clearButton?: HTMLButtonElement;
+        fitButton?: HTMLButtonElement;
+        polygonButton?: HTMLButtonElement;
+        circleButton?: HTMLButtonElement;
+      }
+    | null
+  >(null);
 
   useEffect(() => {
     const toolbarControl = new L.Control({ position: 'topright' });
@@ -481,12 +491,13 @@ function MapToolbar({
 
       const polygonButton = L.DomUtil.create(
         'button',
-        'region-map__toolbar-button region-map__toolbar-button--primary',
+        'region-map__toolbar-button',
         container,
       ) as HTMLButtonElement;
       polygonButton.type = 'button';
       polygonButton.title = 'Draw a custom polygon';
       polygonButton.textContent = 'Draw polygon';
+      polygonButton.setAttribute('aria-pressed', 'false');
       polygonButton.addEventListener('click', (event) => {
         event.preventDefault();
         onDrawPolygon();
@@ -500,6 +511,7 @@ function MapToolbar({
       circleButton.type = 'button';
       circleButton.title = 'Draw a circular search area';
       circleButton.textContent = 'Draw circle';
+      circleButton.setAttribute('aria-pressed', 'false');
       circleButton.addEventListener('click', (event) => {
         event.preventDefault();
         onDrawCircle();
@@ -546,7 +558,7 @@ function MapToolbar({
         button.classList.add('region-map__toolbar-button--disabled');
       });
 
-      buttonRefs.current = { clearButton, fitButton };
+      buttonRefs.current = { clearButton, fitButton, polygonButton, circleButton };
 
       return container;
     };
@@ -577,6 +589,24 @@ function MapToolbar({
     });
   }, [hasRegions]);
 
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs) {
+      return;
+    }
+
+    const toggleActiveState = (button: HTMLButtonElement | undefined, isActive: boolean) => {
+      if (!button) {
+        return;
+      }
+      button.classList.toggle('region-map__toolbar-button--active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    };
+
+    toggleActiveState(refs.polygonButton, activeTool === 'polygon');
+    toggleActiveState(refs.circleButton, activeTool === 'circle');
+  }, [activeTool]);
+
   return null;
 }
 
@@ -590,6 +620,7 @@ function DrawManager({
   const polygonDrawerRef = useRef<L.Draw.Polygon | null>(null);
   const circleDrawerRef = useRef<L.Draw.Circle | null>(null);
   const previousCountRef = useRef(0);
+  const [activeTool, setActiveTool] = useState<'polygon' | 'circle' | null>(null);
 
   const initialiseLayers = useCallback(() => {
     if (!featureGroupRef.current) {
@@ -695,6 +726,29 @@ function DrawManager({
   }, [initialiseLayers, map, onRegionsChange, teardown]);
 
   useEffect(() => {
+    const handleDrawStart = (event: L.DrawEvents.DrawStart) => {
+      const layerType = event.layerType;
+      if (layerType === 'polygon' || layerType === 'circle') {
+        setActiveTool(layerType);
+      } else {
+        setActiveTool(null);
+      }
+    };
+
+    const handleDrawStop = () => {
+      setActiveTool(null);
+    };
+
+    map.on(L.Draw.Event.DRAWSTART, handleDrawStart);
+    map.on(L.Draw.Event.DRAWSTOP, handleDrawStop);
+
+    return () => {
+      map.off(L.Draw.Event.DRAWSTART, handleDrawStart);
+      map.off(L.Draw.Event.DRAWSTOP, handleDrawStop);
+    };
+  }, [map]);
+
+  useEffect(() => {
     if (!featureGroupRef.current) {
       return;
     }
@@ -772,6 +826,7 @@ function DrawManager({
       onClearRegions={clearRegions}
       onFitRegions={fitRegions}
       hasRegions={regions.length > 0}
+      activeTool={activeTool}
     />
   );
 }
