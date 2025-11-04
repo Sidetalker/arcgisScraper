@@ -67,6 +67,34 @@ export function parseDateValue(value: unknown): Date | null {
     if (value >= 1900 && value <= 2100) {
       return new Date(Date.UTC(value, 0, 1));
     }
+
+    const wholeValue = Math.trunc(value);
+    const numericText = Math.abs(wholeValue).toString();
+
+    if (numericText.length === 8) {
+      const year = Number.parseInt(numericText.slice(0, 4), 10);
+      const month = Number.parseInt(numericText.slice(4, 6), 10);
+      const day = Number.parseInt(numericText.slice(6, 8), 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const candidate = new Date(Date.UTC(year, month - 1, day));
+        if (
+          candidate.getUTCFullYear() === year &&
+          candidate.getUTCMonth() === month - 1 &&
+          candidate.getUTCDate() === day
+        ) {
+          return candidate;
+        }
+      }
+    }
+
+    if (numericText.length === 6) {
+      const year = Number.parseInt(numericText.slice(0, 4), 10);
+      const month = Number.parseInt(numericText.slice(4, 6), 10);
+      if (month >= 1 && month <= 12) {
+        return new Date(Date.UTC(year, month - 1, 1));
+      }
+    }
+
     if (value > 1e12) {
       return new Date(value);
     }
