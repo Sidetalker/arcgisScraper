@@ -62,6 +62,7 @@ export interface ListingRecord {
   mailingZip5: string;
   mailingZip9: string;
   subdivision: string;
+  zone: string;
   scheduleNumber: string;
   publicDetailUrl: string;
   physicalAddress: string;
@@ -73,6 +74,7 @@ export interface ListingRecord {
   estimatedRenewalReference: Date | null;
   estimatedRenewalCategory: RenewalCategory;
   estimatedRenewalMonthKey: string | null;
+  nearestEvStationDistanceMeters: number | null;
   raw: ListingAttributes;
 }
 
@@ -84,6 +86,12 @@ export interface ListingFilters {
   renewalCategories: string[];
   renewalMethods: string[];
   renewalMonths: string[];
+  maxEvDistanceMiles: number | null;
+}
+
+export interface RegionPoint {
+  lat: number;
+  lng: number;
 }
 
 export interface RegionPoint {

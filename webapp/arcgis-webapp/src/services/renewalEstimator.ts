@@ -2,7 +2,7 @@ const MAX_SIGNAL_DEPTH = 4;
 const MAX_SIGNAL_ARRAY_LENGTH = 25;
 
 const DATE_KEY_HINT = /(date|dt|year|record|recept|sale|deed|permit|license|renew|transfer|expir|assess|valuation|updated|entered|filed|document)/i;
-const DATE_VALUE_HINT = /(\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{2}|\d{4}))|((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+(?:\d{2}|\d{4}))|(\b(19|20)\d{2}\b)/i;
+const DATE_VALUE_HINT = /(\d{1,2}[/-]\d{1,2}[/-](?:\d{2}|\d{4}))|((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+(?:\d{2}|\d{4}))|(\b(19|20)\d{2}\b)/i;
 
 const SIGNAL_TYPE_RULES: Array<{ type: RenewalSignal['type']; pattern: RegExp }> = [
   { type: 'permit', pattern: /(license|permit|renew|expir|str[_-]?permit|lodging)/i },

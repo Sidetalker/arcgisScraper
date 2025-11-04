@@ -72,6 +72,7 @@ export interface ListingRow {
   mailing_zip5: Nullable<string>;
   mailing_zip9: Nullable<string>;
   subdivision: Nullable<string>;
+  zone: Nullable<string>;
   schedule_number: Nullable<string>;
   public_detail_url: Nullable<string>;
   physical_address: Nullable<string>;
@@ -83,6 +84,7 @@ export interface ListingRow {
   estimated_renewal_reference: Nullable<string>;
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
+  nearest_ev_station_distance_meters: Nullable<number>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -107,6 +109,7 @@ function toListingRow(record: ListingRecord): ListingRow {
     mailing_zip5: record.mailingZip5 || null,
     mailing_zip9: record.mailingZip9 || null,
     subdivision: record.subdivision || null,
+    zone: record.zone || null,
     schedule_number: record.scheduleNumber || null,
     public_detail_url: record.publicDetailUrl || null,
     physical_address: record.physicalAddress || null,
@@ -118,6 +121,10 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
+    nearest_ev_station_distance_meters:
+      typeof record.nearestEvStationDistanceMeters === 'number'
+        ? record.nearestEvStationDistanceMeters
+        : null,
     raw: (record.raw as Record<string, unknown>) ?? null,
   };
 }
@@ -156,6 +163,8 @@ function fromListingRow(row: ListingRow): ListingRecord {
   const safeCategory = estimatedRenewalCategory ?? 'missing';
   const safeMonthKey = normaliseMonthKey(estimatedRenewalMonthKey) ?? null;
 
+  const zone = typeof row.zone === 'string' ? row.zone.trim() : '';
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -170,6 +179,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     mailingZip5: row.mailing_zip5 ?? '',
     mailingZip9: row.mailing_zip9 ?? '',
     subdivision: row.subdivision ?? '',
+    zone,
     scheduleNumber: row.schedule_number ?? '',
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
@@ -181,6 +191,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
+    nearestEvStationDistanceMeters: typeof row.nearest_ev_station_distance_meters === 'number' ? row.nearest_ev_station_distance_meters : null,
     raw: rawAttributes,
   };
 }
@@ -199,6 +210,7 @@ const LISTING_COLUMNS = [
   'mailing_zip5',
   'mailing_zip9',
   'subdivision',
+  'zone',
   'schedule_number',
   'public_detail_url',
   'physical_address',
@@ -210,6 +222,7 @@ const LISTING_COLUMNS = [
   'estimated_renewal_reference',
   'estimated_renewal_category',
   'estimated_renewal_month_key',
+  'nearest_ev_station_distance_meters',
   'raw',
   'updated_at',
 ] as const;

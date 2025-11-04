@@ -25,6 +25,12 @@ export function FilterPanel({
       onChange({ ...filters, complex: value });
     } else if (name === 'owner') {
       onChange({ ...filters, owner: value });
+    } else if (name === 'maxEvDistanceMiles') {
+      const numValue = value.trim() === '' ? null : parseFloat(value);
+      onChange({ 
+        ...filters, 
+        maxEvDistanceMiles: numValue !== null && isFinite(numValue) && numValue > 0 ? numValue : null 
+      });
     }
   };
 
@@ -92,7 +98,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('subdivisions', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Subdivision</span>
                 <span className="filters__chip-value">{value}</span>
@@ -109,7 +114,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('renewalCategories', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Renewal urgency</span>
                 <span className="filters__chip-value">{value}</span>
@@ -126,7 +130,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('renewalMethods', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Renewal signal</span>
                 <span className="filters__chip-value">{value}</span>
@@ -143,7 +146,6 @@ export function FilterPanel({
                 className="filters__chip"
                 onClick={() => removeFilterValue('renewalMonths', value)}
                 disabled={disabled}
-                role="listitem"
               >
                 <span className="filters__chip-label">Renewal month</span>
                 <span className="filters__chip-value">{value}</span>
@@ -196,6 +198,22 @@ export function FilterPanel({
           placeholder="e.g. Smith"
           disabled={disabled}
           title="Only show listings whose owner names contain this text"
+        />
+      </div>
+
+      <div className="filters__group">
+        <label htmlFor="maxEvDistanceMiles">Max distance to EV station (miles)</label>
+        <input
+          id="maxEvDistanceMiles"
+          name="maxEvDistanceMiles"
+          type="number"
+          min="0"
+          step="0.1"
+          value={filters.maxEvDistanceMiles ?? ''}
+          onChange={handleInputChange}
+          placeholder="e.g. 5"
+          disabled={disabled}
+          title="Only show listings within this distance to an EV charging station"
         />
       </div>
     </aside>

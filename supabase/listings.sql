@@ -13,6 +13,7 @@ create table if not exists public.listings (
   mailing_zip5 text,
   mailing_zip9 text,
   subdivision text,
+  zone text,
   schedule_number text,
   public_detail_url text,
   physical_address text,
@@ -24,6 +25,7 @@ create table if not exists public.listings (
   estimated_renewal_reference date,
   estimated_renewal_category text default 'missing',
   estimated_renewal_month_key text,
+  distance_to_ev_station_meters double precision,
   raw jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -34,6 +36,9 @@ create index if not exists listings_schedule_number_idx
 
 create index if not exists listings_subdivision_idx
   on public.listings (subdivision);
+
+create index if not exists listings_zone_idx
+  on public.listings (zone);
 
 create index if not exists listings_estimated_renewal_month_key_idx
   on public.listings (estimated_renewal_month_key);

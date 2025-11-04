@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import nonPersonOwnerNames from '@/data/nonPersonOwnerNames.json';
+
 import {
   deriveLatestMetricsTimestamp,
   fetchListingMetrics,
@@ -82,6 +84,48 @@ const SUMMARY_DESCRIPTORS: Record<
 };
 
 const SUBDIVISION_LIMIT_OPTIONS = [5, 8, 10, 15, 20];
+const LAND_BARON_SECTION_SIZE = 5;
+const ZONE_LIMIT = 10;
+
+const MANUAL_NON_PERSON_NAMES = new Set(
+  (nonPersonOwnerNames as string[]).map((value) => value.toUpperCase()),
+);
+
+const ORGANIZATION_PATTERNS: RegExp[] = [
+  /\b(?:LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|COMPANY|CO\.|LTD|LIMITED|LP|L\.P\.|LLP|L\.L\.P\.|LLLP|PLC|PLLC|PC|P\.C\.|RLLP)\b/,
+  /\b(?:ASSOCIATION|ASSN|ASSOC|HOA|POA|COA|MASTER|HOMEOWNERS?|CONDOMINIUMS?|CONDOMINIUM|CONDO|RESORT|LODGE|HOTEL|INN|TIMESHARE|VACATION|VILLAGE|CLUB|RESIDENCES?|SUITES|APARTMENTS?|COMMON ELEMENT)\b/,
+  /\b(?:PARTNERS|PARTNERSHIP|INVESTMENTS?|INVESTORS?|CAPITAL|VENTURES?|ENTERPRISES?|GROUP|MANAGEMENT|MGMT|SERVICES?|SOLUTIONS?|ADVISORS?|CONSULTING|HOLDINGS?|HOLDING|DEVELOPMENT|DEVELOPERS?|PROPERTIES?|PROPERTY|REALTY|REAL ESTATE|HOMES?|HOSPITALITY|OPERATIONS|OPERATION|LODGING|RENTALS?)\b/,
+  /\b(?:TRUST|ESTATE|FOUNDATION|FUND|MINISTRIES|CHURCH|CATHOLIC|LUTHERAN|METHODIST|PRESBYTERIAN|EPISCOPAL|SOCIETY|HOSPITAL|UNIVERSITY|COLLEGE|SCHOOL|ACADEMY|BANK|MORTGAGE|CREDIT UNION|ASSOCIATES?)\b/,
+  /\b(?:TOWN|CITY|COUNTY|STATE|DISTRICT|DEPARTMENT|DEPT|AUTHORITY|BOARD|COMMISSIONERS?|COMMISSION|COUNCIL|HOUSING|URBAN|RENEWAL|METROPOLITAN|GOVERNMENT|PUBLIC|FIRE PROTECTION|FIRE DISTRICT|SANITATION|METRO DISTRICT)\b/,
+  /\b(?:C\/O|CARE OF|ET AL|ET UX|ET VIR|ET ALIA)\b/,
+  /\b(?:UNITED STATES|U\.S\.|USA)\b/,
+  /\b(?:SUMMIT COUNTY|BRECKENRIDGE|DILLON|FRISCO|SILVERTHORNE|COPPER MOUNTAIN|KEYSTONE) (?:TOWN|CITY|COUNTY|METRO|AUTHORITY)\b/,
+  /[#]/,
+];
+
+function isLikelyOrganization(name: string | null | undefined): boolean {
+  if (!name) {
+    return true;
+  }
+  const normalised = name.trim();
+  if (normalised.length === 0) {
+    return true;
+  }
+  const collapsed = normalised.replace(/\s+/g, ' ');
+  const upper = collapsed.toUpperCase();
+  if (MANUAL_NON_PERSON_NAMES.has(upper)) {
+    return true;
+  }
+  for (const pattern of ORGANIZATION_PATTERNS) {
+    if (pattern.test(upper)) {
+      return true;
+    }
+  }
+  if (/\d/.test(upper) && !/\b(?:I|II|III|IV|V)\b/.test(upper)) {
+    return true;
+  }
+  return false;
+}
 
 function resolveSummaryDescriptor(category: RenewalSummaryMetric['category']) {
   if (SUMMARY_ORDER.includes(category as SummaryCategory)) {
@@ -245,12 +289,19 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       const refreshedAt = new Date(result.refreshedAt);
       const safeRefreshedAt = Number.isNaN(refreshedAt.getTime()) ? new Date() : refreshedAt;
       setLastSupabaseRunAt(safeRefreshedAt);
+      const ownersWritten =
+        typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
+      const zonesWritten = typeof result.zonesWritten === 'number' ? result.zonesWritten : 0;
+      const businessReclassified =
+        typeof result.businessOwnerReclassifications === 'number'
+          ? result.businessOwnerReclassifications
+          : 0;
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions. Loading latest insights…`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, reclassified ${businessReclassified.toLocaleString()} business owners, then tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
       );
       await loadMetrics();
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions. Insights refreshed.`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, reclassified ${businessReclassified.toLocaleString()} business owners, then tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
       );
     } catch (refreshError) {
       console.error('Failed to trigger listing metrics refresh.', refreshError);
@@ -283,6 +334,39 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     }
     return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
   }, [metrics, subdivisionLimit]);
+
+  const zoneRows = useMemo(() => {
+    if (!metrics) {
+      return [] as ListingMetrics['zones'];
+    }
+    return metrics.zones.slice(0, ZONE_LIMIT);
+  }, [metrics]);
+
+  const landBaronEntries = useMemo(() => {
+    if (!metrics) {
+      return [] as ListingMetrics['landBarons'];
+    }
+    return metrics.landBarons.slice();
+  }, [metrics]);
+
+  const topPortfolioLandBarons = useMemo(() => {
+    return landBaronEntries.slice(0, LAND_BARON_SECTION_SIZE);
+  }, [landBaronEntries]);
+
+  const topIndividualLandBarons = useMemo(() => {
+    if (landBaronEntries.length === 0) {
+      return [] as ListingMetrics['landBarons'];
+    }
+    return landBaronEntries
+      .filter((entry) => entry.individualPropertyCount >= 2)
+      .filter((entry) => !isLikelyOrganization(entry.ownerName))
+      .sort(
+        (a, b) =>
+          b.individualPropertyCount - a.individualPropertyCount ||
+          a.ownerName.localeCompare(b.ownerName, undefined, { sensitivity: 'base' }),
+      )
+      .slice(0, LAND_BARON_SECTION_SIZE);
+  }, [landBaronEntries]);
 
   const timelinePoints = useMemo(() => filterTimeline(metrics), [metrics]);
 
@@ -317,9 +401,26 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return subdivisionRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
   }, [subdivisionRows]);
 
+  const maxZoneListings = useMemo(() => {
+    return zoneRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+  }, [zoneRows]);
+
+  const maxLandBaronProperties = useMemo(() => {
+    return topPortfolioLandBarons.reduce((max, item) => Math.max(max, item.propertyCount), 0);
+  }, [topPortfolioLandBarons]);
+
+  const maxIndividualLandBaronProperties = useMemo(() => {
+    return topIndividualLandBarons.reduce(
+      (max, item) => Math.max(max, item.individualPropertyCount),
+      0,
+    );
+  }, [topIndividualLandBarons]);
+
   const maxRenewalListings = useMemo(() => {
     return timelinePoints.reduce((max, item) => Math.max(max, item.listingCount), 0);
   }, [timelinePoints]);
+
+  const totalLandBarons = metrics?.landBarons.length ?? 0;
 
   const handleSubdivisionToggle = useCallback(
     (subdivision: string, synthetic?: boolean) => {
@@ -447,7 +548,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
           {subdivisionRows.length === 0 ? (
             <p className="insight-card__empty">No subdivision data available.</p>
           ) : (
-            <ul className="insight-card__list" role="list">
+            <ul className="insight-card__list">
               {subdivisionRows.map((item) => {
                 const percentage = maxSubdivisionListings
                   ? Math.max(12, Math.round((item.totalListings / maxSubdivisionListings) * 100))
@@ -457,7 +558,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                   : 0;
                 const active = isStringActive(filters.subdivisions, item.subdivision);
                 return (
-                  <li key={item.subdivision} role="listitem">
+                  <li key={item.subdivision}>
                     <button
                       type="button"
                       className={`insight-card__list-item${active ? ' insight-card__list-item--active' : ''}${
@@ -487,6 +588,156 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
             </ul>
           )}
           <p className="insight-card__hint">Subdivision filters sync with the search inputs and drawn map regions.</p>
+        </article>
+
+        <article className="insight-card insight-card--zones" aria-labelledby="insights-top-zones">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-top-zones">Zoning hotspots</h3>
+              <p className="insight-card__description">
+                Most common zoning designations among cached Summit County listings.
+              </p>
+            </div>
+          </div>
+          {zoneRows.length === 0 ? (
+            <p className="insight-card__empty">No zoning data available.</p>
+          ) : (
+            <ul className="insight-card__list">
+              {zoneRows.map((item) => {
+                const percentage = maxZoneListings
+                  ? Math.max(12, Math.round((item.totalListings / maxZoneListings) * 100))
+                  : 0;
+                const businessShare = item.totalListings
+                  ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
+                  : 0;
+                return (
+                  <li key={item.zone}>
+                    <div className="insight-card__list-item insight-card__list-item--static">
+                      <div className="insight-card__list-line">
+                        <span className="insight-card__list-label">{item.zone}</span>
+                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
+                      </div>
+                      <div className="insight-card__bar" aria-hidden="true">
+                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge">{businessShare}% business-owned</span>
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {item.individualOwnerCount.toLocaleString()} individual owners
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="insight-card__hint">
+            Zoning counts highlight where Summit County permits cluster by land use.
+          </p>
+        </article>
+
+        <article className="insight-card insight-card--land-barons" aria-labelledby="insights-land-barons">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-land-barons">Land Baron Leaderboard</h3>
+              <p className="insight-card__description">
+                Meet the owners linked to the most Summit County properties in the Supabase cache.
+              </p>
+            </div>
+          </div>
+          {topPortfolioLandBarons.length === 0 && topIndividualLandBarons.length === 0 ? (
+            <p className="insight-card__empty">No owner records available yet.</p>
+          ) : (
+            <>
+              {topPortfolioLandBarons.length > 0 && (
+                <div className="insight-card__leaderboard-section">
+                  <h4 className="insight-card__leaderboard-heading">Largest Portfolios</h4>
+                  <ol className="insight-card__leaderboard">
+                    {topPortfolioLandBarons.map((entry, index) => {
+                      const percentage = maxLandBaronProperties
+                        ? Math.max(12, Math.round((entry.propertyCount / maxLandBaronProperties) * 100))
+                        : 0;
+                      return (
+                        <li key={`portfolio-${entry.ownerName}-${index}`}>
+                          <div className="insight-card__leaderboard-item">
+                            <div className="insight-card__leaderboard-rank" aria-hidden="true">
+                              {index + 1}
+                            </div>
+                            <div className="insight-card__leaderboard-content">
+                              <div className="insight-card__list-line">
+                                <span className="insight-card__list-label">{entry.ownerName}</span>
+                                <span className="insight-card__list-value">
+                                  {entry.propertyCount.toLocaleString()} properties
+                                </span>
+                              </div>
+                              <div className="insight-card__bar" aria-hidden="true">
+                                <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                              </div>
+                              <div className="insight-card__list-meta">
+                                <span className="insight-card__badge">
+                                  {entry.individualPropertyCount.toLocaleString()} individual-run
+                                </span>
+                                <span className="insight-card__badge insight-card__badge--muted">
+                                  {entry.businessPropertyCount.toLocaleString()} business entities
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
+              {topIndividualLandBarons.length > 0 && (
+                <div className="insight-card__leaderboard-section">
+                  <h4 className="insight-card__leaderboard-heading">Individual Portfolios</h4>
+                  <ol className="insight-card__leaderboard">
+                    {topIndividualLandBarons.map((entry, index) => {
+                      const percentage = maxIndividualLandBaronProperties
+                        ? Math.max(
+                            12,
+                            Math.round((entry.individualPropertyCount / maxIndividualLandBaronProperties) * 100),
+                          )
+                        : 0;
+                      return (
+                        <li key={`individual-${entry.ownerName}-${index}`}>
+                          <div className="insight-card__leaderboard-item">
+                            <div className="insight-card__leaderboard-rank" aria-hidden="true">
+                              {index + 1}
+                            </div>
+                            <div className="insight-card__leaderboard-content">
+                              <div className="insight-card__list-line">
+                                <span className="insight-card__list-label">{entry.ownerName}</span>
+                                <span className="insight-card__list-value">
+                                  {entry.individualPropertyCount.toLocaleString()} individual properties
+                                </span>
+                              </div>
+                              <div className="insight-card__bar" aria-hidden="true">
+                                <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                              </div>
+                              <div className="insight-card__list-meta">
+                                <span className="insight-card__badge">
+                                  {entry.propertyCount.toLocaleString()} total holdings
+                                </span>
+                                <span className="insight-card__badge insight-card__badge--muted">
+                                  {entry.businessPropertyCount.toLocaleString()} business entities
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
+            </>
+          )}
+          <p className="insight-card__hint">
+            Totals credit each co-owner on a listing. Leaderboard tracks {totalLandBarons.toLocaleString()} unique owners.
+          </p>
         </article>
 
         <article className="insight-card insight-card--outlook" aria-labelledby="insights-renewal-summary">
@@ -528,13 +779,13 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                 {methodEntries.length === 0 ? (
                   <p className="insight-card__empty">No renewal estimation signals detected in the source data.</p>
                 ) : (
-                  <ul className="insights__method-list" role="list">
+                  <ul className="insights__method-list">
                     {methodEntries.map((entry) => {
                       const descriptor = resolveMethodDescriptor(entry.method);
                       const toneClass = `insights__method--${descriptor.tone}`;
                       const active = isStringActive(filters.renewalMethods, entry.method);
                       return (
-                        <li key={entry.method} role="listitem">
+                        <li key={entry.method}>
                           <button
                             type="button"
                             className={`insights__method ${toneClass}${active ? ' insights__method--active' : ''}`}
@@ -572,7 +823,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
           {timelinePoints.length === 0 ? (
             <p className="insight-card__empty">No estimated renewal timeline data yet.</p>
           ) : (
-            <ul className="insights__timeline-grid" role="list">
+            <ul className="insights__timeline-grid">
               {timelinePoints.map((point) => {
                 const percentage = maxRenewalListings
                   ? Math.max(12, Math.round((point.listingCount / maxRenewalListings) * 100))
@@ -580,7 +831,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                 const monthKey = computeRenewalMonthKey(point.renewalMonth);
                 const active = monthKey ? isStringActive(filters.renewalMonths, monthKey) : false;
                 return (
-                  <li key={point.renewalMonth.toISOString()} role="listitem">
+                  <li key={point.renewalMonth.toISOString()}>
                     <button
                       type="button"
                       className={`insights__timeline-button${active ? ' insights__timeline-button--active' : ''}`}

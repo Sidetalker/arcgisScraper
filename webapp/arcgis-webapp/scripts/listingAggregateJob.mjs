@@ -1,3 +1,23 @@
+const NON_PERSON_DATA_URL = new URL('../src/data/nonPersonOwnerNames.json', import.meta.url);
+const EV_STATION_DATA_URL = new URL('../src/data/evChargingStations.json', import.meta.url);
+
+async function loadJsonResource(resourceUrl) {
+  if (typeof Deno !== 'undefined' && typeof Deno.readTextFile === 'function') {
+    const text = await Deno.readTextFile(resourceUrl);
+    return JSON.parse(text);
+  }
+
+  const [{ readFile }, { fileURLToPath }] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:url'),
+  ]);
+  const filePath = fileURLToPath(resourceUrl);
+  const text = await readFile(filePath, 'utf8');
+  return JSON.parse(text);
+}
+
+const nonPersonOwnerNames = await loadJsonResource(NON_PERSON_DATA_URL);
+
 const PAGE_SIZE = 1000;
 const MAX_SIGNAL_DEPTH = 4;
 const MAX_SIGNAL_ARRAY_LENGTH = 25;
@@ -21,6 +41,46 @@ const RENEWAL_METHODS = new Set([
 ]);
 
 const RENEWAL_CATEGORIES = new Set(['overdue', 'due_30', 'due_60', 'due_90', 'future', 'missing']);
+
+const MANUAL_NON_PERSON_NAMES = new Set(
+  Array.isArray(nonPersonOwnerNames) ? nonPersonOwnerNames.map((value) => String(value).toUpperCase()) : [],
+);
+
+const ORGANIZATION_PATTERNS = [
+  /\b(?:LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|COMPANY|CO\.|LTD|LIMITED|LP|L\.P\.|LLP|L\.L\.P\.|LLLP|PLC|PLLC|PC|P\.C\.|RLLP)\b/,
+  /\b(?:ASSOCIATION|ASSN|ASSOC|HOA|POA|COA|MASTER|HOMEOWNERS?|CONDOMINIUMS?|CONDOMINIUM|CONDO|RESORT|LODGE|HOTEL|INN|TIMESHARE|VACATION|VILLAGE|CLUB|RESIDENCES?|SUITES|APARTMENTS?|COMMON ELEMENT)\b/,
+  /\b(?:PARTNERS|PARTNERSHIP|INVESTMENTS?|INVESTORS?|CAPITAL|VENTURES?|ENTERPRISES?|GROUP|MANAGEMENT|MGMT|SERVICES?|SOLUTIONS?|ADVISORS?|CONSULTING|HOLDINGS?|HOLDING|DEVELOPMENT|DEVELOPERS?|PROPERTIES?|PROPERTY|REALTY|REAL ESTATE|HOMES?|HOSPITALITY|OPERATIONS|OPERATION|LODGING|RENTALS?)\b/,
+  /\b(?:TRUST|ESTATE|FOUNDATION|FUND|MINISTRIES|CHURCH|CATHOLIC|LUTHERAN|METHODIST|PRESBYTERIAN|EPISCOPAL|SOCIETY|HOSPITAL|UNIVERSITY|COLLEGE|SCHOOL|ACADEMY|BANK|MORTGAGE|CREDIT UNION|ASSOCIATES?)\b/,
+  /\b(?:TOWN|CITY|COUNTY|STATE|DISTRICT|DEPARTMENT|DEPT|AUTHORITY|BOARD|COMMISSIONERS?|COMMISSION|COUNCIL|HOUSING|URBAN|RENEWAL|METROPOLITAN|GOVERNMENT|PUBLIC|FIRE PROTECTION|FIRE DISTRICT|SANITATION|METRO DISTRICT)\b/,
+  /\b(?:C\/O|CARE OF|ET AL|ET UX|ET VIR|ET ALIA)\b/,
+  /\b(?:UNITED STATES|U\.S\.|USA)\b/,
+  /\b(?:SUMMIT COUNTY|BRECKENRIDGE|DILLON|FRISCO|SILVERTHORNE|COPPER MOUNTAIN|KEYSTONE) (?:TOWN|CITY|COUNTY|METRO|AUTHORITY)\b/,
+  /[#]/,
+];
+
+function isLikelyOrganization(name) {
+  if (!name) {
+    return true;
+  }
+  const normalised = String(name).trim();
+  if (normalised.length === 0) {
+    return true;
+  }
+  const collapsed = normalised.replace(/\s+/g, ' ');
+  const upper = collapsed.toUpperCase();
+  if (MANUAL_NON_PERSON_NAMES.has(upper)) {
+    return true;
+  }
+  for (const pattern of ORGANIZATION_PATTERNS) {
+    if (pattern.test(upper)) {
+      return true;
+    }
+  }
+  if (/\d/.test(upper) && !/\b(?:I|II|III|IV|V)\b/.test(upper)) {
+    return true;
+  }
+  return false;
+}
 
 function normaliseRenewalMethod(value) {
   if (!value || typeof value !== 'string') {
@@ -52,6 +112,90 @@ function normaliseSubdivision(value) {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : 'Unknown subdivision';
+}
+
+function normaliseZone(value) {
+  if (!value || typeof value !== 'string') {
+    return 'Unknown zone';
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : 'Unknown zone';
+}
+
+function sanitiseOwnerDisplay(value) {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  const withoutEtAl = trimmed.replace(/\bET\s*AL\.?$/i, '').trim();
+  return (withoutEtAl || trimmed).replace(/\s*&\s*/g, ' & ');
+}
+
+function normaliseOwnerName(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+
+  const display = sanitiseOwnerDisplay(value);
+  if (!display) {
+    return null;
+  }
+
+  const key = display
+    .replace(/[^A-Z0-9& ]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+
+  if (
+    !key ||
+    key === 'UNKNOWN' ||
+    key === 'UNAVAILABLE' ||
+    key === 'NOT PROVIDED' ||
+    key === 'NO OWNER' ||
+    key === 'N/A' ||
+    key === 'NA'
+  ) {
+    return null;
+  }
+
+  return { key, display };
+}
+
+function collectOwnerNames(listing) {
+  const owners = [];
+
+  if (Array.isArray(listing.owner_names)) {
+    for (const entry of listing.owner_names) {
+      const normalised = normaliseOwnerName(entry);
+      if (normalised) {
+        owners.push(normalised);
+      }
+    }
+  }
+
+  if (owners.length === 0) {
+    const fallback = normaliseOwnerName(listing.owner_name);
+    if (fallback) {
+      owners.push(fallback);
+    }
+  }
+
+  return owners;
+}
+
+async function applyBusinessOwnerCorrections(supabase, listingIds, logger) {
+  const batchSize = 500;
+  for (let index = 0; index < listingIds.length; index += batchSize) {
+    const batch = listingIds.slice(index, index + batchSize);
+    const { error } = await supabase
+      .from('listings')
+      .update({ is_business_owner: true })
+      .in('id', batch);
+    if (error) {
+      throw error;
+    }
+  }
+  logger.info?.(
+    `[metrics] Marked ${listingIds.length.toLocaleString()} listings as business-owned via heuristics.`,
+  );
 }
 
 function addDays(date, days) {
@@ -299,7 +443,7 @@ async function fetchListings(supabase, pageSize, logger) {
     const { data, error } = await supabase
       .from('listings')
       .select(
-        'id, subdivision, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
+        'id, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
       )
       .order('id', { ascending: true })
       .range(from, to);
@@ -345,6 +489,33 @@ async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
   }
 
   const { error: insertError } = await supabase.from('listing_subdivision_metrics').insert(payload);
+  if (insertError) {
+    throw insertError;
+  }
+}
+
+async function writeZoneMetrics(supabase, rows, refreshedAt) {
+  const payload = rows.map((row) => ({
+    zone: row.zone,
+    total_listings: row.totalListings,
+    business_owner_count: row.businessOwners,
+    individual_owner_count: row.individualOwners,
+    updated_at: refreshedAt,
+  }));
+
+  const { error: deleteError } = await supabase
+    .from('listing_zone_metrics')
+    .delete()
+    .neq('zone', '');
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (payload.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase.from('listing_zone_metrics').insert(payload);
   if (insertError) {
     throw insertError;
   }
@@ -426,6 +597,33 @@ async function writeRenewalMethodSummary(supabase, rows, refreshedAt) {
   }
 }
 
+async function writeLandBaronLeaderboard(supabase, rows, refreshedAt) {
+  const payload = rows.map((row) => ({
+    owner_name: row.ownerName,
+    property_count: row.propertyCount,
+    business_property_count: row.businessPropertyCount,
+    individual_property_count: row.individualPropertyCount,
+    updated_at: refreshedAt,
+  }));
+
+  const { error: deleteError } = await supabase
+    .from('land_baron_leaderboard')
+    .delete()
+    .neq('owner_name', '');
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (payload.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase.from('land_baron_leaderboard').insert(payload);
+  if (insertError) {
+    throw insertError;
+  }
+}
+
 export async function refreshListingAggregates(
   supabase,
   options = {},
@@ -437,6 +635,8 @@ export async function refreshListingAggregates(
   logger.info?.(`[metrics] Loaded ${listings.length.toLocaleString()} listing records.`);
 
   const subdivisions = new Map();
+  const zones = new Map();
+  const owners = new Map();
   const renewalBuckets = new Map();
   const methodCounts = new Map();
   const summary = {
@@ -444,9 +644,11 @@ export async function refreshListingAggregates(
     due_30: { count: 0, windowStart: null, windowEnd: null },
     due_60: { count: 0, windowStart: null, windowEnd: null },
     due_90: { count: 0, windowStart: null, windowEnd: null },
-    future: { count: 0, windowStart: null, windowEnd: null },
-    missing: { count: 0, windowStart: null, windowEnd: null },
-  };
+  future: { count: 0, windowStart: null, windowEnd: null },
+  missing: { count: 0, windowStart: null, windowEnd: null },
+};
+
+  const businessOwnerCorrections = new Set();
 
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -464,13 +666,61 @@ export async function refreshListingAggregates(
   summary.future.windowStart = formatDate(addDays(in90, 1));
 
   listings.forEach((listing) => {
+    const ownerCandidates = collectOwnerNames(listing);
+    const inferredBusinessOwner = ownerCandidates.some((owner) =>
+      isLikelyOrganization(owner.display),
+    );
+    const listingIsBusiness = Boolean(listing.is_business_owner) || inferredBusinessOwner;
+
+    if (!listing.is_business_owner && listingIsBusiness && listing.id) {
+      businessOwnerCorrections.add(listing.id);
+    }
+
     const subdivision = normaliseSubdivision(listing.subdivision);
     const stats = subdivisions.get(subdivision) || { total: 0, business: 0 };
     stats.total += 1;
-    if (listing.is_business_owner) {
+    if (listingIsBusiness) {
       stats.business += 1;
     }
     subdivisions.set(subdivision, stats);
+
+    const zone = normaliseZone(listing.zone);
+    const zoneStats = zones.get(zone) || { total: 0, business: 0 };
+    zoneStats.total += 1;
+    if (listingIsBusiness) {
+      zoneStats.business += 1;
+    }
+    zones.set(zone, zoneStats);
+
+    if (ownerCandidates.length > 0) {
+      const seen = new Set();
+      for (const owner of ownerCandidates) {
+        if (seen.has(owner.key)) {
+          continue;
+        }
+        seen.add(owner.key);
+
+        const existing = owners.get(owner.key) || {
+          ownerName: owner.display,
+          propertyCount: 0,
+          businessPropertyCount: 0,
+          individualPropertyCount: 0,
+        };
+
+        if (!existing.ownerName || owner.display.length > existing.ownerName.length) {
+          existing.ownerName = owner.display;
+        }
+
+        existing.propertyCount += 1;
+        if (listingIsBusiness) {
+          existing.businessPropertyCount += 1;
+        } else {
+          existing.individualPropertyCount += 1;
+        }
+
+        owners.set(owner.key, existing);
+      }
+    }
 
     const storedRenewalDate = parseDateValue(listing.estimated_renewal_date);
     const storedRenewalMethod = normaliseRenewalMethod(listing.estimated_renewal_method);
@@ -537,6 +787,14 @@ export async function refreshListingAggregates(
     }
   });
 
+  const reclassifiedBusinessIds = Array.from(businessOwnerCorrections);
+  if (reclassifiedBusinessIds.length > 0) {
+    logger.info?.(
+      `[metrics] Reclassifying ${reclassifiedBusinessIds.length.toLocaleString()} listings as business-owned prior to writing aggregates…`,
+    );
+    await applyBusinessOwnerCorrections(supabase, reclassifiedBusinessIds, logger);
+  }
+
   const subdivisionRows = Array.from(subdivisions.entries())
     .map(([subdivision, stats]) => ({
       subdivision,
@@ -545,6 +803,15 @@ export async function refreshListingAggregates(
       individualOwners: stats.total - stats.business,
     }))
     .sort((a, b) => b.totalListings - a.totalListings || a.subdivision.localeCompare(b.subdivision));
+
+  const zoneRows = Array.from(zones.entries())
+    .map(([zone, stats]) => ({
+      zone,
+      totalListings: stats.total,
+      businessOwners: stats.business,
+      individualOwners: stats.total - stats.business,
+    }))
+    .sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
 
   const renewalRows = Array.from(renewalBuckets.entries())
     .map(([month, bucket]) => ({
@@ -567,16 +834,34 @@ export async function refreshListingAggregates(
     count,
   }));
 
+  const landBaronRows = Array.from(owners.values())
+    .filter((row) => row.ownerName && row.propertyCount > 0)
+    .map((row) => ({
+      ownerName: row.ownerName,
+      propertyCount: row.propertyCount,
+      businessPropertyCount: row.businessPropertyCount,
+      individualPropertyCount: row.individualPropertyCount,
+    }))
+    .sort(
+      (a, b) =>
+        b.propertyCount - a.propertyCount ||
+        a.ownerName.localeCompare(b.ownerName, undefined, { sensitivity: 'base' }),
+    );
+
   const refreshedAt = new Date().toISOString();
 
   logger.info?.('[metrics] Writing subdivision metrics…');
   await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt);
+  logger.info?.('[metrics] Writing zone distribution…');
+  await writeZoneMetrics(supabase, zoneRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal timeline…');
   await writeRenewalTimeline(supabase, renewalRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal summary…');
   await writeRenewalSummary(supabase, summaryRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal estimation methods…');
   await writeRenewalMethodSummary(supabase, methodRows, refreshedAt);
+  logger.info?.('[metrics] Crowning the Land Baron Leaderboard…');
+  await writeLandBaronLeaderboard(supabase, landBaronRows, refreshedAt);
 
   logger.info?.('[metrics] Aggregates refreshed successfully.');
 
@@ -587,11 +872,14 @@ export async function refreshListingAggregates(
     refreshedAt,
     listingsProcessed: listings.length,
     subdivisionsWritten: subdivisionRows.length,
+    zonesWritten: zoneRows.length,
     renewalTimelineBuckets: renewalRows.length,
     renewalSummaryBuckets: summaryRows.length,
     renewalMethodBuckets: methodRows.length,
+    landBaronsWritten: landBaronRows.length,
     totalBusinessOwners,
     totalIndividualOwners,
+    businessOwnerReclassifications: reclassifiedBusinessIds.length,
   };
 }
 
