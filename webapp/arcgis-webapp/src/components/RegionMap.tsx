@@ -218,6 +218,7 @@ import type { ListingRecord, RegionShape } from '@/types';
 import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
 import { fetchZoneMetrics, type ZoneMetric } from '@/services/listingMetrics';
 import { supabase } from '@/services/supabaseClient';
+import { findResidentialZoneDefinition } from '@/data/residentialZones';
 
 import './RegionMap.css';
 
@@ -865,6 +866,7 @@ function ListingSelectionPanel({ listing, zoneHighlight, hasListings, totalListi
   if (!listing && zoneHighlight) {
     const formattedCount = zoneHighlight.count.toLocaleString();
     const countLabel = zoneHighlight.count === 1 ? 'property' : 'properties';
+    const zoneDefinition = findResidentialZoneDefinition(zoneHighlight.zone);
 
     return (
       <div className="region-map__selection region-map__selection--zone" aria-live="polite">
@@ -886,7 +888,39 @@ function ListingSelectionPanel({ listing, zoneHighlight, hasListings, totalListi
           <p className="region-map__selection-zone-count">
             {formattedCount} {countLabel} in this district
           </p>
-          <p className="region-map__selection-zone-description">
+          {zoneDefinition ? (
+            <>
+              <dl className="region-map__selection-zone-details">
+                <div>
+                  <dt>Zone name</dt>
+                  <dd>{zoneDefinition.name}</dd>
+                </div>
+                <div>
+                  <dt>Density range</dt>
+                  <dd>{zoneDefinition.densityRange}</dd>
+                </div>
+                <div>
+                  <dt>Jurisdictions</dt>
+                  <dd>{zoneDefinition.jurisdictions.join(', ')}</dd>
+                </div>
+                <div className="region-map__selection-zone-description-item">
+                  <dt>Description</dt>
+                  <dd>{zoneDefinition.description}</dd>
+                </div>
+                {zoneDefinition.notes ? (
+                  <div className="region-map__selection-zone-notes-item">
+                    <dt>Notes</dt>
+                    <dd>{zoneDefinition.notes}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </>
+          ) : (
+            <p className="region-map__selection-zone-description">
+              No detailed zoning information available for this district.
+            </p>
+          )}
+          <p className="region-map__selection-zone-hint">
             Move closer to a property marker to view its listing details.
           </p>
         </div>

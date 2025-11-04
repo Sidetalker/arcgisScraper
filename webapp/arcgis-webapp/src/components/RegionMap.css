@@ -235,6 +235,53 @@
   color: #475569;
 }
 
+.region-map__selection-zone-details {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.region-map__selection-zone-details > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.region-map__selection-zone-details dt {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.region-map__selection-zone-details dd {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #0f172a;
+}
+
+.region-map__selection-zone-description-item dd {
+  line-height: 1.5;
+}
+
+.region-map__selection-zone-notes-item dd {
+  font-size: 0.82rem;
+  color: #475569;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.region-map__selection-zone-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  padding-top: 0.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
 .region-map__selection--empty {
   align-items: center;
   justify-content: center;
