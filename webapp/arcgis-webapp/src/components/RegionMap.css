@@ -28,6 +28,13 @@
   overflow: hidden;
 }
 
+.region-map__selection-wrapper {
+  width: 100%;
+  display: flex;
+  transition: height 0.2s ease;
+  height: 240px;
+}
+
 .region-map__selection {
   display: flex;
   flex-direction: column;
@@ -37,6 +44,8 @@
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(248, 250, 252, 0.9);
   color: #0f172a;
+  flex: 1;
+  overflow: auto;
 }
 
 .region-map__selection--empty {
@@ -45,6 +54,23 @@
   min-height: 80px;
   color: #475569;
   font-style: italic;
+  text-align: center;
+}
+
+.region-map__selection-empty-primary,
+.region-map__selection-empty-secondary {
+  margin: 0;
+  font-style: normal;
+}
+
+.region-map__selection-empty-primary {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.region-map__selection-empty-secondary {
+  font-size: 0.82rem;
+  color: #1e293b;
 }
 
 .region-map__selection-header {

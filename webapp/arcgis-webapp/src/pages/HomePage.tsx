@@ -498,6 +498,7 @@ function HomePage(): JSX.Element {
         onRegionsChange={handleRegionsChange}
         listings={circleListings}
         onListingSelect={handleListingFocus}
+        totalListingCount={filteredListings.length}
       />
       <div className="app__listings">
         <ConfigurationProfiles
