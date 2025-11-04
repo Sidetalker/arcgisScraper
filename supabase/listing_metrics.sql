@@ -10,7 +10,7 @@ create table if not exists public.listing_subdivision_metrics (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
--- Renewal metrics capture the number of licenses expiring in a given month.
+-- Renewal metrics capture the number of inferred license renewals in a given month.
 create table if not exists public.listing_renewal_metrics (
   renewal_month date primary key,
   listing_count integer not null,
@@ -19,8 +19,8 @@ create table if not exists public.listing_renewal_metrics (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
--- Renewal summary buckets help the UI surface badges for near-term renewals
--- and highlight missing data.
+-- Renewal summary buckets help the UI surface badges for near-term estimated
+-- renewals and highlight missing data.
 create table if not exists public.listing_renewal_summary (
   category text primary key,
   listing_count integer not null,
@@ -29,16 +29,25 @@ create table if not exists public.listing_renewal_summary (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+-- Renewal estimation methods capture how inferred renewal dates were derived.
+create table if not exists public.listing_renewal_method_summary (
+  method text primary key,
+  listing_count integer not null,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 -- Disable row-level security so anonymous clients can read the precomputed
 -- aggregates (writes still require the service role key).
 alter table public.listing_subdivision_metrics disable row level security;
 alter table public.listing_renewal_metrics disable row level security;
 alter table public.listing_renewal_summary disable row level security;
+alter table public.listing_renewal_method_summary disable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant select on public.listing_subdivision_metrics to anon, authenticated;
 grant select on public.listing_renewal_metrics to anon, authenticated;
 grant select on public.listing_renewal_summary to anon, authenticated;
+grant select on public.listing_renewal_method_summary to anon, authenticated;
 
 -- Shared trigger to maintain updated_at
 create or replace function public.touch_updated_at()
@@ -64,6 +73,12 @@ execute procedure public.touch_updated_at();
 drop trigger if exists set_listing_renewal_summary_updated_at on public.listing_renewal_summary;
 create trigger set_listing_renewal_summary_updated_at
 before update on public.listing_renewal_summary
+for each row
+execute procedure public.touch_updated_at();
+
+drop trigger if exists set_listing_renewal_method_summary_updated_at on public.listing_renewal_method_summary;
+create trigger set_listing_renewal_method_summary_updated_at
+before update on public.listing_renewal_method_summary
 for each row
 execute procedure public.touch_updated_at();
 
@@ -111,3 +126,13 @@ order by case category
 end;
 
 grant select on public.listing_renewal_summary_view to anon, authenticated;
+
+create or replace view public.listing_renewal_method_breakdown as
+select
+  method,
+  listing_count,
+  updated_at
+from public.listing_renewal_method_summary
+order by listing_count desc, method asc;
+
+grant select on public.listing_renewal_method_breakdown to anon, authenticated;

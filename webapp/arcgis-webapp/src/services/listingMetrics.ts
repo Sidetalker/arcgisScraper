@@ -1,5 +1,10 @@
 import { assertSupabaseClient } from '@/services/supabaseClient';
 
+const METRICS_REFRESH_TOKEN =
+  import.meta.env.VITE_METRICS_REFRESH_TOKEN ??
+  import.meta.env.NEXT_PUBLIC_METRICS_REFRESH_TOKEN ??
+  import.meta.env.METRICS_REFRESH_TOKEN;
+
 export interface SubdivisionMetric {
   subdivision: string;
   totalListings: number;
@@ -24,10 +29,28 @@ export interface RenewalSummaryMetric {
   updatedAt: Date | null;
 }
 
+export interface RenewalMethodMetric {
+  method: string;
+  listingCount: number;
+  updatedAt: Date | null;
+}
+
 export interface ListingMetrics {
   subdivisions: SubdivisionMetric[];
   renewalTimeline: RenewalMetric[];
   renewalSummary: RenewalSummaryMetric[];
+  renewalMethods: RenewalMethodMetric[];
+}
+
+export interface ListingMetricsRefreshResult {
+  refreshedAt: string;
+  listingsProcessed: number;
+  subdivisionsWritten: number;
+  renewalTimelineBuckets: number;
+  renewalSummaryBuckets: number;
+  renewalMethodBuckets: number;
+  totalBusinessOwners: number;
+  totalIndividualOwners: number;
 }
 
 interface RawSubdivisionMetric {
@@ -54,6 +77,12 @@ interface RawRenewalSummaryMetric {
   updated_at: string | null;
 }
 
+interface RawRenewalMethodMetric {
+  method: string;
+  listing_count: number | null;
+  updated_at: string | null;
+}
+
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) {
     return null;
@@ -65,14 +94,16 @@ function parseDate(value: string | null | undefined): Date | null {
 const SUBDIVISION_VIEW = 'listing_subdivision_overview';
 const RENEWAL_TIMELINE_VIEW = 'listing_renewal_timeline';
 const RENEWAL_SUMMARY_VIEW = 'listing_renewal_summary_view';
+const RENEWAL_METHOD_VIEW = 'listing_renewal_method_breakdown';
 
 export async function fetchListingMetrics(): Promise<ListingMetrics> {
   const client = assertSupabaseClient();
 
-  const [subdivisionsResult, renewalTimelineResult, renewalSummaryResult] = await Promise.all([
+  const [subdivisionsResult, renewalTimelineResult, renewalSummaryResult, renewalMethodResult] = await Promise.all([
     client.from(SUBDIVISION_VIEW).select('*'),
     client.from(RENEWAL_TIMELINE_VIEW).select('*'),
     client.from(RENEWAL_SUMMARY_VIEW).select('*'),
+    client.from(RENEWAL_METHOD_VIEW).select('*'),
   ]);
 
   if (subdivisionsResult.error) {
@@ -83,6 +114,9 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
   }
   if (renewalSummaryResult.error) {
     throw renewalSummaryResult.error;
+  }
+  if (renewalMethodResult.error) {
+    throw renewalMethodResult.error;
   }
 
   const subdivisions: SubdivisionMetric[] = (subdivisionsResult.data as RawSubdivisionMetric[] | null | undefined)?.map(
@@ -119,13 +153,23 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
     }),
   ) ?? [];
 
+  const renewalMethods: RenewalMethodMetric[] = (renewalMethodResult.data as RawRenewalMethodMetric[] | null | undefined)?.map(
+    (row) => ({
+      method: row.method,
+      listingCount: typeof row.listing_count === 'number' ? row.listing_count : 0,
+      updatedAt: parseDate(row.updated_at),
+    }),
+  ) ?? [];
+
   subdivisions.sort((a, b) => b.totalListings - a.totalListings || a.subdivision.localeCompare(b.subdivision));
   renewalTimeline.sort((a, b) => a.renewalMonth.getTime() - b.renewalMonth.getTime());
+  renewalMethods.sort((a, b) => b.listingCount - a.listingCount || a.method.localeCompare(b.method));
 
   return {
     subdivisions,
     renewalTimeline,
     renewalSummary,
+    renewalMethods,
   };
 }
 
@@ -134,6 +178,7 @@ export function deriveLatestMetricsTimestamp(metrics: ListingMetrics): Date | nu
     ...metrics.subdivisions.map((item) => item.updatedAt),
     ...metrics.renewalTimeline.map((item) => item.updatedAt),
     ...metrics.renewalSummary.map((item) => item.updatedAt),
+    ...metrics.renewalMethods.map((item) => item.updatedAt),
   ];
 
   return timestamps.reduce<Date | null>((latest, value) => {
@@ -145,4 +190,22 @@ export function deriveLatestMetricsTimestamp(metrics: ListingMetrics): Date | nu
     }
     return latest;
   }, null);
+}
+
+export async function triggerListingMetricsRefresh(): Promise<ListingMetricsRefreshResult> {
+  const client = assertSupabaseClient();
+  const { data, error } = await client.functions.invoke('refresh-listing-metrics', {
+    method: 'POST',
+    headers: METRICS_REFRESH_TOKEN ? { 'x-metrics-refresh-token': METRICS_REFRESH_TOKEN } : undefined,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data || typeof data !== 'object' || data.status !== 'ok' || typeof data.result !== 'object') {
+    throw new Error('Unexpected response when requesting listing metrics refresh.');
+  }
+
+  return data.result as ListingMetricsRefreshResult;
 }
