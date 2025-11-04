@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Summit County"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-106.333, 39.989],
+            [-106.333, 39.331],
+            [-105.802, 39.331],
+            [-105.802, 39.989],
+            [-106.333, 39.989]
+          ]
+        ]
+      }
+    }
+  ]
+}

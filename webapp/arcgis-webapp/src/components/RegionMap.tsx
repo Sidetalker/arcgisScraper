@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
+import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';
 
 type LeafletEditTooltip = {
   updateContent: (content: { text: string; subtext: string }) => void;
@@ -104,6 +105,7 @@ if (circleEditPrototype) {
 }
 
 import type { ListingRecord, RegionCircle } from '@/types';
+import summitCountyGeoJson from '@/assets/summit_county.json';
 
 import './RegionMap.css';
 
@@ -117,6 +119,64 @@ type RegionMapProps = {
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
+
+type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
+
+const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
+  color: '#1f78b4',
+  weight: 2,
+  fillColor: '#1f78b4',
+  fillOpacity: 0.2,
+};
+
+const SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
+  const geometry = summitCountyGeoJson as SummitCountyFeatureCollection;
+  return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
+})();
+
+function SummitCountyOverlay(): JSX.Element | null {
+  const overlayGeometry = SUMMIT_COUNTY_OVERLAY;
+  const overlayRef = useRef<L.GeoJSON | null>(null);
+  const map = useMap();
+  const hasFittedViewRef = useRef(false);
+
+  useEffect(() => {
+    if (!overlayGeometry || !overlayRef.current || hasFittedViewRef.current) {
+      return;
+    }
+
+    const bounds = overlayRef.current.getBounds();
+    if (!bounds.isValid()) {
+      return;
+    }
+
+    const mapSize = map.getSize();
+    const paddingFraction = 0.15;
+    const paddingValue = Math.round(Math.min(mapSize.x, mapSize.y) * paddingFraction);
+
+    map.fitBounds(bounds, {
+      padding: [paddingValue, paddingValue],
+    });
+
+    overlayRef.current.bringToBack();
+    hasFittedViewRef.current = true;
+  }, [map, overlayGeometry]);
+
+  if (!overlayGeometry) {
+    return null;
+  }
+
+  return (
+    <GeoJSON
+      data={overlayGeometry}
+      ref={(instance) => {
+        overlayRef.current = instance;
+      }}
+      style={() => SUMMIT_OVERLAY_STYLE}
+      interactive={false}
+    />
+  );
+}
 
 function toRegionCircle(layer: L.Circle): RegionCircle {
   const center = layer.getLatLng();
@@ -575,6 +635,7 @@ function RegionMap({
         scrollWheelZoom
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+        <SummitCountyOverlay />
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
