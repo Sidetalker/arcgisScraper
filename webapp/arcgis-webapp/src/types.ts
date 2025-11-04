@@ -67,13 +67,7 @@ export interface ListingRecord {
 
 export interface ListingFilters {
   searchTerm: string;
-  scheduleNumber: string;
   mailingAddress: string;
-  mailingCity: string;
-  mailingState: string;
-  mailingZip: string;
-  subdivision: string | null;
-  businessOwner: 'yes' | 'no' | null;
   complex: string;
   owner: string;
   pinRadiusMeters: string;

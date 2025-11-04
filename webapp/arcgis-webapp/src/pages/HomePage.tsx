@@ -139,26 +139,6 @@ function HomePage(): JSX.Element {
     return listings.filter((listing) => applyFilters(listing, filters));
   }, [listings, filters]);
 
-  const subdivisionOptions = useMemo(() => {
-    const values = new Set<string>();
-    listings.forEach((listing) => {
-      if (listing.subdivision) {
-        values.add(listing.subdivision);
-      }
-    });
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [listings]);
-
-  const stateOptions = useMemo(() => {
-    const values = new Set<string>();
-    listings.forEach((listing) => {
-      if (listing.mailingState) {
-        values.add(listing.mailingState);
-      }
-    });
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [listings]);
-
   const statusMessage = useMemo(() => {
     if (loading) {
       return 'Refreshing listings from ArcGIS…';
@@ -199,8 +179,6 @@ function HomePage(): JSX.Element {
       <FilterPanel
         filters={filters}
         onChange={handleFiltersChange}
-        subdivisionOptions={subdivisionOptions}
-        stateOptions={stateOptions}
         disabled={loading}
         onReset={handleResetFilters}
         onDropPinRequest={handleDropPinRequest}
