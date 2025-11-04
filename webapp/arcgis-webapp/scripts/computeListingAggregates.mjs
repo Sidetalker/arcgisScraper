@@ -86,7 +86,7 @@ async function main() {
   const result = await refreshListingAggregates(supabase, { logger: console });
   console.info('[metrics] Aggregates refreshed successfully.');
   console.info(
-    `Processed ${result.listingsProcessed.toLocaleString()} listings → ${result.subdivisionsWritten} subdivisions, ${result.renewalTimelineBuckets} timeline buckets, ${result.renewalSummaryBuckets} summary buckets, ${result.renewalMethodBuckets} method buckets.`,
+    `Processed ${result.listingsProcessed.toLocaleString()} listings → ${result.subdivisionsWritten} subdivisions, ${result.zoningDistrictsWritten} zoning districts, ${result.landUseCategoriesWritten} land-use categories, ${result.renewalTimelineBuckets} timeline buckets, ${result.renewalSummaryBuckets} summary buckets, ${result.renewalMethodBuckets} method buckets. Applied overlays to ${result.listingsEnhanced.toLocaleString()} listings.`,
   );
 }
 

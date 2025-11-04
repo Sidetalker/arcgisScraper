@@ -71,6 +71,10 @@ Key options:
 * `--referer` – customise the HTTP referer header if the target service enforces
   a different host check.
 * `--owner-table` – emit a CSV owner contact table (best used with the PrISM parcel point view).
+* `--zoning-layer-url` / `--zoning-item-id` / `--land-use-layer-url` / `--land-use-item-id` – join zoning and
+  land-use overlays from additional feature layers by schedule number during owner exports. The CLI accepts
+  ArcGIS REST URLs directly or resolves layers from item ids and indexes; combine with the `--*-join-field`,
+  `--*-code-field`, `--*-description-field`, and `--*-where` overrides when upstream schemas diverge.
 * `--all-subdivisions` – automatically enumerate every subdivision in the search window and query them one by one.
 * `--excel-output` – write an `.xlsx` workbook with cross-linked “By Complex” and “By Owner” sheets.
 * `--sheets-doc-id`, `--complex-gid`, `--owner-gid` – optional overrides for the Google Sheets document/GIDs used when
@@ -188,6 +192,22 @@ A status banner summarises the most recent fetch and whether results are being
 served from cache. When you need a quarterly refresh, hit **Sync from ArcGIS**
 to pull the latest county export into Supabase; day-to-day browsing simply
 reads from the cached table.
+
+### Metrics refresh job
+
+After new listings land in Supabase, run the refresh script to backfill overlay
+attributes and regenerate the aggregate tables that power the dashboard:
+
+```bash
+cd webapp/arcgis-webapp
+npm run refresh-metrics
+```
+
+The job extracts zoning and land-use fields from the raw listing payloads,
+upserts the normalised values into `public.listings`, and rewrites the
+subdivision/zoning/land-use metric tables in a single pass. Provide
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` so the script can perform the
+batched updates. 【F:webapp/arcgis-webapp/scripts/listingAggregateJob.mjs†L1-L917】【F:webapp/arcgis-webapp/scripts/computeListingAggregates.mjs†L1-L104】
 
 ### Supabase persistence
 

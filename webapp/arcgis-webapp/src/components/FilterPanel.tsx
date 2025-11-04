@@ -32,10 +32,13 @@ export function FilterPanel({
     onReset();
   };
 
-  const removeFilterValue = (key: keyof Pick<
-    ListingFilters,
-    'subdivisions' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
-  >, value: string) => {
+  const removeFilterValue = (
+    key: keyof Pick<
+      ListingFilters,
+      'subdivisions' | 'zoningDistricts' | 'landUseCategories' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
+    >,
+    value: string,
+  ) => {
     const nextValues = filters[key].filter((item) => item.toLowerCase() !== value.toLowerCase());
     onChange({ ...filters, [key]: nextValues });
   };
@@ -44,6 +47,8 @@ export function FilterPanel({
     onChange({
       ...filters,
       subdivisions: [],
+      zoningDistricts: [],
+      landUseCategories: [],
       renewalCategories: [],
       renewalMethods: [],
       renewalMonths: [],
@@ -52,6 +57,8 @@ export function FilterPanel({
 
   const hasInsightFilters =
     filters.subdivisions.length > 0 ||
+    filters.zoningDistricts.length > 0 ||
+    filters.landUseCategories.length > 0 ||
     filters.renewalCategories.length > 0 ||
     filters.renewalMethods.length > 0 ||
     filters.renewalMonths.length > 0;
@@ -84,76 +91,110 @@ export function FilterPanel({
               Clear insight filters
             </button>
           </div>
-          <div className="filters__chips" role="list">
+          <ul className="filters__chips">
             {filters.subdivisions.map((value) => (
-              <button
-                key={`subdivision-${value}`}
-                type="button"
-                className="filters__chip"
-                onClick={() => removeFilterValue('subdivisions', value)}
-                disabled={disabled}
-                role="listitem"
-              >
-                <span className="filters__chip-label">Subdivision</span>
-                <span className="filters__chip-value">{value}</span>
-                <span aria-hidden="true" className="filters__chip-remove">
-                  ×
-                </span>
-                <span className="filters__chip-sr">Remove subdivision filter</span>
-              </button>
+              <li key={`subdivision-${value}`} className="filters__chip-item">
+                <button
+                  type="button"
+                  className="filters__chip"
+                  onClick={() => removeFilterValue('subdivisions', value)}
+                  disabled={disabled}
+                >
+                  <span className="filters__chip-label">Subdivision</span>
+                  <span className="filters__chip-value">{value}</span>
+                  <span aria-hidden="true" className="filters__chip-remove">
+                    ×
+                  </span>
+                  <span className="filters__chip-sr">Remove subdivision filter</span>
+                </button>
+              </li>
+            ))}
+            {filters.zoningDistricts.map((value) => (
+              <li key={`zoning-${value}`} className="filters__chip-item">
+                <button
+                  type="button"
+                  className="filters__chip"
+                  onClick={() => removeFilterValue('zoningDistricts', value)}
+                  disabled={disabled}
+                >
+                  <span className="filters__chip-label">Zoning</span>
+                  <span className="filters__chip-value">{value}</span>
+                  <span aria-hidden="true" className="filters__chip-remove">
+                    ×
+                  </span>
+                  <span className="filters__chip-sr">Remove zoning filter</span>
+                </button>
+              </li>
+            ))}
+            {filters.landUseCategories.map((value) => (
+              <li key={`land-use-${value}`} className="filters__chip-item">
+                <button
+                  type="button"
+                  className="filters__chip"
+                  onClick={() => removeFilterValue('landUseCategories', value)}
+                  disabled={disabled}
+                >
+                  <span className="filters__chip-label">Land use</span>
+                  <span className="filters__chip-value">{value}</span>
+                  <span aria-hidden="true" className="filters__chip-remove">
+                    ×
+                  </span>
+                  <span className="filters__chip-sr">Remove land-use filter</span>
+                </button>
+              </li>
             ))}
             {filters.renewalCategories.map((value) => (
-              <button
-                key={`renewal-category-${value}`}
-                type="button"
-                className="filters__chip"
-                onClick={() => removeFilterValue('renewalCategories', value)}
-                disabled={disabled}
-                role="listitem"
-              >
-                <span className="filters__chip-label">Renewal urgency</span>
-                <span className="filters__chip-value">{value}</span>
-                <span aria-hidden="true" className="filters__chip-remove">
-                  ×
-                </span>
-                <span className="filters__chip-sr">Remove renewal urgency filter</span>
-              </button>
+              <li key={`renewal-category-${value}`} className="filters__chip-item">
+                <button
+                  type="button"
+                  className="filters__chip"
+                  onClick={() => removeFilterValue('renewalCategories', value)}
+                  disabled={disabled}
+                >
+                  <span className="filters__chip-label">Renewal urgency</span>
+                  <span className="filters__chip-value">{value}</span>
+                  <span aria-hidden="true" className="filters__chip-remove">
+                    ×
+                  </span>
+                  <span className="filters__chip-sr">Remove renewal urgency filter</span>
+                </button>
+              </li>
             ))}
             {filters.renewalMethods.map((value) => (
-              <button
-                key={`renewal-method-${value}`}
-                type="button"
-                className="filters__chip"
-                onClick={() => removeFilterValue('renewalMethods', value)}
-                disabled={disabled}
-                role="listitem"
-              >
-                <span className="filters__chip-label">Renewal signal</span>
-                <span className="filters__chip-value">{value}</span>
-                <span aria-hidden="true" className="filters__chip-remove">
-                  ×
-                </span>
-                <span className="filters__chip-sr">Remove renewal signal filter</span>
-              </button>
+              <li key={`renewal-method-${value}`} className="filters__chip-item">
+                <button
+                  type="button"
+                  className="filters__chip"
+                  onClick={() => removeFilterValue('renewalMethods', value)}
+                  disabled={disabled}
+                >
+                  <span className="filters__chip-label">Renewal signal</span>
+                  <span className="filters__chip-value">{value}</span>
+                  <span aria-hidden="true" className="filters__chip-remove">
+                    ×
+                  </span>
+                  <span className="filters__chip-sr">Remove renewal signal filter</span>
+                </button>
+              </li>
             ))}
             {filters.renewalMonths.map((value) => (
-              <button
-                key={`renewal-month-${value}`}
-                type="button"
-                className="filters__chip"
-                onClick={() => removeFilterValue('renewalMonths', value)}
-                disabled={disabled}
-                role="listitem"
-              >
-                <span className="filters__chip-label">Renewal month</span>
-                <span className="filters__chip-value">{value}</span>
-                <span aria-hidden="true" className="filters__chip-remove">
-                  ×
-                </span>
-                <span className="filters__chip-sr">Remove renewal month filter</span>
-              </button>
+              <li key={`renewal-month-${value}`} className="filters__chip-item">
+                <button
+                  type="button"
+                  className="filters__chip"
+                  onClick={() => removeFilterValue('renewalMonths', value)}
+                  disabled={disabled}
+                >
+                  <span className="filters__chip-label">Renewal month</span>
+                  <span className="filters__chip-value">{value}</span>
+                  <span aria-hidden="true" className="filters__chip-remove">
+                    ×
+                  </span>
+                  <span className="filters__chip-sr">Remove renewal month filter</span>
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       ) : null}
 

@@ -61,6 +61,19 @@ function normalizeText(value: string | null | undefined): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function renderCompliance(label: string, description: string): ReactNode {
+  if (!label && !description) {
+    return '—';
+  }
+
+  return (
+    <div className="listing-table__compliance">
+      <span className="listing-table__compliance-label">{label || 'Unknown'}</span>
+      {description ? <span className="listing-table__badge">{description}</span> : null}
+    </div>
+  );
+}
+
 function fuzzyMatch(haystack: string, needle: string): boolean {
   const query = needle.trim().toLowerCase();
   if (query.length === 0) {
@@ -178,6 +191,18 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     label: 'Subdivision',
     render: (listing) => listing.subdivision || '—',
     getFilterValue: (listing) => normalizeText(listing.subdivision),
+  },
+  {
+    key: 'zoningDistrict',
+    label: 'Zoning',
+    render: (listing) => renderCompliance(listing.zoningDistrict, listing.zoningDescription),
+    getFilterValue: (listing) => normalizeText(`${listing.zoningDistrict} ${listing.zoningDescription}`),
+  },
+  {
+    key: 'landUseCategory',
+    label: 'Land use',
+    render: (listing) => renderCompliance(listing.landUseCategory, listing.landUseDescription),
+    getFilterValue: (listing) => normalizeText(`${listing.landUseCategory} ${listing.landUseDescription}`),
   },
   {
     key: 'scheduleNumber',

@@ -72,9 +72,16 @@
 }
 
 .filters__chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.filters__chip-item {
+  display: inline-flex;
 }
 
 .filters__chip {

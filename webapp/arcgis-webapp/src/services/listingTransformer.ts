@@ -458,6 +458,30 @@ export function toListingRecord(
       attributes.BriefPropertyDescription.trim()) ||
     '';
 
+  const zoningDistrictRaw =
+    (typeof attributes['Zoning District'] === 'string' && attributes['Zoning District']) ||
+    (typeof attributes.ZoningDistrict === 'string' && attributes.ZoningDistrict) ||
+    (typeof attributes.Zoning === 'string' && attributes.Zoning) ||
+    '';
+  const zoningDistrict = zoningDistrictRaw ? zoningDistrictRaw.trim() : '';
+  const zoningDescriptionRaw =
+    (typeof attributes['Zoning Description'] === 'string' && attributes['Zoning Description']) ||
+    (typeof attributes.ZoningDescription === 'string' && attributes.ZoningDescription) ||
+    '';
+  const zoningDescription = zoningDescriptionRaw ? zoningDescriptionRaw.trim() : '';
+
+  const landUseCategoryRaw =
+    (typeof attributes['Land Use Category'] === 'string' && attributes['Land Use Category']) ||
+    (typeof attributes.LandUseCategory === 'string' && attributes.LandUseCategory) ||
+    (typeof attributes.LandUse === 'string' && attributes.LandUse) ||
+    '';
+  const landUseCategory = landUseCategoryRaw ? landUseCategoryRaw.trim() : '';
+  const landUseDescriptionRaw =
+    (typeof attributes['Land Use Description'] === 'string' && attributes['Land Use Description']) ||
+    (typeof attributes.LandUseDescription === 'string' && attributes.LandUseDescription) ||
+    '';
+  const landUseDescription = landUseDescriptionRaw ? landUseDescriptionRaw.trim() : '';
+
   const renewalSnapshot = categoriseRenewal(attributes);
   const estimatedRenewalDate = renewalSnapshot.estimate?.date ?? null;
   const estimatedRenewalMethod = renewalSnapshot.estimate?.method ?? null;
@@ -482,6 +506,10 @@ export function toListingRecord(
     scheduleNumber,
     publicDetailUrl,
     physicalAddress: physicalAddressRaw,
+    zoningDistrict,
+    zoningDescription,
+    landUseCategory,
+    landUseDescription,
     isBusinessOwner,
     latitude,
     longitude,
@@ -504,6 +532,8 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.physicalAddress,
       listing.scheduleNumber,
       listing.subdivision,
+      listing.zoningDistrict,
+      listing.landUseCategory,
       listing.mailingAddress,
     ]
       .join(' ')
@@ -536,6 +566,22 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       (value) => listingSubdivision === value.toLowerCase(),
     );
     if (!subdivisionMatch) {
+      return false;
+    }
+  }
+
+  if (filters.zoningDistricts.length > 0) {
+    const zoning = (listing.zoningDistrict ?? '').toLowerCase();
+    const zoningMatch = filters.zoningDistricts.some((value) => zoning === value.toLowerCase());
+    if (!zoningMatch) {
+      return false;
+    }
+  }
+
+  if (filters.landUseCategories.length > 0) {
+    const landUse = (listing.landUseCategory ?? '').toLowerCase();
+    const landUseMatch = filters.landUseCategories.some((value) => landUse === value.toLowerCase());
+    if (!landUseMatch) {
       return false;
     }
   }

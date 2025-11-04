@@ -284,6 +284,9 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return buildSubdivisionDisplay(metrics.subdivisions, subdivisionLimit);
   }, [metrics, subdivisionLimit]);
 
+  const zoningRows = useMemo(() => metrics?.zoning ?? [], [metrics]);
+  const landUseRows = useMemo(() => metrics?.landUse ?? [], [metrics]);
+
   const timelinePoints = useMemo(() => filterTimeline(metrics), [metrics]);
 
   const summaryEntries = useMemo(() => {
@@ -317,6 +320,14 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return subdivisionRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
   }, [subdivisionRows]);
 
+  const maxZoningListings = useMemo(() => {
+    return zoningRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+  }, [zoningRows]);
+
+  const maxLandUseListings = useMemo(() => {
+    return landUseRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+  }, [landUseRows]);
+
   const maxRenewalListings = useMemo(() => {
     return timelinePoints.reduce((max, item) => Math.max(max, item.listingCount), 0);
   }, [timelinePoints]);
@@ -328,6 +339,22 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       }
       const next = toggleStringValue(filters.subdivisions, subdivision);
       onFiltersChange({ ...filters, subdivisions: next });
+    },
+    [filters, onFiltersChange],
+  );
+
+  const handleZoningToggle = useCallback(
+    (district: string) => {
+      const next = toggleStringValue(filters.zoningDistricts, district);
+      onFiltersChange({ ...filters, zoningDistricts: next });
+    },
+    [filters, onFiltersChange],
+  );
+
+  const handleLandUseToggle = useCallback(
+    (category: string) => {
+      const next = toggleStringValue(filters.landUseCategories, category);
+      onFiltersChange({ ...filters, landUseCategories: next });
     },
     [filters, onFiltersChange],
   );
@@ -447,7 +474,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
           {subdivisionRows.length === 0 ? (
             <p className="insight-card__empty">No subdivision data available.</p>
           ) : (
-            <ul className="insight-card__list" role="list">
+            <ul className="insight-card__list">
               {subdivisionRows.map((item) => {
                 const percentage = maxSubdivisionListings
                   ? Math.max(12, Math.round((item.totalListings / maxSubdivisionListings) * 100))
@@ -457,7 +484,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                   : 0;
                 const active = isStringActive(filters.subdivisions, item.subdivision);
                 return (
-                  <li key={item.subdivision} role="listitem">
+                  <li key={item.subdivision}>
                     <button
                       type="button"
                       className={`insight-card__list-item${active ? ' insight-card__list-item--active' : ''}${
@@ -487,6 +514,108 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
             </ul>
           )}
           <p className="insight-card__hint">Subdivision filters sync with the search inputs and drawn map regions.</p>
+        </article>
+
+        <article className="insight-card insight-card--zoning" aria-labelledby="insights-zoning-districts">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-zoning-districts">Zoning overlays</h3>
+              <p className="insight-card__description">
+                Highlight licensing volume by zoning district. Click a district to filter listings and exports.
+              </p>
+            </div>
+          </div>
+          {zoningRows.length === 0 ? (
+            <p className="insight-card__empty">No zoning metrics available.</p>
+          ) : (
+            <ul className="insight-card__list">
+              {zoningRows.map((item) => {
+                const percentage = maxZoningListings
+                  ? Math.max(12, Math.round((item.totalListings / maxZoningListings) * 100))
+                  : 0;
+                const businessShare = item.totalListings
+                  ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
+                  : 0;
+                const active = isStringActive(filters.zoningDistricts, item.zoningDistrict);
+                return (
+                  <li key={item.zoningDistrict}>
+                    <button
+                      type="button"
+                      className={`insight-card__list-item${active ? ' insight-card__list-item--active' : ''}`}
+                      onClick={() => handleZoningToggle(item.zoningDistrict)}
+                      aria-pressed={active}
+                    >
+                      <div className="insight-card__list-line">
+                        <span className="insight-card__list-label">{item.zoningDistrict}</span>
+                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
+                      </div>
+                      <div className="insight-card__bar" aria-hidden="true">
+                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge">{businessShare}% business-owned</span>
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {item.individualOwnerCount.toLocaleString()} individual owners
+                        </span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="insight-card__hint">Zoning filters persist with saved configuration profiles.</p>
+        </article>
+
+        <article className="insight-card insight-card--land-use" aria-labelledby="insights-land-use">
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-land-use">Land-use overlays</h3>
+              <p className="insight-card__description">
+                Surface activity by assessor land-use category to prioritise compliance follow-up.
+              </p>
+            </div>
+          </div>
+          {landUseRows.length === 0 ? (
+            <p className="insight-card__empty">No land-use metrics available.</p>
+          ) : (
+            <ul className="insight-card__list">
+              {landUseRows.map((item) => {
+                const percentage = maxLandUseListings
+                  ? Math.max(12, Math.round((item.totalListings / maxLandUseListings) * 100))
+                  : 0;
+                const businessShare = item.totalListings
+                  ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
+                  : 0;
+                const active = isStringActive(filters.landUseCategories, item.landUseCategory);
+                return (
+                  <li key={item.landUseCategory}>
+                    <button
+                      type="button"
+                      className={`insight-card__list-item${active ? ' insight-card__list-item--active' : ''}`}
+                      onClick={() => handleLandUseToggle(item.landUseCategory)}
+                      aria-pressed={active}
+                    >
+                      <div className="insight-card__list-line">
+                        <span className="insight-card__list-label">{item.landUseCategory}</span>
+                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
+                      </div>
+                      <div className="insight-card__bar" aria-hidden="true">
+                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge">{businessShare}% business-owned</span>
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {item.individualOwnerCount.toLocaleString()} individual owners
+                        </span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="insight-card__hint">Combine with zoning filters to narrow outreach campaigns.</p>
         </article>
 
         <article className="insight-card insight-card--outlook" aria-labelledby="insights-renewal-summary">
@@ -528,13 +657,13 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                 {methodEntries.length === 0 ? (
                   <p className="insight-card__empty">No renewal estimation signals detected in the source data.</p>
                 ) : (
-                  <ul className="insights__method-list" role="list">
+                  <ul className="insights__method-list">
                     {methodEntries.map((entry) => {
                       const descriptor = resolveMethodDescriptor(entry.method);
                       const toneClass = `insights__method--${descriptor.tone}`;
                       const active = isStringActive(filters.renewalMethods, entry.method);
                       return (
-                        <li key={entry.method} role="listitem">
+                        <li key={entry.method}>
                           <button
                             type="button"
                             className={`insights__method ${toneClass}${active ? ' insights__method--active' : ''}`}
@@ -572,7 +701,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
           {timelinePoints.length === 0 ? (
             <p className="insight-card__empty">No estimated renewal timeline data yet.</p>
           ) : (
-            <ul className="insights__timeline-grid" role="list">
+            <ul className="insights__timeline-grid">
               {timelinePoints.map((point) => {
                 const percentage = maxRenewalListings
                   ? Math.max(12, Math.round((point.listingCount / maxRenewalListings) * 100))
@@ -580,7 +709,7 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
                 const monthKey = computeRenewalMonthKey(point.renewalMonth);
                 const active = monthKey ? isStringActive(filters.renewalMonths, monthKey) : false;
                 return (
-                  <li key={point.renewalMonth.toISOString()} role="listitem">
+                  <li key={point.renewalMonth.toISOString()}>
                     <button
                       type="button"
                       className={`insights__timeline-button${active ? ' insights__timeline-button--active' : ''}`}
