@@ -157,13 +157,13 @@ function HomePage(): JSX.Element {
         disabled={loading}
         onReset={handleResetFilters}
       />
-      <div className="app__main">
-        <RegionMap
-          regions={regions}
-          onRegionsChange={handleRegionsChange}
-          listings={circleListings}
-          onListingSelect={handleListingFocus}
-        />
+      <RegionMap
+        regions={regions}
+        onRegionsChange={handleRegionsChange}
+        listings={circleListings}
+        onListingSelect={handleListingFocus}
+      />
+      <div className="app__listings">
         <ListingTable
           listings={filteredListings}
           pageSize={DEFAULT_PAGE_SIZE}
