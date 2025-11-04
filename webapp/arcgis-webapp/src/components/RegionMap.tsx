@@ -920,6 +920,7 @@ function MapToolbar({
         ) as HTMLButtonElement;
         button.type = 'button';
         button.title = MAP_LAYERS[layerKey].name;
+        button.setAttribute('aria-label', MAP_LAYERS[layerKey].name);
         button.setAttribute('data-layer', layerKey);
         button.setAttribute('aria-pressed', 'false');
         button.addEventListener('click', (event) => {
@@ -934,11 +935,7 @@ function MapToolbar({
         iconWrapper.className = 'region-map__layer-button-icon';
         iconWrapper.innerHTML = LAYER_ICONS[layerKey];
 
-        const label = document.createElement('span');
-        label.className = 'region-map__layer-button-label';
-        label.textContent = MAP_LAYERS[layerKey].name;
-
-        content.append(iconWrapper, label);
+        content.append(iconWrapper);
         button.appendChild(content);
 
         layerButtons[layerKey] = button;
