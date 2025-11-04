@@ -1749,15 +1749,148 @@ const MAX_ZONE_GLOW_RADIUS_METERS = 450;
 const HOVER_RADIUS_MULTIPLIER = 1.25;
 const HOVER_RADIUS_BOOST_METERS = 80;
 
+type ZoneBlobGeometry =
+  | {
+      type: 'circle';
+      centroid: L.LatLng;
+      baseRadius: number;
+    }
+  | {
+      type: 'polygon';
+      centroid: L.LatLng;
+      hull: L.LatLng[];
+    };
+
 type ZoneBlurLayer = {
   summary: ZoningDistrictSummary;
-  circle: L.Circle;
-  baseRadius: number;
+  shape: L.Circle | L.Polygon;
+  geometry: ZoneBlobGeometry;
   handlers?: {
     mouseover: () => void;
     mouseout: () => void;
   };
 };
+
+function deduplicateLatLngs(points: L.LatLng[]): L.LatLng[] {
+  const seen = new Set<string>();
+  const deduped: L.LatLng[] = [];
+
+  points.forEach((point) => {
+    const key = `${point.lat}:${point.lng}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(point);
+    }
+  });
+
+  return deduped;
+}
+
+function computeConvexHull(points: L.LatLng[]): L.LatLng[] {
+  if (points.length <= 1) {
+    return points;
+  }
+
+  const sortedPoints = [...points].sort((a, b) => {
+    if (a.lng === b.lng) {
+      return a.lat - b.lat;
+    }
+    return a.lng - b.lng;
+  });
+
+  const cross = (o: L.LatLng, a: L.LatLng, b: L.LatLng) =>
+    (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
+
+  const lower: L.LatLng[] = [];
+  sortedPoints.forEach((point) => {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+      lower.pop();
+    }
+    lower.push(point);
+  });
+
+  const upper: L.LatLng[] = [];
+  sortedPoints
+    .slice()
+    .reverse()
+    .forEach((point) => {
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+        upper.pop();
+      }
+      upper.push(point);
+    });
+
+  upper.pop();
+  lower.pop();
+
+  const hull = [...lower, ...upper];
+
+  if (hull.length >= 3) {
+    return hull;
+  }
+
+  return points;
+}
+
+function computeZoneGeometry(points: L.LatLng[]): ZoneBlobGeometry {
+  const dedupedPoints = deduplicateLatLngs(points);
+
+  if (dedupedPoints.length === 0) {
+    return {
+      type: 'circle',
+      centroid: L.latLng(0, 0),
+      baseRadius: MIN_ZONE_GLOW_RADIUS_METERS,
+    };
+  }
+
+  const centroidLat = dedupedPoints.reduce((acc, point) => acc + point.lat, 0) / dedupedPoints.length;
+  const centroidLng = dedupedPoints.reduce((acc, point) => acc + point.lng, 0) / dedupedPoints.length;
+  const centroid = L.latLng(centroidLat, centroidLng);
+
+  if (dedupedPoints.length < 3) {
+    let radius = 0;
+    dedupedPoints.forEach((point) => {
+      radius = Math.max(radius, centroid.distanceTo(point));
+    });
+
+    const clampedRadius = Math.min(
+      Math.max(radius, MIN_ZONE_GLOW_RADIUS_METERS),
+      MAX_ZONE_GLOW_RADIUS_METERS,
+    );
+
+    return {
+      type: 'circle',
+      centroid,
+      baseRadius: clampedRadius,
+    };
+  }
+
+  const hull = computeConvexHull(dedupedPoints);
+
+  if (hull.length < 3) {
+    let radius = 0;
+    dedupedPoints.forEach((point) => {
+      radius = Math.max(radius, centroid.distanceTo(point));
+    });
+
+    const clampedRadius = Math.min(
+      Math.max(radius, MIN_ZONE_GLOW_RADIUS_METERS),
+      MAX_ZONE_GLOW_RADIUS_METERS,
+    );
+
+    return {
+      type: 'circle',
+      centroid,
+      baseRadius: clampedRadius,
+    };
+  }
+
+  return {
+    type: 'polygon',
+    centroid,
+    hull,
+  };
+}
 
 type ListingMarkerEntry = {
   marker: L.CircleMarker;
@@ -1788,21 +1921,28 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
 
   const applyGlowState = useCallback((layer: ZoneBlurLayer, hovered: boolean) => {
     const color = hovered ? layer.summary.glowHoverColor : layer.summary.glowColor;
-    const fillOpacity = hovered ? 0.6 : 0.45;
-    const baseRadius = layer.baseRadius;
-    const hoveredRadius = Math.min(
-      Math.max(baseRadius * HOVER_RADIUS_MULTIPLIER, baseRadius + HOVER_RADIUS_BOOST_METERS),
-      MAX_ZONE_GLOW_RADIUS_METERS,
-    );
+    const fillOpacity = hovered ? 0.6 : 0.35;
+    const weight = layer.geometry.type === 'polygon' && hovered ? 2 : 0;
 
-    layer.circle.setStyle({
+    layer.shape.setStyle({
       color,
       fillColor: color,
       fillOpacity,
+      weight,
     });
-    layer.circle.setRadius(hovered ? hoveredRadius : baseRadius);
+
+    if (layer.geometry.type === 'circle') {
+      const baseRadius = layer.geometry.baseRadius;
+      const hoveredRadius = Math.min(
+        Math.max(baseRadius * HOVER_RADIUS_MULTIPLIER, baseRadius + HOVER_RADIUS_BOOST_METERS),
+        MAX_ZONE_GLOW_RADIUS_METERS,
+      );
+      (layer.shape as L.Circle).setRadius(hovered ? hoveredRadius : baseRadius);
+      (layer.shape as L.Circle).setLatLng(layer.geometry.centroid);
+    }
+
     if (hovered) {
-      layer.circle.bringToFront();
+      layer.shape.bringToFront();
     }
   }, []);
 
@@ -1811,7 +1951,7 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
       const hoverCallback = hoverCallbackRef.current.onZoneHover;
       hoverCallback?.(null);
       zoneLayersRef.current.forEach((layer) => {
-        layer.circle.remove();
+        layer.shape.remove();
       });
       zoneLayersRef.current.clear();
       return () => {
@@ -1858,11 +1998,11 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
     for (const [key, layer] of Array.from(zoneLayers.entries())) {
       if (!zoneLookup.has(key)) {
         if (layer.handlers) {
-          layer.circle.off('mouseover', layer.handlers.mouseover);
-          layer.circle.off('mouseout', layer.handlers.mouseout);
+          layer.shape.off('mouseover', layer.handlers.mouseover);
+          layer.shape.off('mouseout', layer.handlers.mouseout);
         }
-        glowGroup.removeLayer(layer.circle);
-        layer.circle.remove();
+        glowGroup.removeLayer(layer.shape);
+        layer.shape.remove();
         zoneLayers.delete(key);
       }
     }
@@ -1903,24 +2043,12 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
         continue;
       }
 
-      const centroidLat = points.reduce((acc, point) => acc + point.lat, 0) / points.length;
-      const centroidLng = points.reduce((acc, point) => acc + point.lng, 0) / points.length;
-      const centroid = L.latLng(centroidLat, centroidLng);
-
-      let radius = 0;
-      points.forEach((point) => {
-        radius = Math.max(radius, centroid.distanceTo(point));
-      });
-
-      const clampedRadius = Math.min(
-        Math.max(radius, MIN_ZONE_GLOW_RADIUS_METERS),
-        MAX_ZONE_GLOW_RADIUS_METERS,
-      );
+      const geometry = computeZoneGeometry(points);
 
       const baseStyle: L.PathOptions = {
         color: summary.glowColor,
         fillColor: summary.glowColor,
-        fillOpacity: 0.45,
+        fillOpacity: 0.35,
         weight: 0,
         className: 'region-map__zone-glow-marker',
         pane: 'zoneGlowPane',
@@ -1928,15 +2056,31 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
       };
 
       let layer = zoneLayers.get(zoneKey);
-      if (!layer) {
-        const circle = L.circle(centroid, {
-          ...baseStyle,
-          radius: clampedRadius,
-        });
+      const shouldReplaceLayer = layer && layer.geometry.type !== geometry.type;
+
+      if (!layer || shouldReplaceLayer) {
+        if (layer) {
+          if (layer.handlers) {
+            layer.shape.off('mouseover', layer.handlers.mouseover);
+            layer.shape.off('mouseout', layer.handlers.mouseout);
+          }
+          glowGroup.removeLayer(layer.shape);
+          layer.shape.remove();
+          zoneLayers.delete(zoneKey);
+        }
+
+        const shape =
+          geometry.type === 'circle'
+            ? L.circle(geometry.centroid, {
+                ...baseStyle,
+                radius: geometry.baseRadius,
+              })
+            : L.polygon(geometry.hull, baseStyle);
+
         const newLayer: ZoneBlurLayer = {
           summary,
-          circle,
-          baseRadius: clampedRadius,
+          shape,
+          geometry,
         };
         const handleMouseover = () => {
           applyGlowState(newLayer, true);
@@ -1947,17 +2091,21 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
           hoverCallbackRef.current.onZoneHover?.(null);
         };
         newLayer.handlers = { mouseover: handleMouseover, mouseout: handleMouseout };
-        circle.on('mouseover', handleMouseover);
-        circle.on('mouseout', handleMouseout);
-        circle.addTo(glowGroup);
+        shape.on('mouseover', handleMouseover);
+        shape.on('mouseout', handleMouseout);
+        shape.addTo(glowGroup);
         zoneLayers.set(zoneKey, newLayer);
         layer = newLayer;
       } else {
         layer.summary = summary;
-        layer.baseRadius = clampedRadius;
-        layer.circle.setLatLng(centroid);
-        layer.circle.setRadius(clampedRadius);
-        layer.circle.setStyle(baseStyle);
+        layer.geometry = geometry;
+        layer.shape.setStyle(baseStyle);
+        if (geometry.type === 'circle') {
+          (layer.shape as L.Circle).setLatLng(geometry.centroid);
+          (layer.shape as L.Circle).setRadius(geometry.baseRadius);
+        } else {
+          (layer.shape as L.Polygon).setLatLngs(geometry.hull);
+        }
       }
 
       applyGlowState(layer, false);
@@ -1967,12 +2115,12 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
     for (const [zoneKey, layer] of Array.from(zoneLayers.entries())) {
       if (!processedZones.has(zoneKey)) {
         if (layer.handlers) {
-          layer.circle.off('mouseover', layer.handlers.mouseover);
-          layer.circle.off('mouseout', layer.handlers.mouseout);
+          layer.shape.off('mouseover', layer.handlers.mouseover);
+          layer.shape.off('mouseout', layer.handlers.mouseout);
         }
         hoverCallbackRef.current.onZoneHover?.(null);
-        glowGroup.removeLayer(layer.circle);
-        layer.circle.remove();
+        glowGroup.removeLayer(layer.shape);
+        layer.shape.remove();
         zoneLayers.delete(zoneKey);
       }
     }
@@ -1990,6 +2138,13 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover }: Zoni
         glowGroupRef.current.removeFrom(map);
         glowGroupRef.current = null;
       }
+      zoneLayers.forEach((layer) => {
+        if (layer.handlers) {
+          layer.shape.off('mouseover', layer.handlers.mouseover);
+          layer.shape.off('mouseout', layer.handlers.mouseout);
+        }
+        layer.shape.remove();
+      });
       zoneLayers.clear();
     };
   }, [map]);
