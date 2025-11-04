@@ -25,6 +25,19 @@ vi.mock('@/services/listingLocalCache', () => ({
   saveListingsToCache: vi.fn(() => Promise.resolve(new Date())),
 }));
 
+vi.mock('@/services/configurationProfiles', () => ({
+  fetchConfigurationProfiles: vi.fn(() => Promise.resolve([])),
+  saveConfigurationProfile: vi.fn(() =>
+    Promise.resolve({
+      id: 'test-profile',
+      name: 'Test profile',
+      filters: { searchTerm: '', complex: '', owner: '' },
+      regions: [],
+      updatedAt: null,
+    }),
+  ),
+}));
+
 describe('App', () => {
   const renderApp = () =>
     render(
