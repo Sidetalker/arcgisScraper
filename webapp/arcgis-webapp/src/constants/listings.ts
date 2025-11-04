@@ -10,4 +10,5 @@ export const DEFAULT_FILTERS: ListingFilters = {
   renewalCategories: [],
   renewalMethods: [],
   renewalMonths: [],
+  maxEvDistanceMiles: null,
 };

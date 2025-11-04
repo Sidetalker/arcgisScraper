@@ -71,6 +71,7 @@ export interface ListingMetricsRefreshResult {
   landBaronsWritten: number;
   totalBusinessOwners: number;
   totalIndividualOwners: number;
+  businessOwnerReclassifications: number;
 }
 
 interface RawSubdivisionMetric {

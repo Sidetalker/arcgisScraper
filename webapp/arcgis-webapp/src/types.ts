@@ -74,6 +74,7 @@ export interface ListingRecord {
   estimatedRenewalReference: Date | null;
   estimatedRenewalCategory: RenewalCategory;
   estimatedRenewalMonthKey: string | null;
+  nearestEvStationDistanceMeters: number | null;
   raw: ListingAttributes;
 }
 
@@ -85,6 +86,7 @@ export interface ListingFilters {
   renewalCategories: string[];
   renewalMethods: string[];
   renewalMonths: string[];
+  maxEvDistanceMiles: number | null;
 }
 
 export interface RegionCircle {
