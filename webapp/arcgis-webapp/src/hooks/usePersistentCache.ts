@@ -188,9 +188,7 @@ export function usePersistentCache(): PersistentCacheApi {
     return () => window.removeEventListener('storage', handleStorage);
   }, [notifyChange]);
 
-  const get = useCallback<
-    PersistentCacheApi['get']
-  >((key, options) => {
+  const get = useCallback(<TValue,>(key: string, options?: CacheGetOptions) => {
     const storage = storageRef.current;
     if (!storage) {
       return undefined;
@@ -210,12 +208,14 @@ export function usePersistentCache(): PersistentCacheApi {
       return undefined;
     }
 
-    return entry.value as T;
+    return entry.value as TValue;
   }, [notifyChange]);
 
-  const set = useCallback<
-    PersistentCacheApi['set']
-  >((key, value, options) => {
+  const set = useCallback(<TValue,>(
+    key: string,
+    value: TValue,
+    options?: CacheSetOptions,
+  ) => {
     const storage = storageRef.current;
     if (!storage) {
       return;
@@ -290,7 +290,15 @@ export function usePersistentCache(): PersistentCacheApi {
     return readAllEntries(storage);
   }, [version]);
 
-  return useMemo(() => ({ entries, get, set, clear }), [entries, get, set, clear]);
+  return useMemo<PersistentCacheApi>(
+    () => ({
+      entries,
+      get: get as PersistentCacheApi['get'],
+      set: set as PersistentCacheApi['set'],
+      clear,
+    }),
+    [entries, get, set, clear],
+  );
 }
 
 export default usePersistentCache;
