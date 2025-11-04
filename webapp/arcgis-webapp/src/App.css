@@ -1,0 +1,137 @@
+.app {
+  min-height: 100vh;
+  padding: 3rem clamp(1.5rem, 4vw, 4rem) 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color: #102a43;
+  background: radial-gradient(circle at top, #f0f4ff, #ffffff 65%);
+}
+
+.app__header {
+  width: min(1100px, 100%);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+  padding: 2.25rem 2.5rem;
+  border-radius: 1.75rem;
+  background-color: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 48px -36px rgba(15, 23, 42, 0.6);
+}
+
+.app__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2.25rem, 2.8vw, 3rem);
+  color: #0f172a;
+}
+
+.app__header p {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  max-width: 46ch;
+  color: #475569;
+}
+
+.app__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.app__refresh {
+  padding: 0.65rem 1.2rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 14px 24px -14px rgba(37, 99, 235, 0.8);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.app__refresh:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px -14px rgba(37, 99, 235, 0.8);
+}
+
+.app__refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+.app__cache {
+  font-size: 0.95rem;
+  color: #1e3a8a;
+  background: rgba(37, 99, 235, 0.08);
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.65rem;
+}
+
+.app__status {
+  width: min(1100px, 100%);
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 1rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.98rem;
+  color: #334155;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+}
+
+.app__content {
+  width: min(1100px, 100%);
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.app__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+@media (max-width: 960px) {
+  .app {
+    padding: 2.5rem clamp(1.25rem, 4vw, 2rem) 3.5rem;
+  }
+
+  .app__header {
+    flex-direction: column;
+  }
+
+  .app__actions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .app__refresh {
+    width: 100%;
+    text-align: center;
+  }
+
+  .app__content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app__main {
+    gap: 2rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 2rem 1.25rem 3rem;
+  }
+
+  .app__header {
+    padding: 1.75rem 1.85rem;
+  }
+}
