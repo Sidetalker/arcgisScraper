@@ -80,6 +80,7 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
     owner: typeof filters?.owner === 'string' ? filters.owner : '',
+    zones: normaliseStringList(filters?.zones),
     subdivisions: normaliseStringList(filters?.subdivisions),
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
@@ -108,6 +109,7 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
     a.searchTerm === b.searchTerm &&
     a.complex === b.complex &&
     a.owner === b.owner &&
+    stringSetsEqual(a.zones, b.zones) &&
     stringSetsEqual(a.subdivisions, b.subdivisions) &&
     stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
     stringSetsEqual(a.renewalMethods, b.renewalMethods) &&

@@ -539,6 +539,14 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     }
   }
 
+  if (filters.zones.length > 0) {
+    const listingZone = (listing.zone ?? '').toLowerCase();
+    const zoneMatch = filters.zones.some((value) => listingZone === value.toLowerCase());
+    if (!zoneMatch) {
+      return false;
+    }
+  }
+
   if (filters.subdivisions.length > 0) {
     const listingSubdivision = (listing.subdivision ?? '').toLowerCase();
     const subdivisionMatch = filters.subdivisions.some(
