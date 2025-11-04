@@ -155,26 +155,32 @@ async function fetchLayerInfo(
   signal?: AbortSignal,
 ): Promise<ArcgisLayerInfo> {
   const cacheKey = `${layerUrl}?token=${token ?? ''}`;
-  if (!layerInfoCache.has(cacheKey)) {
-    console.info('[ArcGIS] Fetching layer info', {
-      layerUrl,
-    });
-    const params = new URLSearchParams({ f: 'json' });
-    if (token) {
-      params.set('token', token);
-    }
+  const shouldUseCache = !signal;
 
-    const promise = fetchJson(layerUrl, params, { referer, signal }).then(
-      (data) => data as ArcgisLayerInfo,
-    );
+  if (shouldUseCache && layerInfoCache.has(cacheKey)) {
+    return layerInfoCache.get(cacheKey)!;
+  }
 
+  console.info('[ArcGIS] Fetching layer info', {
+    layerUrl,
+  });
+  const params = new URLSearchParams({ f: 'json' });
+  if (token) {
+    params.set('token', token);
+  }
+
+  const promise = fetchJson(layerUrl, params, { referer, signal }).then(
+    (data) => data as ArcgisLayerInfo,
+  );
+
+  if (shouldUseCache) {
     layerInfoCache.set(cacheKey, promise);
     promise.catch(() => {
       layerInfoCache.delete(cacheKey);
     });
   }
 
-  return layerInfoCache.get(cacheKey)!;
+  return promise;
 }
 
 async function generateToken(
@@ -438,8 +444,9 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
 
   const token = await generateToken(authentication, portalUrl, referer, signal);
   const cacheKey = createCacheKey({ ...params, layerUrl, portalUrl, referer, token });
+  const shouldUseCache = useCache && !signal;
 
-  if (useCache && requestCache.has(cacheKey)) {
+  if (shouldUseCache && requestCache.has(cacheKey)) {
     console.info('[ArcGIS] Returning cached listings response', {
       layerUrl,
       portalUrl,
@@ -470,7 +477,7 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
     return result;
   })();
 
-  if (useCache) {
+  if (shouldUseCache) {
     requestCache.set(cacheKey, promise);
     promise.catch(() => {
       requestCache.delete(cacheKey);
