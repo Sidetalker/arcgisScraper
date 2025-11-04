@@ -59,17 +59,10 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     renewalCategories: [],
     renewalMethods: [],
     renewalMonths: [],
-    maxEvDistanceMiles: null,
   };
 
   if (!filters || typeof filters !== 'object') {
     return { ...fallback };
-  }
-
-  const maxEvDistance = filters.maxEvDistanceMiles;
-  let normalizedMaxEvDistance: number | null = null;
-  if (typeof maxEvDistance === 'number' && isFinite(maxEvDistance) && maxEvDistance > 0) {
-    normalizedMaxEvDistance = maxEvDistance;
   }
 
   return {
@@ -81,7 +74,6 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     renewalCategories: normaliseStringArray(filters.renewalCategories),
     renewalMethods: normaliseStringArray(filters.renewalMethods),
     renewalMonths: normaliseStringArray(filters.renewalMonths),
-    maxEvDistanceMiles: normalizedMaxEvDistance,
   };
 }
 

@@ -1,7 +1,6 @@
 import type { ArcgisFeature } from '@/types';
 import type { ListingAttributes, ListingFilters, ListingRecord } from '@/types';
 import { categoriseRenewal } from '@/services/renewalEstimator';
-import { findNearestEvStationDistance } from '@/services/evChargingStations';
 
 const BUSINESS_KEYWORDS = [
   ' LLC',
@@ -469,8 +468,6 @@ export function toListingRecord(
   const estimatedRenewalCategory = renewalSnapshot.category;
   const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
 
-  const nearestEvStationDistanceMeters = findNearestEvStationDistance(latitude, longitude);
-
   return {
     id,
     complex: normalizeComplexName(attributes),
@@ -497,7 +494,6 @@ export function toListingRecord(
     estimatedRenewalReference,
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
-    nearestEvStationDistanceMeters,
     raw: attributes,
   };
 }
@@ -580,18 +576,6 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       (value) => value.toLowerCase() === monthKey.toLowerCase(),
     );
     if (!monthMatch) {
-      return false;
-    }
-  }
-
-  if (filters.maxEvDistanceMiles !== null && filters.maxEvDistanceMiles > 0) {
-    const distanceMeters = listing.nearestEvStationDistanceMeters;
-    if (distanceMeters === null) {
-      return false;
-    }
-    const METERS_PER_MILE = 1609.34;
-    const distanceMiles = distanceMeters / METERS_PER_MILE;
-    if (distanceMiles > filters.maxEvDistanceMiles) {
       return false;
     }
   }

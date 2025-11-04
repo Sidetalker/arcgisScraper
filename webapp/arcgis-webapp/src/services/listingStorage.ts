@@ -84,7 +84,6 @@ export interface ListingRow {
   estimated_renewal_reference: Nullable<string>;
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
-  nearest_ev_station_distance_meters: Nullable<number>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -121,10 +120,6 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
-    nearest_ev_station_distance_meters:
-      typeof record.nearestEvStationDistanceMeters === 'number'
-        ? record.nearestEvStationDistanceMeters
-        : null,
     raw: (record.raw as Record<string, unknown>) ?? null,
   };
 }
@@ -165,6 +160,9 @@ function fromListingRow(row: ListingRow): ListingRecord {
 
   const zone = typeof row.zone === 'string' ? row.zone.trim() : '';
 
+  const latitude = typeof row.latitude === 'number' ? row.latitude : null;
+  const longitude = typeof row.longitude === 'number' ? row.longitude : null;
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -184,14 +182,13 @@ function fromListingRow(row: ListingRow): ListingRecord {
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
     isBusinessOwner: Boolean(row.is_business_owner),
-    latitude: typeof row.latitude === 'number' ? row.latitude : null,
-    longitude: typeof row.longitude === 'number' ? row.longitude : null,
+    latitude,
+    longitude,
     estimatedRenewalDate,
     estimatedRenewalMethod,
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
-    nearestEvStationDistanceMeters: typeof row.nearest_ev_station_distance_meters === 'number' ? row.nearest_ev_station_distance_meters : null,
     raw: rawAttributes,
   };
 }
@@ -222,7 +219,6 @@ const LISTING_COLUMNS = [
   'estimated_renewal_reference',
   'estimated_renewal_category',
   'estimated_renewal_month_key',
-  'nearest_ev_station_distance_meters',
   'raw',
   'updated_at',
 ] as const;

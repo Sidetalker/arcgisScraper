@@ -70,12 +70,6 @@ function normaliseStringList(value: unknown): string[] {
 }
 
 function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): ListingFilters {
-  const maxEvDistance = filters?.maxEvDistanceMiles;
-  let normalizedMaxEvDistance: number | null = null;
-  if (typeof maxEvDistance === 'number' && isFinite(maxEvDistance) && maxEvDistance > 0) {
-    normalizedMaxEvDistance = maxEvDistance;
-  }
-
   return {
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters?.complex === 'string' ? filters.complex : '',
@@ -85,7 +79,6 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
-    maxEvDistanceMiles: normalizedMaxEvDistance,
   };
 }
 
