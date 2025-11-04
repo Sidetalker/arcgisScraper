@@ -227,10 +227,19 @@ create table public.listings (
   is_business_owner boolean,
   latitude double precision,
   longitude double precision,
+  estimated_renewal_date date,
+  estimated_renewal_method text,
+  estimated_renewal_reference date,
+  estimated_renewal_category text,
+  estimated_renewal_month_key text,
   raw jsonb,
   updated_at timestamptz default timezone('utc', now())
 );
 ```
+
+Derived renewal columns (`estimated_renewal_*`) capture the latest inferred
+renewal window, method, and month bucket for each listing so clients can filter
+and aggregate without re-parsing the raw ArcGIS payload.
 
 Enable Row Level Security and add policies (or disable RLS) that allow your
 Supabase anon key to `select`, `insert`, and `delete` from `public.listings`.

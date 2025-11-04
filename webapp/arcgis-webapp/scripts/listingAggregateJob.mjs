@@ -12,6 +12,40 @@ const SIGNAL_TYPE_RULES = [
   { type: 'update', pattern: /(update|modified|change|entered|capture|created)/i },
 ];
 
+const RENEWAL_METHODS = new Set([
+  'direct_permit',
+  'transfer_cycle',
+  'assessment_cycle',
+  'update_cycle',
+  'generic_cycle',
+]);
+
+const RENEWAL_CATEGORIES = new Set(['overdue', 'due_30', 'due_60', 'due_90', 'future', 'missing']);
+
+function normaliseRenewalMethod(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return RENEWAL_METHODS.has(trimmed) ? trimmed : null;
+}
+
+function normaliseRenewalCategory(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return RENEWAL_CATEGORIES.has(trimmed) ? trimmed : null;
+}
+
+function normaliseMonthKey(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
 function normaliseSubdivision(value) {
   if (!value || typeof value !== 'string') {
     return 'Unknown subdivision';
@@ -264,7 +298,9 @@ async function fetchListings(supabase, pageSize, logger) {
     const to = from + pageSize - 1;
     const { data, error } = await supabase
       .from('listings')
-      .select('id, subdivision, is_business_owner, raw')
+      .select(
+        'id, subdivision, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
+      )
       .order('id', { ascending: true })
       .range(from, to);
 
@@ -436,16 +472,42 @@ export async function refreshListingAggregates(
     }
     subdivisions.set(subdivision, stats);
 
-    const estimation = estimateRenewal(listing.raw, today);
-    if (!estimation) {
-      summary.missing.count += 1;
+    const storedRenewalDate = parseDateValue(listing.estimated_renewal_date);
+    const storedRenewalMethod = normaliseRenewalMethod(listing.estimated_renewal_method);
+    const storedRenewalReference = parseDateValue(listing.estimated_renewal_reference);
+    const storedRenewalMonthKey = normaliseMonthKey(listing.estimated_renewal_month_key);
+    const storedRenewalCategory = normaliseRenewalCategory(listing.estimated_renewal_category);
+
+    let estimation = null;
+    if (storedRenewalDate) {
+      estimation = {
+        date: storedRenewalDate,
+        method: storedRenewalMethod || 'generic_cycle',
+        reference: storedRenewalReference ?? null,
+      };
+    } else {
+      estimation = estimateRenewal(listing.raw, today);
+    }
+
+    if (!estimation || !(estimation.date instanceof Date) || Number.isNaN(estimation.date.getTime())) {
+      if (storedRenewalCategory && summary[storedRenewalCategory]) {
+        summary[storedRenewalCategory].count += 1;
+      } else {
+        summary.missing.count += 1;
+      }
       return;
     }
 
-    const { date: renewalDate, method } = estimation;
-    methodCounts.set(method, (methodCounts.get(method) || 0) + 1);
+    const renewalDate = estimation.date;
+    const method = normaliseRenewalMethod(estimation.method) || storedRenewalMethod;
+    if (method) {
+      methodCounts.set(method, (methodCounts.get(method) || 0) + 1);
+    }
 
-    const bucketKey = formatDate(new Date(Date.UTC(renewalDate.getUTCFullYear(), renewalDate.getUTCMonth(), 1)));
+    const bucketDate = storedRenewalMonthKey
+      ? parseDateValue(`${storedRenewalMonthKey}-01`)
+      : new Date(Date.UTC(renewalDate.getUTCFullYear(), renewalDate.getUTCMonth(), 1));
+    const bucketKey = formatDate(bucketDate);
     if (bucketKey) {
       const bucket = renewalBuckets.get(bucketKey) || {
         count: 0,
@@ -464,21 +526,15 @@ export async function refreshListingAggregates(
 
     if (renewalDate < today) {
       summary.overdue.count += 1;
-      return;
-    }
-    if (renewalDate <= in30) {
+    } else if (renewalDate <= in30) {
       summary.due_30.count += 1;
-      return;
-    }
-    if (renewalDate <= in60) {
+    } else if (renewalDate <= in60) {
       summary.due_60.count += 1;
-      return;
-    }
-    if (renewalDate <= in90) {
+    } else if (renewalDate <= in90) {
       summary.due_90.count += 1;
-      return;
+    } else {
+      summary.future.count += 1;
     }
-    summary.future.count += 1;
   });
 
   const subdivisionRows = Array.from(subdivisions.entries())
