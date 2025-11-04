@@ -114,6 +114,13 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
   );
 }
 
+function exportColumnsEqual(a: ExportColumnKey[], b: ExportColumnKey[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((key, index) => key === b[index]);
+}
+
 function HomePage(): JSX.Element {
   const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
@@ -184,6 +191,10 @@ function HomePage(): JSX.Element {
     },
     [],
   );
+
+  const handleExportColumnsChange = useCallback((columns: ExportColumnKey[]) => {
+    setExportColumns([...columns]);
+  }, []);
 
   const loadProfiles = useCallback(async () => {
     if (!supabaseAvailable) {
@@ -265,10 +276,12 @@ function HomePage(): JSX.Element {
       const restoredFilters = normaliseFilters(parsed.filters);
       const restoredRegions = normaliseRegionList(parsed.regions);
       const restoredTable = normaliseTableState(parsed.table);
+      const restoredExportColumns = normaliseExportColumns(parsed.exportColumns);
 
       setFilters(restoredFilters);
       handleRegionsChange(restoredRegions);
       setTableState(restoredTable);
+      setExportColumns(restoredExportColumns);
 
       setLocalProfileId(typeof parsed.profileId === 'string' ? parsed.profileId : null);
       const storedName =
@@ -297,12 +310,13 @@ function HomePage(): JSX.Element {
           hiddenColumns: [...tableState.hiddenColumns],
           columnFilters: { ...tableState.columnFilters },
         },
+        exportColumns: [...exportColumns],
       };
       window.localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(payload));
     } catch (storageError) {
       console.warn('Unable to persist configuration profile to localStorage.', storageError);
     }
-  }, [filters, regions, tableState, localProfileId, localProfileName]);
+  }, [filters, regions, tableState, exportColumns, localProfileId, localProfileName]);
 
   const statusMessage = useMemo(() => {
     if (loading) {
@@ -353,11 +367,13 @@ function HomePage(): JSX.Element {
     ? selectedProfile.name !== trimmedProfileName ||
       !filtersEqual(selectedProfile.filters, filters) ||
       !regionsAreEqual(selectedProfile.regions, regions) ||
-      !areTableStatesEqual(selectedProfile.table, tableState)
+      !areTableStatesEqual(selectedProfile.table, tableState) ||
+      !exportColumnsEqual(selectedProfile.exportColumns, exportColumns)
     : trimmedProfileName !== DEFAULT_PROFILE_NAME ||
       !filtersEqual(DEFAULT_FILTERS, filters) ||
       regions.length > 0 ||
-      !areTableStatesEqual(defaultTableState, tableState);
+      !areTableStatesEqual(defaultTableState, tableState) ||
+      !exportColumnsEqual(defaultExportColumns, exportColumns);
 
   const canSaveProfile = trimmedProfileName.length > 0;
 
@@ -382,6 +398,7 @@ function HomePage(): JSX.Element {
             hiddenColumns: [...tableState.hiddenColumns],
             columnFilters: { ...tableState.columnFilters },
           },
+          exportColumns: [...exportColumns],
         });
         setLocalProfileId(savedProfile.id);
         setLocalProfileName(savedProfile.name);
@@ -390,6 +407,7 @@ function HomePage(): JSX.Element {
           hiddenColumns: [...savedProfile.table.hiddenColumns],
           columnFilters: { ...savedProfile.table.columnFilters },
         });
+        setExportColumns([...savedProfile.exportColumns]);
         setProfilesError(null);
         setProfiles((current) => {
           const updated = current.filter((profile) => profile.id !== savedProfile.id);
@@ -416,6 +434,7 @@ function HomePage(): JSX.Element {
       supabaseAvailable,
       trimmedProfileName,
       tableState,
+      exportColumns,
     ],
   );
 
@@ -447,6 +466,7 @@ function HomePage(): JSX.Element {
         setFilters({ ...DEFAULT_FILTERS });
         handleRegionsChange([]);
         setTableState(createDefaultTableState());
+        setExportColumns(createDefaultExportColumns());
         return;
       }
 
@@ -464,6 +484,7 @@ function HomePage(): JSX.Element {
         hiddenColumns: [...profile.table.hiddenColumns],
         columnFilters: { ...profile.table.columnFilters },
       });
+      setExportColumns([...profile.exportColumns]);
     },
     [handleRegionsChange, profiles],
   );
@@ -474,6 +495,7 @@ function HomePage(): JSX.Element {
     setFilters({ ...DEFAULT_FILTERS });
     handleRegionsChange([]);
     setTableState(createDefaultTableState());
+    setExportColumns(createDefaultExportColumns());
   }, [handleRegionsChange]);
 
   const handleRefreshProfiles = useCallback(() => {
@@ -547,6 +569,8 @@ function HomePage(): JSX.Element {
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          exportColumns={exportColumns}
+          onExportColumnsChange={handleExportColumnsChange}
         />
       </div>
     </>
