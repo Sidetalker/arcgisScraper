@@ -85,6 +85,66 @@
   width: 100%;
 }
 
+.filters__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.filters__pin {
+  gap: 1rem;
+}
+
+.filters__pin-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.filters__pin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filters__pin-button {
+  border-radius: 0.75rem;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 0.55rem 1.05rem;
+  cursor: pointer;
+  box-shadow: 0 12px 22px -18px rgba(37, 99, 235, 0.7);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.filters__pin-button:hover:not(:disabled),
+.filters__pin-button:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px -18px rgba(37, 99, 235, 0.7);
+}
+
+.filters__pin-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+.filters__pin-button--secondary {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  box-shadow: none;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+}
+
+.filters__pin-button--secondary:hover:not(:disabled),
+.filters__pin-button--secondary:focus-visible:not(:disabled) {
+  background: rgba(37, 99, 235, 0.2);
+  transform: none;
+}
+
 @media (max-width: 960px) {
   .filters {
     padding: 1.25rem 1.5rem;

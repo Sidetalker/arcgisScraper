@@ -12,6 +12,8 @@ import './RegionMap.css';
 type RegionMapProps = {
   regions: RegionCircle[];
   onRegionsChange: (regions: RegionCircle[]) => void;
+  pinDropMode?: boolean;
+  onPinLocationSelect?: (location: { lat: number; lng: number }) => void;
 };
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
@@ -36,7 +38,12 @@ function collectRegions(featureGroup: L.FeatureGroup): RegionCircle[] {
   return results;
 }
 
-function DrawManager({ regions, onRegionsChange }: RegionMapProps): null {
+function DrawManager({
+  regions,
+  onRegionsChange,
+  pinDropMode = false,
+  onPinLocationSelect,
+}: RegionMapProps): null {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
   const drawControlRef = useRef<L.Control.Draw | null>(null);
@@ -168,11 +175,42 @@ function DrawManager({ regions, onRegionsChange }: RegionMapProps): null {
     }
   }, [map, regions]);
 
+  useEffect(() => {
+    if (!pinDropMode) {
+      return undefined;
+    }
+
+    const container = map.getContainer();
+    container.classList.add('region-map__map--drop');
+
+    const handlePinClick = (event: L.LeafletMouseEvent) => {
+      onPinLocationSelect?.({
+        lat: event.latlng.lat,
+        lng: event.latlng.lng,
+      });
+    };
+
+    map.on('click', handlePinClick);
+
+    return () => {
+      map.off('click', handlePinClick);
+      container.classList.remove('region-map__map--drop');
+    };
+  }, [map, onPinLocationSelect, pinDropMode]);
+
   return null;
 }
 
-function RegionMap({ regions, onRegionsChange }: RegionMapProps): JSX.Element {
+function RegionMap({
+  regions,
+  onRegionsChange,
+  pinDropMode = false,
+  onPinLocationSelect,
+}: RegionMapProps): JSX.Element {
   const mapCenter = useMemo(() => DEFAULT_CENTER, []);
+  const subtitle = pinDropMode
+    ? 'Click anywhere on the map to drop your pin. The radius filter will apply automatically.'
+    : 'Draw circles to focus the ArcGIS search on specific areas of Summit County.';
 
   return (
     <section
@@ -182,8 +220,8 @@ function RegionMap({ regions, onRegionsChange }: RegionMapProps): JSX.Element {
     >
       <div>
         <h2 className="region-map__title">Search Regions</h2>
-        <p className="region-map__subtitle">
-          Draw circles to focus the ArcGIS search on specific areas of Summit County.
+        <p className={`region-map__subtitle${pinDropMode ? ' region-map__subtitle--active' : ''}`}>
+          {subtitle}
         </p>
       </div>
       <MapContainer
@@ -193,7 +231,12 @@ function RegionMap({ regions, onRegionsChange }: RegionMapProps): JSX.Element {
         scrollWheelZoom
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-        <DrawManager regions={regions} onRegionsChange={onRegionsChange} />
+        <DrawManager
+          regions={regions}
+          onRegionsChange={onRegionsChange}
+          pinDropMode={pinDropMode}
+          onPinLocationSelect={onPinLocationSelect}
+        />
       </MapContainer>
     </section>
   );

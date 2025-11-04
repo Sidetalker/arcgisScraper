@@ -449,6 +449,31 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     }
   }
 
+  if (filters.complex.trim()) {
+    const complexQuery = filters.complex.trim().toLowerCase();
+    if (!listing.complex.toLowerCase().includes(complexQuery)) {
+      return false;
+    }
+  }
+
+  if (filters.owner.trim()) {
+    const ownerQuery = filters.owner.trim().toLowerCase();
+    const ownerMatches =
+      listing.ownerNames.some((name) => name.toLowerCase().includes(ownerQuery)) ||
+      listing.ownerName.toLowerCase().includes(ownerQuery);
+    if (!ownerMatches) {
+      return false;
+    }
+  }
+
+  if (filters.mailingAddress.trim()) {
+    const addressQuery = filters.mailingAddress.trim().toLowerCase();
+    const address = listing.mailingAddress.replace(/\s+/g, ' ').toLowerCase();
+    if (!address.includes(addressQuery)) {
+      return false;
+    }
+  }
+
   if (filters.scheduleNumber.trim()) {
     const scheduleQuery = filters.scheduleNumber.trim().toLowerCase();
     if (!listing.scheduleNumber.toLowerCase().includes(scheduleQuery)) {
