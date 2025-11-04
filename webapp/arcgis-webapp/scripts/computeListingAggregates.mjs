@@ -1,4 +1,49 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { createClient } from '@supabase/supabase-js';
+
+function loadEnvFile(filename, { override = false } = {}) {
+  const envPath = path.resolve(process.cwd(), filename);
+  if (!fs.existsSync(envPath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const equalsIndex = line.indexOf('=');
+    if (equalsIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, equalsIndex).trim();
+    if (!key) {
+      continue;
+    }
+
+    let value = line.slice(equalsIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (!override && process.env[key] !== undefined) {
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
+
+// Load the default env file first, then allow local overrides.
+loadEnvFile('.env');
+loadEnvFile('.env.local', { override: true });
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL ||
