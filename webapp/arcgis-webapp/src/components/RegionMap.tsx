@@ -262,6 +262,14 @@ const MAP_LAYERS: Record<MapLayerType, MapLayerConfig> = {
   },
 };
 
+const LAYER_ORDER: readonly MapLayerType[] = ['map', 'satellite', 'terrain'] as const;
+
+function getNextLayer(currentLayer: MapLayerType): MapLayerType {
+  const currentIndex = LAYER_ORDER.indexOf(currentLayer);
+  const nextIndex = (currentIndex + 1) % LAYER_ORDER.length;
+  return LAYER_ORDER[nextIndex];
+}
+
 type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
 
 type SummitCountyBoundaryProperties = {
@@ -881,10 +889,7 @@ function MapToolbar({
       layerButton.dataset.action = 'toggle-layer';
       layerButton.addEventListener('click', (event) => {
         event.preventDefault();
-        const layers: MapLayerType[] = ['map', 'satellite', 'terrain'];
-        const currentIndex = layers.indexOf(currentLayer);
-        const nextIndex = (currentIndex + 1) % layers.length;
-        onLayerChange(layers[nextIndex]);
+        onLayerChange(getNextLayer(currentLayer));
       });
 
       L.DomEvent.disableClickPropagation(container);
@@ -1436,3 +1441,5 @@ function RegionMap({
 }
 
 export default RegionMap;
+export { MAP_LAYERS, LAYER_ORDER, getNextLayer };
+export type { MapLayerType, MapLayerConfig };

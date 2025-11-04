@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { MAP_LAYERS, LAYER_ORDER, getNextLayer, type MapLayerType } from '../components/RegionMap';
 
 /**
  * Tests for RegionMap component's "Show all properties" toggle logic.
@@ -79,65 +80,32 @@ describe('RegionMap layer switching logic', () => {
   });
 
   it('should cycle through layers in order: map -> satellite -> terrain -> map', () => {
-    type MapLayerType = 'map' | 'satellite' | 'terrain';
-    const layers: MapLayerType[] = ['map', 'satellite', 'terrain'];
-    
     let currentLayer: MapLayerType = 'map';
     
     // map -> satellite
-    let currentIndex = layers.indexOf(currentLayer);
-    let nextIndex = (currentIndex + 1) % layers.length;
-    currentLayer = layers[nextIndex];
+    currentLayer = getNextLayer(currentLayer);
     expect(currentLayer).toBe('satellite');
     
     // satellite -> terrain
-    currentIndex = layers.indexOf(currentLayer);
-    nextIndex = (currentIndex + 1) % layers.length;
-    currentLayer = layers[nextIndex];
+    currentLayer = getNextLayer(currentLayer);
     expect(currentLayer).toBe('terrain');
     
     // terrain -> map
-    currentIndex = layers.indexOf(currentLayer);
-    nextIndex = (currentIndex + 1) % layers.length;
-    currentLayer = layers[nextIndex];
+    currentLayer = getNextLayer(currentLayer);
     expect(currentLayer).toBe('map');
   });
 
   it('should have correct layer configuration for each layer type', () => {
-    type MapLayerConfig = {
-      name: string;
-      url: string;
-      attribution: string;
-      maxZoom?: number;
-    };
+    expect(MAP_LAYERS.map.name).toBe('Street Map');
+    expect(MAP_LAYERS.satellite.name).toBe('Satellite');
+    expect(MAP_LAYERS.terrain.name).toBe('Terrain');
     
-    const mockMapLayers: Record<string, MapLayerConfig> = {
-      map: {
-        name: 'Street Map',
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-      },
-      satellite: {
-        name: 'Satellite',
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attribution: '&copy; Esri',
-        maxZoom: 19,
-      },
-      terrain: {
-        name: 'Terrain',
-        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        attribution: '&copy; OpenTopoMap contributors',
-        maxZoom: 17,
-      },
-    };
-    
-    expect(mockMapLayers.map.name).toBe('Street Map');
-    expect(mockMapLayers.satellite.name).toBe('Satellite');
-    expect(mockMapLayers.terrain.name).toBe('Terrain');
-    
-    expect(mockMapLayers.map.url).toContain('openstreetmap.org');
-    expect(mockMapLayers.satellite.url).toContain('arcgisonline.com');
-    expect(mockMapLayers.terrain.url).toContain('opentopomap.org');
+    expect(MAP_LAYERS.map.url).toContain('openstreetmap.org');
+    expect(MAP_LAYERS.satellite.url).toContain('arcgisonline.com');
+    expect(MAP_LAYERS.terrain.url).toContain('opentopomap.org');
+  });
+
+  it('should have all layer types in LAYER_ORDER', () => {
+    expect(LAYER_ORDER).toEqual(['map', 'satellite', 'terrain']);
   });
 });
