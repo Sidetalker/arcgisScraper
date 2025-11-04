@@ -466,38 +466,9 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     }
   }
 
-  if (filters.mailingAddress.trim()) {
-    const addressQuery = filters.mailingAddress.trim().toLowerCase();
-    const address = listing.mailingAddress.replace(/\s+/g, ' ').toLowerCase();
-    if (!address.includes(addressQuery)) {
-      return false;
-    }
-  }
-
   if (filters.scheduleNumber.trim()) {
     const scheduleQuery = filters.scheduleNumber.trim().toLowerCase();
     if (!listing.scheduleNumber.toLowerCase().includes(scheduleQuery)) {
-      return false;
-    }
-  }
-
-  if (filters.mailingCity.trim()) {
-    const cityQuery = filters.mailingCity.trim().toLowerCase();
-    if (!listing.mailingCity.toLowerCase().includes(cityQuery)) {
-      return false;
-    }
-  }
-
-  if (filters.mailingState) {
-    if (listing.mailingState.toLowerCase() !== filters.mailingState.toLowerCase()) {
-      return false;
-    }
-  }
-
-  if (filters.mailingZip.trim()) {
-    const zipQuery = filters.mailingZip.trim();
-    const zip9 = listing.mailingZip9 || listing.mailingZip5;
-    if (!listing.mailingZip5.startsWith(zipQuery) && !(zip9 && zip9.startsWith(zipQuery))) {
       return false;
     }
   }
@@ -507,13 +478,6 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       !listing.subdivision ||
       listing.subdivision.toLowerCase() !== filters.subdivision.toLowerCase()
     ) {
-      return false;
-    }
-  }
-
-  if (filters.businessOwner) {
-    const expected = filters.businessOwner === 'yes';
-    if (listing.isBusinessOwner !== expected) {
       return false;
     }
   }
