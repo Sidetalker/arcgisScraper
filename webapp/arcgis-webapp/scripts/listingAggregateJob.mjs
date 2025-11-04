@@ -781,7 +781,7 @@ export async function refreshListingAggregates(
       } else {
         summary.missing.count += 1;
       }
-      return;
+      continue;
     }
 
     const renewalDate = estimation.date;
