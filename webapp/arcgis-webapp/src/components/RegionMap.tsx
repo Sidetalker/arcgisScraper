@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
+import type { FeatureCollection, MultiPolygon, Polygon, Position } from 'geojson';
 
 type LeafletEditTooltip = {
   updateContent: (content: { text: string; subtext: string }) => void;
@@ -104,6 +105,7 @@ if (circleEditPrototype) {
 }
 
 import type { ListingRecord, RegionCircle } from '@/types';
+import summitCountyGeoJsonRaw from '@/assets/summit_county.geojson?raw';
 
 import './RegionMap.css';
 
@@ -117,6 +119,261 @@ type RegionMapProps = {
 
 const DEFAULT_CENTER: [number, number] = [39.6, -106.07];
 const DEFAULT_ZOOM = 10;
+
+type SummitCountyFeatureCollection = FeatureCollection<Polygon | MultiPolygon>;
+
+type SummitCountyBoundaryProperties = {
+  geoid?: string;
+  GEOID?: string;
+  name?: string;
+  boundarySource?: string;
+  [key: string]: unknown;
+};
+
+type SummitCountyFeature = SummitCountyFeatureCollection['features'][number] & {
+  properties?: SummitCountyBoundaryProperties;
+};
+
+const SUMMIT_COUNTY_FIPS = '08117';
+const SUMMIT_BOUNDARY_SOURCE_URL =
+  'https://cdn.jsdelivr.net/gh/plotly/datasets@master/geojson-counties-fips.json';
+
+const SUMMIT_OVERLAY_STYLE: L.PathOptions = {
+  color: '#1f78b4',
+  weight: 2,
+  fillColor: '#1f78b4',
+  fillOpacity: 0.05,
+};
+
+const SUMMIT_OVERLAY_MASK_STYLE: L.PathOptions = {
+  color: '#001b2b',
+  weight: 0,
+  fillColor: '#001b2b',
+  fillOpacity: 0.35,
+  fillRule: 'evenodd',
+};
+
+type LinearRing = Position[];
+
+const WORLD_MASK_OUTER_RING: LinearRing = [
+  [-180, -90],
+  [-180, 90],
+  [180, 90],
+  [180, -90],
+  [-180, -90],
+];
+
+function extractOuterRings(
+  geometry: Polygon | MultiPolygon | null | undefined,
+): LinearRing[] {
+  if (!geometry) {
+    return [];
+  }
+
+  if (geometry.type === 'Polygon') {
+    return geometry.coordinates.length > 0 ? [geometry.coordinates[0]] : [];
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates
+      .map((polygonCoordinates) => polygonCoordinates[0])
+      .filter((ring): ring is LinearRing => Array.isArray(ring) && ring.length > 0);
+  }
+
+  return [];
+}
+
+function createInvertedMask(
+  boundary: SummitCountyFeatureCollection | null,
+): FeatureCollection<Polygon> | null {
+  if (!boundary?.features?.length) {
+    return null;
+  }
+
+  const holes: LinearRing[] = boundary.features.flatMap((feature) => {
+    if (!feature || typeof feature !== 'object') {
+      return [];
+    }
+    return extractOuterRings(feature.geometry);
+  });
+
+  if (holes.length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {
+          mask: true,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [WORLD_MASK_OUTER_RING, ...holes],
+        },
+      },
+    ],
+  };
+}
+
+const LOCAL_SUMMIT_COUNTY_OVERLAY: SummitCountyFeatureCollection | null = (() => {
+  try {
+    const geometry = JSON.parse(summitCountyGeoJsonRaw) as SummitCountyFeatureCollection;
+    return Array.isArray(geometry.features) && geometry.features.length > 0 ? geometry : null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- surface parsing issues for the bundled fallback asset
+      console.warn('Failed to parse local Summit County boundary GeoJSON', error);
+    }
+    return null;
+  }
+})();
+
+function useSummitCountyBoundary(): SummitCountyFeatureCollection | null {
+  const [boundary, setBoundary] = useState<SummitCountyFeatureCollection | null>(
+    LOCAL_SUMMIT_COUNTY_OVERLAY,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBoundary(): Promise<void> {
+      try {
+        const response = await fetch(SUMMIT_BOUNDARY_SOURCE_URL, {
+          cache: 'force-cache',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch county boundaries: ${response.status}`);
+        }
+
+        const dataset = (await response.json()) as FeatureCollection<Polygon | MultiPolygon> & {
+          features: SummitCountyFeature[];
+        };
+
+        const summitFeature = dataset.features.find((feature) => {
+          if (!feature) {
+            return false;
+          }
+
+          if (feature.id === SUMMIT_COUNTY_FIPS) {
+            return true;
+          }
+
+          const properties = feature.properties ?? {};
+          const candidateGeoid =
+            typeof properties.geoid === 'string'
+              ? properties.geoid
+              : typeof properties.GEOID === 'string'
+                ? properties.GEOID
+                : undefined;
+
+          return candidateGeoid === SUMMIT_COUNTY_FIPS;
+        });
+
+        if (!summitFeature?.geometry || cancelled) {
+          return;
+        }
+
+        const nextBoundary: SummitCountyFeatureCollection = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                name: 'Summit County',
+                geoid: SUMMIT_COUNTY_FIPS,
+                boundarySource: 'remote',
+                ...(summitFeature.properties ?? {}),
+              },
+              geometry: summitFeature.geometry,
+            },
+          ],
+        };
+
+        if (!cancelled) {
+          setBoundary(nextBoundary);
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- surface network issues in development only
+          console.warn('Failed to load Summit County boundary overlay', error);
+        }
+      }
+    }
+
+    void loadBoundary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return boundary;
+}
+
+function SummitCountyOverlay(): JSX.Element | null {
+  const overlayGeometry = useSummitCountyBoundary();
+  const overlayRef = useRef<L.GeoJSON | null>(null);
+  const maskGeometry = useMemo(() => createInvertedMask(overlayGeometry), [overlayGeometry]);
+  const map = useMap();
+  const fittedSourceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!overlayGeometry || !overlayRef.current) {
+      return;
+    }
+
+    const bounds = overlayRef.current.getBounds();
+    if (!bounds.isValid()) {
+      return;
+    }
+
+    const overlaySource =
+      overlayGeometry.features[0]?.properties &&
+      typeof overlayGeometry.features[0].properties === 'object'
+        ? (overlayGeometry.features[0].properties as SummitCountyBoundaryProperties)
+            .boundarySource ?? 'unknown'
+        : 'unknown';
+
+    if (fittedSourceRef.current === overlaySource) {
+      return;
+    }
+
+    const mapSize = map.getSize();
+    const paddingFraction = 0.15;
+    const paddingValue = Math.round(Math.min(mapSize.x, mapSize.y) * paddingFraction);
+
+    map.fitBounds(bounds, {
+      padding: [paddingValue, paddingValue],
+    });
+
+    overlayRef.current.bringToBack();
+    fittedSourceRef.current = overlaySource;
+  }, [map, overlayGeometry]);
+
+  if (!overlayGeometry) {
+    return null;
+  }
+
+  return (
+    <>
+      {maskGeometry ? (
+        <GeoJSON data={maskGeometry} style={() => SUMMIT_OVERLAY_MASK_STYLE} interactive={false} />
+      ) : null}
+      <GeoJSON
+        data={overlayGeometry}
+        ref={(instance) => {
+          overlayRef.current = instance;
+        }}
+        style={() => SUMMIT_OVERLAY_STYLE}
+        interactive={false}
+      />
+    </>
+  );
+}
 
 function toRegionCircle(layer: L.Circle): RegionCircle {
   const center = layer.getLatLng();
@@ -575,6 +832,7 @@ function RegionMap({
         scrollWheelZoom
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+        <SummitCountyOverlay />
         <DrawManager
           regions={regions}
           onRegionsChange={onRegionsChange}
