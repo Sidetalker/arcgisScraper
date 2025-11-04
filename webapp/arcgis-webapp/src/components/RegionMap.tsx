@@ -485,13 +485,63 @@ function SummitCountyOverlay(): JSX.Element | null {
   );
 }
 
-function toRegionCircle(layer: L.Circle): RegionCircle {
-  const center = layer.getLatLng();
-  return {
-    lat: center.lat,
-    lng: center.lng,
-    radius: layer.getRadius(),
-  };
+const REGION_STYLE: L.PathOptions = {
+  color: '#2563eb',
+  fillColor: '#3b82f6',
+  fillOpacity: 0.2,
+  weight: 2,
+};
+
+function toRegionShape(layer: L.Layer): RegionShape | null {
+  if (layer instanceof L.Circle) {
+    const center = layer.getLatLng();
+    const radius = layer.getRadius();
+    if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || !Number.isFinite(radius)) {
+      return null;
+    }
+    return { type: 'circle', lat: center.lat, lng: center.lng, radius };
+  }
+
+  if (layer instanceof L.Polygon) {
+    const latLngs = layer.getLatLngs();
+    const ring = Array.isArray(latLngs[0]) ? (latLngs[0] as L.LatLng[]) : (latLngs as unknown as L.LatLng[]);
+    const points = ring
+      .map((latLng) => ({ lat: latLng.lat, lng: latLng.lng }))
+      .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (Math.abs(first.lat - last.lat) < 1e-9 && Math.abs(first.lng - last.lng) < 1e-9) {
+      points.pop();
+    }
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    return { type: 'polygon', points };
+  }
+
+  return null;
+}
+
+function createLayerFromRegion(region: RegionShape): L.Circle | L.Polygon {
+  if (region.type === 'circle') {
+    return L.circle([region.lat, region.lng], {
+      ...REGION_STYLE,
+      radius: region.radius,
+    });
+  }
+
+  const latLngs = region.points.map<[number, number]>((point) => [point.lat, point.lng]);
+  return L.polygon(latLngs, {
+    ...REGION_STYLE,
+    smoothFactor: 0.2,
+  });
 }
 
 function collectRegions(featureGroup: L.FeatureGroup): RegionShape[] {
