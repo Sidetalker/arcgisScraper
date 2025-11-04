@@ -79,6 +79,14 @@ export interface RegionCircle {
   radius: number;
 }
 
+export interface ConfigurationProfile {
+  id: string;
+  name: string;
+  filters: ListingFilters;
+  regions: RegionCircle[];
+  updatedAt: Date | null;
+}
+
 export interface ArcgisLayerInfo {
   id?: number;
   name?: string;
