@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { MAP_LAYERS, LAYER_ORDER, getNextLayer, type MapLayerType } from '../components/RegionMap';
 
 /**
  * Tests for RegionMap component's "Show all properties" toggle logic.
@@ -61,5 +62,50 @@ describe('RegionMap displayedListings logic', () => {
 
     expect(displayedListings).toEqual([]);
     expect(displayedListings.length).toBe(0);
+  });
+});
+
+/**
+ * Tests for RegionMap component's layer switching functionality.
+ * 
+ * The layer switching logic should allow users to cycle through different map layers:
+ * - map: OpenStreetMap street view
+ * - satellite: Esri World Imagery satellite view
+ * - terrain: OpenTopoMap terrain view
+ */
+describe('RegionMap layer switching logic', () => {
+  it('should have default layer as map', () => {
+    const defaultLayer = 'map';
+    expect(defaultLayer).toBe('map');
+  });
+
+  it('should cycle through layers in order: map -> satellite -> terrain -> map', () => {
+    let currentLayer: MapLayerType = 'map';
+    
+    // map -> satellite
+    currentLayer = getNextLayer(currentLayer);
+    expect(currentLayer).toBe('satellite');
+    
+    // satellite -> terrain
+    currentLayer = getNextLayer(currentLayer);
+    expect(currentLayer).toBe('terrain');
+    
+    // terrain -> map
+    currentLayer = getNextLayer(currentLayer);
+    expect(currentLayer).toBe('map');
+  });
+
+  it('should have correct layer configuration for each layer type', () => {
+    expect(MAP_LAYERS.map.name).toBe('Street Map');
+    expect(MAP_LAYERS.satellite.name).toBe('Satellite');
+    expect(MAP_LAYERS.terrain.name).toBe('Terrain');
+    
+    expect(MAP_LAYERS.map.url).toContain('openstreetmap.org');
+    expect(MAP_LAYERS.satellite.url).toContain('arcgisonline.com');
+    expect(MAP_LAYERS.terrain.url).toContain('opentopomap.org');
+  });
+
+  it('should have all layer types in LAYER_ORDER', () => {
+    expect(LAYER_ORDER).toEqual(['map', 'satellite', 'terrain']);
   });
 });

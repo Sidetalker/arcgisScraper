@@ -1,4 +1,6 @@
 -- Primary listings table storing the denormalised Summit County STR dataset
+drop table if exists public.listings cascade;
+
 create table if not exists public.listings (
   id text primary key,
   complex text,
@@ -25,7 +27,7 @@ create table if not exists public.listings (
   estimated_renewal_reference date,
   estimated_renewal_category text default 'missing',
   estimated_renewal_month_key text,
-  distance_to_ev_station_meters double precision,
+  nearest_ev_station_distance_meters double precision,
   raw jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );

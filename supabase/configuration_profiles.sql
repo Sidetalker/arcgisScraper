@@ -1,9 +1,12 @@
 -- Create configuration_profiles table to store shared listing filters and map regions
+drop table if exists public.configuration_profiles cascade;
+
 create table if not exists public.configuration_profiles (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   filters jsonb not null default '{}'::jsonb,
   regions jsonb not null default '[]'::jsonb,
+  table_state jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

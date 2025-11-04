@@ -54,32 +54,26 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     searchTerm: '',
     complex: '',
     owner: '',
+    zones: [],
     subdivisions: [],
     renewalCategories: [],
     renewalMethods: [],
     renewalMonths: [],
-    maxEvDistanceMiles: null,
   };
 
   if (!filters || typeof filters !== 'object') {
     return { ...fallback };
   }
 
-  const maxEvDistance = filters.maxEvDistanceMiles;
-  let normalizedMaxEvDistance: number | null = null;
-  if (typeof maxEvDistance === 'number' && isFinite(maxEvDistance) && maxEvDistance > 0) {
-    normalizedMaxEvDistance = maxEvDistance;
-  }
-
   return {
     searchTerm: typeof filters.searchTerm === 'string' ? filters.searchTerm : '',
     complex: typeof filters.complex === 'string' ? filters.complex : '',
     owner: typeof filters.owner === 'string' ? filters.owner : '',
+    zones: normaliseStringArray(filters.zones),
     subdivisions: normaliseStringArray(filters.subdivisions),
     renewalCategories: normaliseStringArray(filters.renewalCategories),
     renewalMethods: normaliseStringArray(filters.renewalMethods),
     renewalMonths: normaliseStringArray(filters.renewalMonths),
-    maxEvDistanceMiles: normalizedMaxEvDistance,
   };
 }
 
