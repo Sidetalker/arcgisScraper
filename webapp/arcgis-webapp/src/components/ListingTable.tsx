@@ -398,6 +398,29 @@ export function ListingTable({
     setPageSizeInputValue(pageSize.toString());
   }, [pageSize]);
 
+  const handlePageChange = (page: number) => {
+    const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
+    onPageChange(clampPage(sanitisedPage));
+  };
+
+  const closePageJump = useCallback(() => {
+    setIsPageJumpOpen(false);
+    setPageJumpValue('');
+  }, []);
+
+  const openPageJump = useCallback(() => {
+    setPageJumpValue(safePage.toString());
+    setIsPageJumpOpen(true);
+  }, [safePage]);
+
+  const handlePageJumpToggle = useCallback(() => {
+    if (isPageJumpOpen) {
+      closePageJump();
+      return;
+    }
+    openPageJump();
+  }, [isPageJumpOpen, closePageJump, openPageJump]);
+
   useEffect(() => {
     if (!isPageJumpOpen) {
       return;
@@ -448,29 +471,6 @@ export function ListingTable({
       setPageJumpValue(safePage.toString());
     }
   }, [safePage, isPageJumpOpen]);
-
-  const handlePageChange = (page: number) => {
-    const sanitisedPage = Number.isFinite(page) ? Math.floor(page) : safePage;
-    onPageChange(clampPage(sanitisedPage));
-  };
-
-  const closePageJump = useCallback(() => {
-    setIsPageJumpOpen(false);
-    setPageJumpValue('');
-  }, []);
-
-  const openPageJump = useCallback(() => {
-    setPageJumpValue(safePage.toString());
-    setIsPageJumpOpen(true);
-  }, [safePage]);
-
-  const handlePageJumpToggle = useCallback(() => {
-    if (isPageJumpOpen) {
-      closePageJump();
-      return;
-    }
-    openPageJump();
-  }, [isPageJumpOpen, closePageJump, openPageJump]);
 
   const commitPageSize = useCallback(() => {
     const trimmed = pageSizeInputValue.trim();
