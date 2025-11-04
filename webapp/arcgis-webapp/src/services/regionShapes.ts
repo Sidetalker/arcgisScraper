@@ -184,11 +184,19 @@ export function regionsAreEqual(
     }
 
     if (region.type === 'circle') {
+      if (other.type !== 'circle') {
+        return false;
+      }
+
       return (
         numbersApproximatelyEqual(region.lat, other.lat, epsilon) &&
         numbersApproximatelyEqual(region.lng, other.lng, epsilon) &&
         numbersApproximatelyEqual(region.radius, other.radius, epsilon)
       );
+    }
+
+    if (other.type !== 'polygon') {
+      return false;
     }
 
     if (region.points.length !== other.points.length) {
@@ -247,11 +255,15 @@ function isPointInsidePolygon(point: RegionPoint, polygon: RegionPolygon): boole
 
 export function isPointInsideRegion(point: RegionPoint, region: RegionShape): boolean {
   if (region.type === 'circle') {
-    const distance = haversineDistanceMeters(point, region);
+    const distance = haversineDistanceMeters(point, { lat: region.lat, lng: region.lng });
     return distance <= region.radius;
   }
 
-  return isPointInsidePolygon(point, region);
+  if (region.type === 'polygon') {
+    return isPointInsidePolygon(point, region);
+  }
+
+  return false;
 }
 
 export function isPointInsideRegions(point: RegionPoint, regions: readonly RegionShape[]): boolean {

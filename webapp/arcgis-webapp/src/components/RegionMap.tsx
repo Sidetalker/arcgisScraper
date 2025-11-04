@@ -213,7 +213,7 @@ function createLayerFromRegion(region: RegionShape): L.Circle | L.Polygon {
     });
   }
 
-  const latLngs = region.points.map((point) => [point.lat, point.lng]);
+  const latLngs = region.points.map<[number, number]>((point) => [point.lat, point.lng]);
   return L.polygon(latLngs, {
     ...REGION_STYLE,
     smoothFactor: 0.2,
@@ -406,8 +406,8 @@ function MapToolbar({
   const buttonRefs = useRef<{ clearButton?: HTMLButtonElement; fitButton?: HTMLButtonElement } | null>(null);
 
   useEffect(() => {
-    const control = L.control({ position: 'topright' });
-    control.onAdd = () => {
+    const toolbarControl = new L.Control({ position: 'topright' });
+    toolbarControl.onAdd = () => {
       const container = L.DomUtil.create('div', 'leaflet-bar region-map__toolbar') as HTMLDivElement;
       container.setAttribute('role', 'group');
       container.setAttribute('aria-label', 'Drawing controls');
@@ -484,11 +484,11 @@ function MapToolbar({
       return container;
     };
 
-    control.addTo(map);
+    toolbarControl.addTo(map);
 
     return () => {
       buttonRefs.current = null;
-      control.remove();
+      toolbarControl.remove();
     };
   }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions]);
 
@@ -534,9 +534,18 @@ function DrawManager({
       drawControlRef.current = new L.Control.Draw({
         edit: {
           featureGroup: featureGroupRef.current,
-          poly: { allowIntersection: false },
+          edit: {
+            poly: { allowIntersection: false },
+          },
         },
-        draw: false,
+        draw: {
+          polygon: false,
+          polyline: false,
+          rectangle: false,
+          circle: false,
+          marker: false,
+          circlemarker: false,
+        },
       });
       map.addControl(drawControlRef.current);
     }
@@ -555,12 +564,14 @@ function DrawManager({
   }, [map]);
 
   useEffect(() => {
-    polygonDrawerRef.current = new L.Draw.Polygon(map, {
+    const drawMap = map as unknown as L.DrawMap;
+
+    polygonDrawerRef.current = new L.Draw.Polygon(drawMap, {
       allowIntersection: false,
       showArea: true,
       shapeOptions: REGION_STYLE,
     });
-    circleDrawerRef.current = new L.Draw.Circle(map, {
+    circleDrawerRef.current = new L.Draw.Circle(drawMap, {
       shapeOptions: REGION_STYLE,
     });
 
