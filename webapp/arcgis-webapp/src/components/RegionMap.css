@@ -96,7 +96,7 @@
   height: 240px;
 }
 
-.region-map__selection {
+.region-map__selection { 
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -107,6 +107,64 @@
   color: #0f172a;
   flex: 1;
   overflow: auto;
+}
+
+.region-map__selection--zone {
+  justify-content: center;
+}
+
+.region-map__selection-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.region-map__selection-zone-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.region-map__selection-zone-swatch {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 0.4rem;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+}
+
+.region-map__selection-zone-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.region-map__selection-zone-label {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #475569;
+}
+
+.region-map__selection-zone-name {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.region-map__selection-zone-count {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.region-map__selection-zone-description {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #475569;
 }
 
 .region-map__selection--empty {
@@ -196,6 +254,22 @@
 .region-map__selection-link:hover,
 .region-map__selection-link:focus {
   text-decoration: underline;
+}
+
+.leaflet-zoneGlowPane-pane {
+  filter: blur(28px);
+  mix-blend-mode: screen;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.leaflet-zoneGlowPane-pane .region-map__zone-glow-shape {
+  transition: fill 0.25s ease, fill-opacity 0.25s ease, stroke 0.25s ease;
+}
+
+.leaflet-zoneInteractionPane-pane .region-map__zone-interaction-shape {
+  transition: stroke 0.2s ease, opacity 0.2s ease, stroke-width 0.2s ease;
+  fill: transparent;
 }
 
 .region-map__selection-link-icon {
