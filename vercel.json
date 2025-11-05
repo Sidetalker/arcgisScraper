@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --prefix webapp/arcgis-webapp",
+  "buildCommand": "npm run build --prefix webapp/arcgis-webapp",
+  "outputDirectory": "webapp/arcgis-webapp/dist",
+  "github": {
+    "silent": false,
+    "botId": "bot_xxxxxxxxxxxxxxxxxxxxx"
+  }
+}

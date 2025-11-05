@@ -204,6 +204,19 @@ VITE_SUPABASE_ANON_KEY=<anon-key>
 # or SUPABASE_URL / SUPABASE_ANON_KEY
 ```
 
+### Vercel BotID configuration
+
+Vercel identifies the GitHub app that comments on preview deployments via a
+Bot ID. The repo now ships with a `vercel.json` scaffold that points the build
+to `webapp/arcgis-webapp` and exposes a `github.botId` field. Replace the
+`bot_xxxxxxxxxxxxxxxxxxxxx` placeholder with the Bot ID from your GitHub app as
+described in [Vercel's BotID guide](https://vercel.com/docs/botid/get-started),
+then commit the update so that Vercel can apply it on the next deployment.
+
+If you prefer not to store the value in git, run `vercel env add` in the
+project to define `VERCEL_GITHUB_BOT_ID` and update the build pipeline or CI to
+patch `vercel.json` before invoking `vercel deploy`.
+
 Create a `listings` table in Supabase before syncing for the first time:
 
 ```sql
