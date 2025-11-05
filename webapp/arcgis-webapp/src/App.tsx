@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Analytics } from '@vercel/analytics/next';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import './App.css';
@@ -167,6 +168,7 @@ function Layout(): JSX.Element {
             : 'Please enter the administrator password to sync from ArcGIS.'
         }
       />
+      <Analytics />
     </div>
   );
 }
