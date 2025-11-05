@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 
+import CollapsibleSection from '@/components/CollapsibleSection';
 import FilterPanel from '@/components/FilterPanel';
 import ListingTable from '@/components/ListingTable';
 import RegionMap from '@/components/RegionMap';
@@ -488,26 +489,37 @@ function HomePage(): JSX.Element {
 
   return (
     <>
-      <FilterPanel
-        filters={filters}
-        onChange={handleFiltersChange}
-        disabled={loading}
-        onReset={handleResetFilters}
-      />
-      <RegionMap
-        regions={regions}
-        onRegionsChange={handleRegionsChange}
-        listings={regionListings}
-        allListings={filteredByFilters}
-        onListingSelect={handleListingFocus}
-        totalListingCount={filteredByFilters.length}
-      />
-      <ListingInsights
-        supabaseAvailable={supabaseAvailable}
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-      />
-      <div className="app__listings">
+      <CollapsibleSection
+        title="Listing filters"
+        description="Fine-tune the active dataset by complex, owner, zoning signals, and linked insights."
+        className="collapsible-section--sidebar"
+      >
+        <FilterPanel
+          filters={filters}
+          onChange={handleFiltersChange}
+          disabled={loading}
+          onReset={handleResetFilters}
+        />
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Regional explorer"
+        description="Visualise filtered listings on the Summit County map and draw custom focus areas."
+        className="collapsible-section--main"
+      >
+        <RegionMap
+          regions={regions}
+          onRegionsChange={handleRegionsChange}
+          listings={regionListings}
+          allListings={filteredByFilters}
+          onListingSelect={handleListingFocus}
+          totalListingCount={filteredByFilters.length}
+        />
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Saved configuration profiles"
+        description="Capture and recall map shapes, filters, and column settings. Profiles sync through Supabase when available."
+        className="collapsible-section--full"
+      >
         <ConfigurationProfiles
           profiles={profiles}
           loading={profilesLoading}
@@ -526,6 +538,12 @@ function HomePage(): JSX.Element {
           onRefreshProfiles={handleRefreshProfiles}
           supabaseAvailable={supabaseAvailable}
         />
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Listing results"
+        description="Browse the current results set with sortable, paginated tables and column controls."
+        className="collapsible-section--full"
+      >
         <ListingTable
           listings={filteredListings}
           pageSize={pageSize}
@@ -542,7 +560,18 @@ function HomePage(): JSX.Element {
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
         />
-      </div>
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Market insights"
+        description="Supabase-derived renewal timelines, subdivision hotspots, and zoning opportunities tailored to your filters."
+        className="collapsible-section--full"
+      >
+        <ListingInsights
+          supabaseAvailable={supabaseAvailable}
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+        />
+      </CollapsibleSection>
     </>
   );
 }
