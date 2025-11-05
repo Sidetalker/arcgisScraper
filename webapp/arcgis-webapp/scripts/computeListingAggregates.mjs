@@ -10,10 +10,22 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, '..');
 const VERCEL_ENV_DIR = path.join(WORKSPACE_ROOT, '.vercel');
 
-const args = new Set(process.argv.slice(2));
-const isStaging = args.has('--staging');
+const rawArgs = new Set(process.argv.slice(2));
 
-for (const arg of args) {
+let isStaging = false;
+
+if (rawArgs.has('--staging')) {
+  isStaging = true;
+}
+
+if (!isStaging && typeof process.env.npm_config_staging === 'string') {
+  const normalized = process.env.npm_config_staging.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === '') {
+    isStaging = true;
+  }
+}
+
+for (const arg of rawArgs) {
   if (arg !== '--staging') {
     console.warn(`Ignoring unknown flag: ${arg}`);
   }
