@@ -1,3 +1,5 @@
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import type {
   ListingAttributes,
   ListingRecord,
@@ -11,7 +13,7 @@ import {
   resolveRenewalCategory,
   type RenewalEstimate,
 } from '@/services/renewalEstimator';
-import { assertSupabaseClient } from '@/services/supabaseClient';
+import { assertSupabaseClient, reloadSupabaseSchemaCache } from '@/services/supabaseClient';
 
 type Nullable<T> = T | null;
 
@@ -184,6 +186,8 @@ export interface StoredListingSet {
   latestUpdatedAt: Date | null;
 }
 
+const SCHEMA_CACHE_ERROR_CODE = 'PGRST204';
+
 function toListingRow(record: ListingRecord): ListingRow {
   return {
     id: record.id,
@@ -337,8 +341,69 @@ const LISTING_COLUMNS = [
 
 const PAGE_SIZE = 1000;
 
-export async function fetchStoredListings(): Promise<StoredListingSet> {
+function isSchemaCacheError(error: PostgrestError | null): boolean {
+  return Boolean(error && error.code === SCHEMA_CACHE_ERROR_CODE);
+}
+
+async function selectListingChunk(
+  from: number,
+  to: number,
+  attempt = 0,
+): Promise<ListingRow[]> {
   const client = assertSupabaseClient();
+  const { data, error } = await client
+    .from('listings')
+    .select(LISTING_COLUMNS.join(', '))
+    .order('schedule_number', { ascending: true })
+    .range(from, to);
+
+  if (error) {
+    if (isSchemaCacheError(error) && attempt === 0) {
+      await reloadSupabaseSchemaCache();
+      return selectListingChunk(from, to, attempt + 1);
+    }
+    throw error;
+  }
+
+  return ((data ?? []) as unknown as ListingRow[]).map((row) => ({ ...row }));
+}
+
+async function deleteAllListings(attempt = 0): Promise<void> {
+  const client = assertSupabaseClient();
+  const { error } = await client.from('listings').delete().neq('id', '');
+  if (!error) {
+    return;
+  }
+
+  if (isSchemaCacheError(error) && attempt === 0) {
+    await reloadSupabaseSchemaCache();
+    await deleteAllListings(attempt + 1);
+    return;
+  }
+
+  throw error;
+}
+
+async function insertListingChunk(
+  chunk: ListingRow[],
+  attempt = 0,
+): Promise<void> {
+  const client = assertSupabaseClient();
+  const { error } = await client.from('listings').insert(chunk);
+  if (!error) {
+    return;
+  }
+
+  if (isSchemaCacheError(error) && attempt === 0) {
+    await reloadSupabaseSchemaCache();
+    await insertListingChunk(chunk, attempt + 1);
+    return;
+  }
+
+  throw error;
+}
+
+export async function fetchStoredListings(): Promise<StoredListingSet> {
   let from = 0;
   let latest: Date | null = null;
   const records: ListingRecord[] = [];
@@ -346,17 +411,7 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
   let hasMore = true;
   while (hasMore) {
     const to = from + PAGE_SIZE - 1;
-    const { data, error } = await client
-      .from('listings')
-      .select(LISTING_COLUMNS.join(', '))
-      .order('schedule_number', { ascending: true })
-      .range(from, to);
-
-    if (error) {
-      throw error;
-    }
-
-    const rows = (data ?? []) as unknown as ListingRow[];
+    const rows = await selectListingChunk(from, to);
     rows.forEach((row) => {
       if (row.updated_at) {
         const timestamp = new Date(row.updated_at);
@@ -379,13 +434,9 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
 }
 
 export async function replaceAllListings(records: ListingRecord[]): Promise<void> {
-  const client = assertSupabaseClient();
   const rows = records.map((record) => toListingRow(record));
 
-  const { error: deleteError } = await client.from('listings').delete().neq('id', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await deleteAllListings();
 
   const chunkSize = 400;
   for (let start = 0; start < rows.length; start += chunkSize) {
@@ -393,9 +444,6 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
     if (chunk.length === 0) {
       continue;
     }
-    const { error: insertError } = await client.from('listings').insert(chunk);
-    if (insertError) {
-      throw insertError;
-    }
+    await insertListingChunk(chunk);
   }
 }
