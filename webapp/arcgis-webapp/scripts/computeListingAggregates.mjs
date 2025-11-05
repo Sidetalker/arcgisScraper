@@ -8,6 +8,16 @@ import { refreshListingAggregates } from './listingAggregateJob.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, '..');
+const VERCEL_ENV_DIR = path.join(WORKSPACE_ROOT, '.vercel');
+
+const args = new Set(process.argv.slice(2));
+const isStaging = args.has('--staging');
+
+for (const arg of args) {
+  if (arg !== '--staging') {
+    console.warn(`Ignoring unknown flag: ${arg}`);
+  }
+}
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -48,8 +58,28 @@ function loadEnvFile(filePath) {
   }
 }
 
+const envFiles = [];
+
+if (isStaging) {
+  envFiles.push('.env.staging.local', '.env.staging');
+} else {
+  envFiles.push('.env.development.local', '.env.development');
+}
+
+envFiles.push('.env.local', '.env');
+
+for (const envFile of envFiles) {
+  loadEnvFile(path.join(VERCEL_ENV_DIR, envFile));
+}
+
 for (const envFile of ['.env.local', '.env']) {
   loadEnvFile(path.join(WORKSPACE_ROOT, envFile));
+}
+
+if (isStaging) {
+  console.info('[metrics] Loaded staging environment configuration.');
+} else {
+  console.info('[metrics] Loaded development environment configuration.');
 }
 
 const SUPABASE_URL =
