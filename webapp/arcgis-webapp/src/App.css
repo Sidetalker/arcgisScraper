@@ -211,6 +211,14 @@
   display: none;
 }
 
+.collapsible-section--static .collapsible-section__summary {
+  flex: 1;
+}
+
+.collapsible-section--static .collapsible-section__header {
+  align-items: center;
+}
+
 .collapsible-section--sidebar {
   grid-column: 1 / 2;
 }

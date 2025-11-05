@@ -6,6 +6,7 @@ interface CollapsibleSectionProps {
   children: ReactNode;
   className?: string;
   defaultCollapsed?: boolean;
+  collapsible?: boolean;
 }
 
 function CollapsibleSection({
@@ -14,14 +15,18 @@ function CollapsibleSection({
   children,
   className = '',
   defaultCollapsed = true,
+  collapsible = true,
 }: CollapsibleSectionProps): JSX.Element {
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [collapsed, setCollapsed] = useState(() =>
+    collapsible ? defaultCollapsed : false,
+  );
   const sectionId = useId();
   const titleId = `${sectionId}-title`;
   const contentId = `${sectionId}-content`;
   const classes = [
     'collapsible-section',
-    collapsed ? 'collapsible-section--collapsed' : '',
+    collapsible && collapsed ? 'collapsible-section--collapsed' : '',
+    !collapsible ? 'collapsible-section--static' : '',
     className,
   ]
     .filter(Boolean)
@@ -34,25 +39,27 @@ function CollapsibleSection({
           <h2 id={titleId}>{title}</h2>
           <p>{description}</p>
         </div>
-        <button
-          type="button"
-          className="collapsible-section__toggle"
-          aria-expanded={!collapsed}
-          aria-controls={contentId}
-          aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
-          onClick={() => {
-            setCollapsed((previous) => !previous);
-          }}
-        >
-          {collapsed ? 'Expand section' : 'Collapse section'}
-        </button>
+        {collapsible ? (
+          <button
+            type="button"
+            className="collapsible-section__toggle"
+            aria-expanded={!collapsed}
+            aria-controls={contentId}
+            aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+            onClick={() => {
+              setCollapsed((previous) => !previous);
+            }}
+          >
+            {collapsed ? 'Expand section' : 'Collapse section'}
+          </button>
+        ) : null}
       </header>
       <div
         id={contentId}
         className="collapsible-section__body"
         role="region"
         aria-labelledby={titleId}
-        hidden={collapsed}
+        hidden={collapsible ? collapsed : false}
       >
         {children}
       </div>

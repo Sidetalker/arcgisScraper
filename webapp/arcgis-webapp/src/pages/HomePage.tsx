@@ -493,6 +493,8 @@ function HomePage(): JSX.Element {
         title="Listing filters"
         description="Fine-tune the active dataset by complex, owner, zoning signals, and linked insights."
         className="collapsible-section--sidebar"
+        collapsible={false}
+        defaultCollapsed={false}
       >
         <FilterPanel
           filters={filters}
@@ -505,6 +507,8 @@ function HomePage(): JSX.Element {
         title="Regional explorer"
         description="Visualise filtered listings on the Summit County map and draw custom focus areas."
         className="collapsible-section--main"
+        collapsible={false}
+        defaultCollapsed={false}
       >
         <RegionMap
           regions={regions}
@@ -543,6 +547,8 @@ function HomePage(): JSX.Element {
         title="Listing results"
         description="Browse the current results set with sortable, paginated tables and column controls."
         className="collapsible-section--full"
+        collapsible={false}
+        defaultCollapsed={false}
       >
         <ListingTable
           listings={filteredListings}
