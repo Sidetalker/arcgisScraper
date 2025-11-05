@@ -494,6 +494,12 @@ export function toListingRecord(
     estimatedRenewalReference,
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
+    municipalMunicipality: null,
+    municipalLicenseId: null,
+    municipalLicenseStatus: null,
+    municipalLicenseNormalizedStatus: null,
+    municipalLicenseExpiration: null,
+    municipalLicenses: [],
     raw: attributes,
   };
 }
@@ -509,6 +515,7 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.scheduleNumber,
       listing.subdivision,
       listing.zone,
+      listing.municipalMunicipality ?? '',
       listing.mailingAddress,
     ]
       .join(' ')
@@ -539,6 +546,16 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     const listingZone = (listing.zone ?? '').toLowerCase();
     const zoneMatch = filters.zones.some((value) => listingZone === value.toLowerCase());
     if (!zoneMatch) {
+      return false;
+    }
+  }
+
+  if (filters.municipalities.length > 0) {
+    const listingMunicipality = (listing.municipalMunicipality ?? '').toLowerCase();
+    const municipalityMatch = filters.municipalities.some(
+      (value) => listingMunicipality === value.toLowerCase(),
+    );
+    if (!municipalityMatch) {
       return false;
     }
   }

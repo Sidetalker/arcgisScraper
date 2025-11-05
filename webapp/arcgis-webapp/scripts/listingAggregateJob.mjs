@@ -197,6 +197,67 @@ async function applyBusinessOwnerCorrections(supabase, listingIds, logger) {
   );
 }
 
+function normaliseScheduleNumber(value) {
+  if (!value) {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function normaliseMunicipality(value) {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  return trimmed.replace(/\s+/g, ' ');
+}
+
+const MUNICIPAL_STATUS_RANKS = new Map([
+  ['active', 5],
+  ['pending', 3],
+  ['unknown', 1],
+  ['expired', 0],
+  ['inactive', -1],
+  ['revoked', -2],
+]);
+
+function rankMunicipalStatus(status) {
+  if (!status) {
+    return MUNICIPAL_STATUS_RANKS.get('unknown');
+  }
+  return MUNICIPAL_STATUS_RANKS.get(status) ?? MUNICIPAL_STATUS_RANKS.get('unknown');
+}
+
+function isMunicipalStatusActive(status) {
+  if (!status) {
+    return false;
+  }
+  const normalised = status.toLowerCase();
+  return normalised === 'active' || normalised === 'pending';
+}
+
+function normaliseMunicipalLicenseList(value) {
+  if (!value) {
+    return null;
+  }
+  try {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : null;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function addDays(date, days) {
   const result = new Date(date.getTime());
   result.setUTCDate(result.getUTCDate() + days);
@@ -264,6 +325,65 @@ function parseDateValue(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
   return null;
+}
+
+function compareMunicipalLicenses(a, b) {
+  const rankDifference = rankMunicipalStatus(b.normalizedStatus) - rankMunicipalStatus(a.normalizedStatus);
+  if (rankDifference !== 0) {
+    return rankDifference;
+  }
+
+  const aExpiration = a.expirationDate instanceof Date ? a.expirationDate.getTime() : 0;
+  const bExpiration = b.expirationDate instanceof Date ? b.expirationDate.getTime() : 0;
+  if (aExpiration !== bExpiration) {
+    return bExpiration - aExpiration;
+  }
+
+  return a.licenseId.localeCompare(b.licenseId, undefined, { sensitivity: 'base' });
+}
+
+function selectPrimaryMunicipalLicense(licenses) {
+  if (!Array.isArray(licenses) || licenses.length === 0) {
+    return null;
+  }
+  const sorted = [...licenses].sort(compareMunicipalLicenses);
+  return sorted[0] ?? null;
+}
+
+function serialiseMunicipalLicenses(licenses) {
+  if (!Array.isArray(licenses) || licenses.length === 0) {
+    return null;
+  }
+  const sorted = [...licenses].sort(compareMunicipalLicenses);
+  return sorted.map((license) => ({
+    municipality: license.municipality,
+    license_id: license.licenseId,
+    status: license.status,
+    normalized_status: license.normalizedStatus,
+    expiration_date: license.expirationDateIso ?? null,
+    detail_url: license.detailUrl ?? null,
+    source_updated_at: license.sourceUpdatedAtIso ?? null,
+  }));
+}
+
+function normaliseMunicipalAssignmentList(list) {
+  if (!Array.isArray(list) || list.length === 0) {
+    return null;
+  }
+
+  const normalised = list
+    .map((item) => ({
+      municipality: item.municipality ?? '',
+      license_id: item.license_id ?? '',
+      status: item.status ?? '',
+      normalized_status: item.normalized_status ?? '',
+      expiration_date: item.expiration_date ?? null,
+      detail_url: item.detail_url ?? null,
+      source_updated_at: item.source_updated_at ?? null,
+    }))
+    .sort((a, b) => a.license_id.localeCompare(b.license_id, undefined, { sensitivity: 'base' }));
+
+  return JSON.stringify(normalised);
 }
 
 function classifySignalType(path) {
@@ -442,7 +562,7 @@ async function fetchListings(supabase, pageSize, logger) {
     const { data, error } = await supabase
       .from('listings')
       .select(
-        'id, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
+        'id, schedule_number, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, municipal_municipality, municipal_license_id, municipal_license_status, municipal_license_normalized_status, municipal_license_expires_on, municipal_licenses, raw',
       )
       .order('id', { ascending: true })
       .range(from, to);
@@ -464,6 +584,40 @@ async function fetchListings(supabase, pageSize, logger) {
   }
 
   return listings;
+}
+
+async function fetchMunicipalLicenses(supabase, pageSize, logger) {
+  const licenses = [];
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('municipal_licenses')
+      .select(
+        'id, schedule_number, municipality, municipal_license_id, status, normalized_status, expiration_date, source_updated_at, detail_url',
+      )
+      .order('schedule_number', { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    licenses.push(...rows);
+
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      from += pageSize;
+    }
+
+    logger.info?.(`Fetched ${licenses.length.toLocaleString()} municipal license records so far…`);
+  }
+
+  return licenses;
 }
 
 async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
@@ -515,6 +669,56 @@ async function writeZoneMetrics(supabase, rows, refreshedAt) {
   }
 
   const { error: insertError } = await supabase.from('listing_zone_metrics').insert(payload);
+  if (insertError) {
+    throw insertError;
+  }
+}
+
+async function applyMunicipalLicenseAssignments(supabase, assignments, logger) {
+  if (!assignments.length) {
+    return 0;
+  }
+
+  const chunkSize = 400;
+  for (let start = 0; start < assignments.length; start += chunkSize) {
+    const chunk = assignments.slice(start, start + chunkSize);
+    const { error } = await supabase.from('listings').upsert(chunk, { onConflict: 'id' });
+    if (error) {
+      throw error;
+    }
+  }
+
+  logger.info?.(
+    `[metrics] Updated municipal permit assignments for ${assignments.length.toLocaleString()} listings.`,
+  );
+  return assignments.length;
+}
+
+async function writeMunicipalityMetrics(supabase, rows, refreshedAt) {
+  const payload = rows.map((row) => ({
+    municipality: row.municipality,
+    total_listings: row.totalListings,
+    licensed_listing_count: row.licensedListings,
+    business_owner_count: row.businessOwners,
+    individual_owner_count: row.individualOwners,
+    updated_at: refreshedAt,
+  }));
+
+  const { error: deleteError } = await supabase
+    .from('listing_municipality_metrics')
+    .delete()
+    .neq('municipality', '');
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (payload.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from('listing_municipality_metrics')
+    .insert(payload);
   if (insertError) {
     throw insertError;
   }
@@ -633,11 +837,61 @@ export async function refreshListingAggregates(
   const listings = await fetchListings(supabase, pageSize, logger);
   logger.info?.(`[metrics] Loaded ${listings.length.toLocaleString()} listing records.`);
 
+  logger.info?.('[metrics] Fetching municipal license roster…');
+  const municipalLicenseRows = await fetchMunicipalLicenses(supabase, pageSize, logger);
+  const licensesBySchedule = new Map();
+  for (const row of municipalLicenseRows) {
+    const scheduleNumber = normaliseScheduleNumber(row.schedule_number);
+    if (!scheduleNumber) {
+      continue;
+    }
+    const municipality = normaliseMunicipality(row.municipality);
+    if (!municipality) {
+      continue;
+    }
+    const licenseId = row.municipal_license_id ? String(row.municipal_license_id).trim() : '';
+    if (!licenseId) {
+      continue;
+    }
+    const status = row.status && String(row.status).trim().length > 0 ? String(row.status).trim() : 'Unknown';
+    const normalizedStatusRaw = row.normalized_status ? String(row.normalized_status).trim().toLowerCase() : '';
+    const normalizedStatus = normalizedStatusRaw || 'unknown';
+    const expirationDate = parseDateValue(row.expiration_date);
+    const expirationDateIso = formatDate(expirationDate);
+    const sourceUpdatedAt = row.source_updated_at ? new Date(row.source_updated_at) : null;
+    const sourceUpdatedAtIso =
+      sourceUpdatedAt instanceof Date && !Number.isNaN(sourceUpdatedAt.getTime())
+        ? sourceUpdatedAt.toISOString()
+        : null;
+    const detailUrl = row.detail_url ? String(row.detail_url) : null;
+
+    const entry = {
+      municipality,
+      licenseId,
+      status,
+      normalizedStatus,
+      expirationDate,
+      expirationDateIso,
+      detailUrl,
+      sourceUpdatedAtIso,
+    };
+
+    const bucket = licensesBySchedule.get(scheduleNumber) || [];
+    bucket.push(entry);
+    licensesBySchedule.set(scheduleNumber, bucket);
+  }
+
+  logger.info?.(
+    `[metrics] Loaded ${municipalLicenseRows.length.toLocaleString()} municipal license records across ${licensesBySchedule.size.toLocaleString()} schedules.`,
+  );
+
   const subdivisions = new Map();
   const zones = new Map();
+  const municipalities = new Map();
   const owners = new Map();
   const renewalBuckets = new Map();
   const methodCounts = new Map();
+  const municipalAssignments = [];
   const summary = {
     overdue: { count: 0, windowStart: null, windowEnd: null },
     due_30: { count: 0, windowStart: null, windowEnd: null },
@@ -670,6 +924,72 @@ export async function refreshListingAggregates(
       isLikelyOrganization(owner.display),
     );
     const listingIsBusiness = Boolean(listing.is_business_owner) || inferredBusinessOwner;
+
+    const scheduleNumber = normaliseScheduleNumber(listing.schedule_number);
+    const licenseCandidates = scheduleNumber ? licensesBySchedule.get(scheduleNumber) || [] : [];
+    const primaryMunicipalLicense = selectPrimaryMunicipalLicense(licenseCandidates);
+    const serialisedMunicipalLicenses = serialiseMunicipalLicenses(licenseCandidates);
+    const existingMunicipalLicenses = normaliseMunicipalLicenseList(listing.municipal_licenses);
+    const existingMunicipalLicensesKey = existingMunicipalLicenses
+      ? normaliseMunicipalAssignmentList(existingMunicipalLicenses)
+      : null;
+    const nextMunicipalLicensesKey = serialisedMunicipalLicenses
+      ? normaliseMunicipalAssignmentList(serialisedMunicipalLicenses)
+      : null;
+
+    if (primaryMunicipalLicense) {
+      const municipalityKey = primaryMunicipalLicense.municipality;
+      const municipalStats = municipalities.get(municipalityKey) || {
+        total: 0,
+        business: 0,
+        individual: 0,
+        licensed: 0,
+      };
+      municipalStats.total += 1;
+      if (listingIsBusiness) {
+        municipalStats.business += 1;
+      } else {
+        municipalStats.individual += 1;
+      }
+      if (isMunicipalStatusActive(primaryMunicipalLicense.normalizedStatus)) {
+        municipalStats.licensed += 1;
+      }
+      municipalities.set(municipalityKey, municipalStats);
+    }
+
+    const targetMunicipality = primaryMunicipalLicense ? primaryMunicipalLicense.municipality : null;
+    const targetLicenseId = primaryMunicipalLicense ? primaryMunicipalLicense.licenseId : null;
+    const targetStatus = primaryMunicipalLicense ? primaryMunicipalLicense.status : null;
+    const targetNormalizedStatus = primaryMunicipalLicense
+      ? primaryMunicipalLicense.normalizedStatus
+      : null;
+    const targetExpiration = primaryMunicipalLicense ? primaryMunicipalLicense.expirationDateIso : null;
+
+    const existingMunicipality = listing.municipal_municipality || null;
+    const existingLicenseId = listing.municipal_license_id || null;
+    const existingStatus = listing.municipal_license_status || null;
+    const existingNormalizedStatus = listing.municipal_license_normalized_status || null;
+    const existingExpiration = formatDate(parseDateValue(listing.municipal_license_expires_on)) || null;
+
+    const shouldUpdateMunicipalAssignment =
+      (existingMunicipality || null) !== (targetMunicipality || null) ||
+      (existingLicenseId || null) !== (targetLicenseId || null) ||
+      (existingStatus || null) !== (targetStatus || null) ||
+      (existingNormalizedStatus || null) !== (targetNormalizedStatus || null) ||
+      (existingExpiration || null) !== (targetExpiration || null) ||
+      existingMunicipalLicensesKey !== nextMunicipalLicensesKey;
+
+    if (shouldUpdateMunicipalAssignment) {
+      municipalAssignments.push({
+        id: listing.id,
+        municipal_municipality: targetMunicipality,
+        municipal_license_id: targetLicenseId,
+        municipal_license_status: targetStatus,
+        municipal_license_normalized_status: targetNormalizedStatus,
+        municipal_license_expires_on: targetExpiration,
+        municipal_licenses: serialisedMunicipalLicenses,
+      });
+    }
 
     if (!listing.is_business_owner && listingIsBusiness && listing.id) {
       businessOwnerCorrections.add(listing.id);
@@ -794,6 +1114,12 @@ export async function refreshListingAggregates(
     await applyBusinessOwnerCorrections(supabase, reclassifiedBusinessIds, logger);
   }
 
+  const municipalAssignmentUpdates = await applyMunicipalLicenseAssignments(
+    supabase,
+    municipalAssignments,
+    logger,
+  );
+
   const subdivisionRows = Array.from(subdivisions.entries())
     .map(([subdivision, stats]) => ({
       subdivision,
@@ -811,6 +1137,16 @@ export async function refreshListingAggregates(
       individualOwners: stats.total - stats.business,
     }))
     .sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
+
+  const municipalityRows = Array.from(municipalities.entries())
+    .map(([municipality, stats]) => ({
+      municipality,
+      totalListings: stats.total,
+      businessOwners: stats.business,
+      individualOwners: stats.individual,
+      licensedListings: stats.licensed,
+    }))
+    .sort((a, b) => b.totalListings - a.totalListings || a.municipality.localeCompare(b.municipality));
 
   const renewalRows = Array.from(renewalBuckets.entries())
     .map(([month, bucket]) => ({
@@ -853,6 +1189,8 @@ export async function refreshListingAggregates(
   await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt);
   logger.info?.('[metrics] Writing zone distribution…');
   await writeZoneMetrics(supabase, zoneRows, refreshedAt);
+  logger.info?.('[metrics] Writing municipality distribution…');
+  await writeMunicipalityMetrics(supabase, municipalityRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal timeline…');
   await writeRenewalTimeline(supabase, renewalRows, refreshedAt);
   logger.info?.('[metrics] Writing renewal summary…');
@@ -872,6 +1210,7 @@ export async function refreshListingAggregates(
     listingsProcessed: listings.length,
     subdivisionsWritten: subdivisionRows.length,
     zonesWritten: zoneRows.length,
+    municipalitiesWritten: municipalityRows.length,
     renewalTimelineBuckets: renewalRows.length,
     renewalSummaryBuckets: summaryRows.length,
     renewalMethodBuckets: methodRows.length,
@@ -879,6 +1218,7 @@ export async function refreshListingAggregates(
     totalBusinessOwners,
     totalIndividualOwners,
     businessOwnerReclassifications: reclassifiedBusinessIds.length,
+    municipalAssignmentUpdates,
   };
 }
 

@@ -34,7 +34,7 @@ export function FilterPanel({
 
   const removeFilterValue = (key: keyof Pick<
     ListingFilters,
-    'zones' | 'subdivisions' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
+    'zones' | 'subdivisions' | 'municipalities' | 'renewalCategories' | 'renewalMethods' | 'renewalMonths'
   >,
   value: string) => {
     const nextValues = filters[key].filter((item) => item.toLowerCase() !== value.toLowerCase());
@@ -46,6 +46,7 @@ export function FilterPanel({
       ...filters,
       zones: [],
       subdivisions: [],
+      municipalities: [],
       renewalCategories: [],
       renewalMethods: [],
       renewalMonths: [],
@@ -55,6 +56,7 @@ export function FilterPanel({
   const hasInsightFilters =
     filters.zones.length > 0 ||
     filters.subdivisions.length > 0 ||
+    filters.municipalities.length > 0 ||
     filters.renewalCategories.length > 0 ||
     filters.renewalMethods.length > 0 ||
     filters.renewalMonths.length > 0;
@@ -118,6 +120,22 @@ export function FilterPanel({
                   ×
                 </span>
                 <span className="filters__chip-sr">Remove subdivision filter</span>
+              </button>
+            ))}
+            {filters.municipalities.map((value) => (
+              <button
+                key={`municipality-${value}`}
+                type="button"
+                className="filters__chip"
+                onClick={() => removeFilterValue('municipalities', value)}
+                disabled={disabled}
+              >
+                <span className="filters__chip-label">Municipality</span>
+                <span className="filters__chip-value">{value}</span>
+                <span aria-hidden="true" className="filters__chip-remove">
+                  ×
+                </span>
+                <span className="filters__chip-sr">Remove municipality filter</span>
               </button>
             ))}
             {filters.renewalCategories.map((value) => (
