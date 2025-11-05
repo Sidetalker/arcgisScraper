@@ -11,7 +11,8 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
     "test": "vitest",
-    "refresh-metrics": "node scripts/computeListingAggregates.mjs"
+    "refresh-metrics": "node scripts/computeListingAggregates.mjs",
+    "refresh-metrics-staging": "node scripts/computeListingAggregatesStaging.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
