@@ -187,7 +187,7 @@ export interface StoredListingSet {
 }
 
 const SCHEMA_CACHE_ERROR_CODE = 'PGRST204';
-const SCHEMA_CACHE_RETRY_LIMIT = 2;
+const SCHEMA_CACHE_RETRY_LIMIT = 5;
 const SCHEMA_CACHE_RETRY_DELAY_MS = 750;
 
 function wait(ms: number): Promise<void> {
@@ -353,43 +353,79 @@ function isSchemaCacheError(error: PostgrestError | null): boolean {
   return Boolean(error && error.code === SCHEMA_CACHE_ERROR_CODE);
 }
 
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  if (error instanceof TypeError) {
+    return error.message === 'Failed to fetch';
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.includes('Failed to fetch')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function selectListingChunk(
   from: number,
   to: number,
   attempt = 0,
 ): Promise<ListingRow[]> {
   const client = assertSupabaseClient();
-  const { data, error } = await client
-    .from('listings')
-    .select(LISTING_COLUMNS.join(', '))
-    .order('schedule_number', { ascending: true })
-    .range(from, to);
+  try {
+    const { data, error } = await client
+      .from('listings')
+      .select(LISTING_COLUMNS.join(', '))
+      .order('schedule_number', { ascending: true })
+      .range(from, to);
 
-  if (error) {
-    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+    if (error) {
+      if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+        await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+        return selectListingChunk(from, to, attempt + 1);
+      }
+      throw error;
+    }
+
+    return ((data ?? []) as unknown as ListingRow[]).map((row) => ({ ...row }));
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
       await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
       return selectListingChunk(from, to, attempt + 1);
     }
     throw error;
   }
-
-  return ((data ?? []) as unknown as ListingRow[]).map((row) => ({ ...row }));
 }
 
 async function deleteAllListings(attempt = 0): Promise<void> {
   const client = assertSupabaseClient();
-  const { error } = await client.from('listings').delete().neq('id', '');
-  if (!error) {
-    return;
-  }
+  try {
+    const { error } = await client.from('listings').delete().neq('id', '');
+    if (!error) {
+      return;
+    }
 
-  if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
-    await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
-    await deleteAllListings(attempt + 1);
-    return;
-  }
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await deleteAllListings(attempt + 1);
+      return;
+    }
 
-  throw error;
+    throw error;
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await deleteAllListings(attempt + 1);
+      return;
+    }
+    throw error;
+  }
 }
 
 async function insertListingChunk(
@@ -397,18 +433,29 @@ async function insertListingChunk(
   attempt = 0,
 ): Promise<void> {
   const client = assertSupabaseClient();
-  const { error } = await client.from('listings').insert(chunk);
-  if (!error) {
-    return;
-  }
+  try {
+    const { error } = await client
+      .from('listings')
+      .upsert(chunk, { onConflict: 'id' });
+    if (!error) {
+      return;
+    }
 
-  if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
-    await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
-    await insertListingChunk(chunk, attempt + 1);
-    return;
-  }
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await insertListingChunk(chunk, attempt + 1);
+      return;
+    }
 
-  throw error;
+    throw error;
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await insertListingChunk(chunk, attempt + 1);
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function fetchStoredListings(): Promise<StoredListingSet> {
