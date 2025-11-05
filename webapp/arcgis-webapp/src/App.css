@@ -36,6 +36,18 @@
   color: #475569;
 }
 
+.app__datasource-badge {
+  display: inline-block;
+  margin-top: 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: rgba(148, 163, 184, 0.18);
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
 .app__actions {
   display: flex;
   flex-direction: column;

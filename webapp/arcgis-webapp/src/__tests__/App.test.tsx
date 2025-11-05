@@ -55,6 +55,11 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: /arcgis/i })).toBeInTheDocument();
   });
 
+  it('renders the data source badge', async () => {
+    renderApp();
+    expect(await screen.findByText(/data source: october 2025/i)).toBeInTheDocument();
+  });
+
   it('renders the filter sidebar', async () => {
     renderApp();
     expect(await screen.findByLabelText(/filters/i)).toBeInTheDocument();
