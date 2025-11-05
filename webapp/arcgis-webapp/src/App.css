@@ -138,6 +138,107 @@
   align-items: start;
 }
 
+.collapsible-section {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.75rem;
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 32px -28px rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.collapsible-section:focus-within {
+  box-shadow: 0 20px 36px -28px rgba(37, 99, 235, 0.55);
+  transform: translateY(-1px);
+}
+
+.collapsible-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.collapsible-section__summary h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.4rem;
+  color: #0f172a;
+}
+
+.collapsible-section__summary p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+  max-width: 48ch;
+}
+
+.collapsible-section__toggle {
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 14px 24px -16px rgba(37, 99, 235, 0.7);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.collapsible-section__toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px -18px rgba(37, 99, 235, 0.7);
+}
+
+.collapsible-section__toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+}
+
+.collapsible-section__body {
+  margin-top: 0.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
+}
+
+.collapsible-section__body[hidden] {
+  display: none;
+}
+
+.collapsible-section--static .collapsible-section__summary {
+  flex: 1;
+}
+
+.collapsible-section--static .collapsible-section__header {
+  align-items: center;
+}
+
+.collapsible-section--sidebar {
+  grid-column: 1 / 2;
+}
+
+.collapsible-section--main {
+  grid-column: 2 / 3;
+}
+
+.collapsible-section--full {
+  grid-column: 1 / -1;
+}
+
+.collapsible-section--collapsed {
+  gap: 1rem;
+}
+
+.collapsible-section--collapsed .collapsible-section__summary p {
+  color: #64748b;
+}
+
 .app__listings {
   grid-column: 1 / -1;
   display: flex;
