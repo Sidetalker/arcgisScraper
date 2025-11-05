@@ -10,26 +10,17 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, '..');
 const VERCEL_ENV_DIR = path.join(WORKSPACE_ROOT, '.vercel');
 
-const rawArgs = new Set(process.argv.slice(2));
+const TARGET_ENVIRONMENT = (process.env.REFRESH_METRICS_ENVIRONMENT || 'development').toLowerCase();
 
-let isStaging = false;
+const SUPPORTED_ENVIRONMENTS = new Set(['development', 'staging']);
 
-if (rawArgs.has('--staging')) {
-  isStaging = true;
+if (!SUPPORTED_ENVIRONMENTS.has(TARGET_ENVIRONMENT)) {
+  console.warn(
+    `[metrics] Unknown REFRESH_METRICS_ENVIRONMENT "${TARGET_ENVIRONMENT}". Falling back to development configuration.`,
+  );
 }
 
-if (!isStaging && typeof process.env.npm_config_staging === 'string') {
-  const normalized = process.env.npm_config_staging.trim().toLowerCase();
-  if (normalized === 'true' || normalized === '1' || normalized === '') {
-    isStaging = true;
-  }
-}
-
-for (const arg of rawArgs) {
-  if (arg !== '--staging') {
-    console.warn(`Ignoring unknown flag: ${arg}`);
-  }
-}
+const resolvedEnvironment = SUPPORTED_ENVIRONMENTS.has(TARGET_ENVIRONMENT) ? TARGET_ENVIRONMENT : 'development';
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -72,7 +63,7 @@ function loadEnvFile(filePath) {
 
 const envFiles = [];
 
-if (isStaging) {
+if (resolvedEnvironment === 'staging') {
   envFiles.push('.env.staging.local', '.env.staging');
 } else {
   envFiles.push('.env.development.local', '.env.development');
@@ -88,7 +79,7 @@ for (const envFile of ['.env.local', '.env']) {
   loadEnvFile(path.join(WORKSPACE_ROOT, envFile));
 }
 
-if (isStaging) {
+if (resolvedEnvironment === 'staging') {
   console.info('[metrics] Loaded staging environment configuration.');
 } else {
   console.info('[metrics] Loaded development environment configuration.');
