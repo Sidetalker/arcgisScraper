@@ -13,7 +13,7 @@ import {
   resolveRenewalCategory,
   type RenewalEstimate,
 } from '@/services/renewalEstimator';
-import { assertSupabaseClient, reloadSupabaseSchemaCache } from '@/services/supabaseClient';
+import { assertSupabaseClient } from '@/services/supabaseClient';
 
 type Nullable<T> = T | null;
 
@@ -187,6 +187,14 @@ export interface StoredListingSet {
 }
 
 const SCHEMA_CACHE_ERROR_CODE = 'PGRST204';
+const SCHEMA_CACHE_RETRY_LIMIT = 2;
+const SCHEMA_CACHE_RETRY_DELAY_MS = 750;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 function toListingRow(record: ListingRecord): ListingRow {
   return {
@@ -358,8 +366,8 @@ async function selectListingChunk(
     .range(from, to);
 
   if (error) {
-    if (isSchemaCacheError(error) && attempt === 0) {
-      await reloadSupabaseSchemaCache();
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
       return selectListingChunk(from, to, attempt + 1);
     }
     throw error;
@@ -375,8 +383,8 @@ async function deleteAllListings(attempt = 0): Promise<void> {
     return;
   }
 
-  if (isSchemaCacheError(error) && attempt === 0) {
-    await reloadSupabaseSchemaCache();
+  if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+    await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
     await deleteAllListings(attempt + 1);
     return;
   }
@@ -394,8 +402,8 @@ async function insertListingChunk(
     return;
   }
 
-  if (isSchemaCacheError(error) && attempt === 0) {
-    await reloadSupabaseSchemaCache();
+  if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+    await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
     await insertListingChunk(chunk, attempt + 1);
     return;
   }
