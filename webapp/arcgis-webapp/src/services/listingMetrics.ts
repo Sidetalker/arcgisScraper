@@ -1,3 +1,5 @@
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import { assertSupabaseClient } from '@/services/supabaseClient';
 
 const METRICS_REFRESH_TOKEN =
@@ -190,50 +192,82 @@ const RENEWAL_SUMMARY_VIEW = 'listing_renewal_summary_view';
 const RENEWAL_METHOD_VIEW = 'listing_renewal_method_breakdown';
 const LAND_BARON_VIEW = 'land_baron_leaderboard_view';
 
-export async function fetchListingMetrics(): Promise<ListingMetrics> {
-  const client = assertSupabaseClient();
+const SCHEMA_CACHE_ERROR_CODES = new Set(['PGRST204', 'PGRST205']);
+const SCHEMA_CACHE_RETRY_LIMIT = 5;
+const SCHEMA_CACHE_RETRY_DELAY_MS = 750;
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function isSchemaCacheError(error: PostgrestError | null): boolean {
+  return Boolean(error && typeof error.code === 'string' && SCHEMA_CACHE_ERROR_CODES.has(error.code));
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  if (error instanceof TypeError) {
+    return error.message === 'Failed to fetch';
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.includes('Failed to fetch')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function selectAllRows<T>(view: string, attempt = 0): Promise<T[]> {
+  const client = assertSupabaseClient();
+  try {
+    const { data, error } = await client.from(view).select('*');
+
+    if (error) {
+      if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+        await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+        return selectAllRows<T>(view, attempt + 1);
+      }
+      throw error;
+    }
+
+    return Array.isArray(data) ? (data as T[]) : [];
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      return selectAllRows<T>(view, attempt + 1);
+    }
+    throw error;
+  }
+}
+
+export async function fetchListingMetrics(): Promise<ListingMetrics> {
   const [
-    subdivisionsResult,
-    zonesResult,
-    municipalitiesResult,
-    renewalTimelineResult,
-    renewalSummaryResult,
-    renewalMethodResult,
-    landBaronResult,
+    subdivisionsRows,
+    zonesRows,
+    municipalitiesRows,
+    renewalTimelineRows,
+    renewalSummaryRows,
+    renewalMethodRows,
+    landBaronRows,
   ] = await Promise.all([
-    client.from(SUBDIVISION_VIEW).select('*'),
-    client.from(ZONE_VIEW).select('*'),
-    client.from(MUNICIPALITY_VIEW).select('*'),
-    client.from(RENEWAL_TIMELINE_VIEW).select('*'),
-    client.from(RENEWAL_SUMMARY_VIEW).select('*'),
-    client.from(RENEWAL_METHOD_VIEW).select('*'),
-    client.from(LAND_BARON_VIEW).select('*'),
+    selectAllRows<RawSubdivisionMetric>(SUBDIVISION_VIEW),
+    selectAllRows<RawZoneMetric>(ZONE_VIEW),
+    selectAllRows<RawMunicipalityMetric>(MUNICIPALITY_VIEW),
+    selectAllRows<RawRenewalMetric>(RENEWAL_TIMELINE_VIEW),
+    selectAllRows<RawRenewalSummaryMetric>(RENEWAL_SUMMARY_VIEW),
+    selectAllRows<RawRenewalMethodMetric>(RENEWAL_METHOD_VIEW),
+    selectAllRows<RawLandBaronMetric>(LAND_BARON_VIEW),
   ]);
 
-  if (subdivisionsResult.error) {
-    throw subdivisionsResult.error;
-  }
-  if (zonesResult.error) {
-    throw zonesResult.error;
-  }
-  if (municipalitiesResult.error) {
-    throw municipalitiesResult.error;
-  }
-  if (renewalTimelineResult.error) {
-    throw renewalTimelineResult.error;
-  }
-  if (renewalSummaryResult.error) {
-    throw renewalSummaryResult.error;
-  }
-  if (renewalMethodResult.error) {
-    throw renewalMethodResult.error;
-  }
-  if (landBaronResult.error) {
-    throw landBaronResult.error;
-  }
-
-  const subdivisions: SubdivisionMetric[] = (subdivisionsResult.data as RawSubdivisionMetric[] | null | undefined)?.map(
+  const subdivisions: SubdivisionMetric[] = subdivisionsRows.map(
     (row) => ({
       subdivision: row.subdivision && row.subdivision.trim().length > 0 ? row.subdivision : 'Unknown subdivision',
       totalListings: typeof row.total_listings === 'number' ? row.total_listings : 0,
@@ -243,13 +277,11 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
     }),
   ) ?? [];
 
-  const zones: ZoneMetric[] = parseZoneMetrics(zonesResult.data as RawZoneMetric[] | null | undefined);
+  const zones: ZoneMetric[] = parseZoneMetrics(zonesRows);
 
-  const municipalities: MunicipalityMetric[] = parseMunicipalityMetrics(
-    municipalitiesResult.data as RawMunicipalityMetric[] | null | undefined,
-  );
+  const municipalities: MunicipalityMetric[] = parseMunicipalityMetrics(municipalitiesRows);
 
-  const renewalTimeline: RenewalMetric[] = (renewalTimelineResult.data as RawRenewalMetric[] | null | undefined)?.map(
+  const renewalTimeline: RenewalMetric[] = renewalTimelineRows.map(
     (row) => {
       const parsedMonth = parseDate(row.renewal_month) ?? new Date(row.renewal_month);
       const safeMonth = Number.isNaN(parsedMonth.getTime()) ? new Date() : parsedMonth;
@@ -261,27 +293,23 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
         updatedAt: parseDate(row.updated_at),
       };
     },
-  ) ?? [];
+  );
 
-  const renewalSummary: RenewalSummaryMetric[] = (renewalSummaryResult.data as RawRenewalSummaryMetric[] | null | undefined)?.map(
-    (row) => ({
-      category: row.category,
-      listingCount: typeof row.listing_count === 'number' ? row.listing_count : 0,
-      windowStart: parseDate(row.window_start),
-      windowEnd: parseDate(row.window_end),
-      updatedAt: parseDate(row.updated_at),
-    }),
-  ) ?? [];
+  const renewalSummary: RenewalSummaryMetric[] = renewalSummaryRows.map((row) => ({
+    category: row.category,
+    listingCount: typeof row.listing_count === 'number' ? row.listing_count : 0,
+    windowStart: parseDate(row.window_start),
+    windowEnd: parseDate(row.window_end),
+    updatedAt: parseDate(row.updated_at),
+  }));
 
-  const renewalMethods: RenewalMethodMetric[] = (renewalMethodResult.data as RawRenewalMethodMetric[] | null | undefined)?.map(
-    (row) => ({
-      method: row.method,
-      listingCount: typeof row.listing_count === 'number' ? row.listing_count : 0,
-      updatedAt: parseDate(row.updated_at),
-    }),
-  ) ?? [];
+  const renewalMethods: RenewalMethodMetric[] = renewalMethodRows.map((row) => ({
+    method: row.method,
+    listingCount: typeof row.listing_count === 'number' ? row.listing_count : 0,
+    updatedAt: parseDate(row.updated_at),
+  }));
 
-  const landBarons: LandBaronMetric[] = (landBaronResult.data as RawLandBaronMetric[] | null | undefined)?.map((row) => ({
+  const landBarons: LandBaronMetric[] = landBaronRows.map((row) => ({
     ownerName:
       row.owner_name && row.owner_name.trim().length > 0 ? row.owner_name.trim() : 'Unknown owner',
     propertyCount: typeof row.property_count === 'number' ? row.property_count : 0,
@@ -290,7 +318,7 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
     individualPropertyCount:
       typeof row.individual_property_count === 'number' ? row.individual_property_count : 0,
     updatedAt: parseDate(row.updated_at),
-  })) ?? [];
+  }));
 
   subdivisions.sort((a, b) => b.totalListings - a.totalListings || a.subdivision.localeCompare(b.subdivision));
   zones.sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
@@ -313,15 +341,9 @@ export async function fetchListingMetrics(): Promise<ListingMetrics> {
 }
 
 export async function fetchZoneMetrics(): Promise<ZoneMetric[]> {
-  const client = assertSupabaseClient();
+  const rows = await selectAllRows<RawZoneMetric>(ZONE_VIEW);
 
-  const { data, error } = await client.from(ZONE_VIEW).select('*');
-
-  if (error) {
-    throw error;
-  }
-
-  const zones = parseZoneMetrics(data as RawZoneMetric[] | null | undefined);
+  const zones = parseZoneMetrics(rows);
   zones.sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
   return zones;
 }
