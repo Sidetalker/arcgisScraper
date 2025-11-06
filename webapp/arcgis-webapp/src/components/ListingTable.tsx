@@ -18,6 +18,11 @@ import {
   type ListingTableColumnFilters,
   type ListingTableColumnKey,
 } from '@/constants/listingTable';
+import {
+  filterListingsByColumnFilters,
+  normalizeText,
+  toUniqueOwners,
+} from '@/utils/listingColumnFilters';
 import type { ListingRecord } from '@/types';
 
 interface ListingTableProps {
@@ -46,43 +51,6 @@ interface ColumnDefinition {
   getFilterValue: (listing: ListingRecord) => string;
   getExportValue: (listing: ListingRecord) => string;
   filterType?: 'text' | 'boolean';
-}
-
-function toUniqueOwners(listing: ListingRecord): string[] {
-  return Array.from(
-    new Set(
-      listing.ownerNames
-        .map((name) => name.trim())
-        .filter((name) => name.length > 0),
-    ),
-  );
-}
-
-function normalizeText(value: string | null | undefined): string {
-  if (!value) {
-    return '';
-  }
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-function fuzzyMatch(haystack: string, needle: string): boolean {
-  const query = needle.trim().toLowerCase();
-  if (query.length === 0) {
-    return true;
-  }
-
-  const source = haystack.toLowerCase();
-  let position = 0;
-
-  for (const char of query) {
-    const foundIndex = source.indexOf(char, position);
-    if (foundIndex === -1) {
-      return false;
-    }
-    position = foundIndex + 1;
-  }
-
-  return true;
 }
 
 const COLUMN_DEFINITIONS: ColumnDefinition[] = [
@@ -325,32 +293,8 @@ export function ListingTable({
   );
 
   const filteredListings = useMemo(() => {
-    const activeEntries = Object.entries(columnFilters).filter(([, value]) => value.trim().length > 0) as [
-      ColumnKey,
-      string,
-    ][];
-
-    if (activeEntries.length === 0) {
-      return listings;
-    }
-
-    return listings.filter((listing) =>
-      activeEntries.every(([columnKey, query]) => {
-        const column = columnDefinitionMap.get(columnKey);
-        if (!column) {
-          return true;
-        }
-        if (column.filterType === 'boolean') {
-          if (query === 'all') {
-            return true;
-          }
-          const candidate = column.getFilterValue(listing);
-          return candidate === query;
-        }
-        return fuzzyMatch(column.getFilterValue(listing), query);
-      }),
-    );
-  }, [columnDefinitionMap, columnFilters, listings]);
+    return filterListingsByColumnFilters(listings, columnFilters);
+  }, [columnFilters, listings]);
 
   const fallbackPageSize = filteredListings.length > 0 ? filteredListings.length : 1;
   const resolvedPageSize =

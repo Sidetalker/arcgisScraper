@@ -33,6 +33,7 @@ import type {
   ListingFilters,
   RegionShape,
 } from '@/types';
+import { filterListingsByColumnFilters } from '@/utils/listingColumnFilters';
 
 const LOCAL_PROFILE_STORAGE_KEY = 'arcgis-config-profile:v1';
 const DEFAULT_PROFILE_NAME = 'Untitled profile';
@@ -226,19 +227,27 @@ function HomePage(): JSX.Element {
     });
   }, [filteredByFilters, regions]);
 
+  const columnFilteredListings = useMemo(() => {
+    return filterListingsByColumnFilters(filteredListings, tableState.columnFilters);
+  }, [filteredListings, tableState.columnFilters]);
+
+  const allColumnFilteredListings = useMemo(() => {
+    return filterListingsByColumnFilters(filteredByFilters, tableState.columnFilters);
+  }, [filteredByFilters, tableState.columnFilters]);
+
   const regionListings = useMemo(() => {
-    return regions.length > 0 ? filteredListings : [];
-  }, [filteredListings, regions.length]);
+    return regions.length > 0 ? columnFilteredListings : [];
+  }, [columnFilteredListings, regions.length]);
 
   useEffect(() => {
     if (!highlightedListingId) {
       return;
     }
-    const exists = filteredListings.some((listing) => listing.id === highlightedListingId);
+    const exists = columnFilteredListings.some((listing) => listing.id === highlightedListingId);
     if (!exists) {
       setHighlightedListingId(null);
     }
-  }, [filteredListings, highlightedListingId]);
+  }, [columnFilteredListings, highlightedListingId]);
 
   useEffect(() => {
     void loadProfiles();
@@ -476,7 +485,7 @@ function HomePage(): JSX.Element {
 
   const handleListingFocus = useCallback(
     (listingId: string) => {
-      const index = filteredListings.findIndex((listing) => listing.id === listingId);
+      const index = columnFilteredListings.findIndex((listing) => listing.id === listingId);
       if (index === -1) {
         return;
       }
@@ -484,7 +493,7 @@ function HomePage(): JSX.Element {
       setCurrentPage(targetPage);
       setHighlightedListingId(listingId);
     },
-    [filteredListings, pageSize],
+    [columnFilteredListings, pageSize],
   );
 
   return (
@@ -514,9 +523,9 @@ function HomePage(): JSX.Element {
           regions={regions}
           onRegionsChange={handleRegionsChange}
           listings={regionListings}
-          allListings={filteredByFilters}
+          allListings={allColumnFilteredListings}
           onListingSelect={handleListingFocus}
-          totalListingCount={filteredByFilters.length}
+          totalListingCount={allColumnFilteredListings.length}
         />
       </CollapsibleSection>
       <CollapsibleSection
