@@ -10,13 +10,18 @@ import {
 
 import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
-import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
+import {
+  fetchStoredListings,
+  replaceAllListings,
+  updateListingFavorite as updateListingFavoriteFlag,
+} from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
 import {
   cloneRegionShape,
   normaliseRegionList,
   regionsAreEqual,
 } from '@/services/regionShapes';
+import { isSupabaseConfigured } from '@/services/supabaseClient';
 import type { ListingRecord, RegionShape } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
@@ -30,11 +35,13 @@ export interface ListingsContextValue {
   localCachedAt: Date | null;
   isLocalCacheStale: boolean;
   source: 'local' | 'supabase' | 'syncing' | 'unknown';
+  supabaseConfigured: boolean;
   onRegionsChange: (nextRegions: RegionShape[]) => void;
   refresh: () => void;
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
   clearCacheAndReload: () => Promise<void>;
+  updateListingFavorite: (listingId: string, isFavorited: boolean) => Promise<void>;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -48,6 +55,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
+  const [supabaseConfigured, setSupabaseConfigured] = useState<boolean>(isSupabaseConfigured);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -146,6 +154,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     setError(null);
     try {
       const { records, latestUpdatedAt } = await fetchStoredListings();
+      setSupabaseConfigured(true);
       applyListingSnapshot(records, latestUpdatedAt ?? null, null);
       await persistLocalCache(records, latestUpdatedAt ?? null);
     } catch (loadError) {
@@ -155,6 +164,12 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
           ? loadError.message
           : 'Unable to load listings from Supabase.';
       setError(message);
+      if (
+        loadError instanceof Error &&
+        loadError.message.includes('Supabase client is not initialised')
+      ) {
+        setSupabaseConfigured(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -241,6 +256,54 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, [applyListingSnapshot, persistLocalCache]);
 
+  const updateFavorite = useCallback(
+    async (listingId: string, isFavorited: boolean) => {
+      setListings((current) =>
+        current.map((listing) =>
+          listing.id === listingId ? { ...listing, isFavorited } : listing,
+        ),
+      );
+
+      try {
+        const { record, updatedAt } = await updateListingFavoriteFlag(listingId, isFavorited);
+        setListings((current) => {
+          const nextListings = current.map((listing) =>
+            listing.id === listingId
+              ? { ...listing, isFavorited: record.isFavorited }
+              : listing,
+          );
+          void persistLocalCache(nextListings, updatedAt ?? cachedAt);
+          return nextListings;
+        });
+        setCachedAt((previous) => {
+          if (!updatedAt) {
+            return previous;
+          }
+          if (!previous || updatedAt > previous) {
+            return updatedAt;
+          }
+          return previous;
+        });
+        setSupabaseConfigured(true);
+      } catch (error) {
+        console.error('Failed to update favorite state in Supabase.', error);
+        setListings((current) =>
+          current.map((listing) =>
+            listing.id === listingId ? { ...listing, isFavorited: !isFavorited } : listing,
+          ),
+        );
+        if (
+          error instanceof Error &&
+          error.message.includes('Supabase client is not initialised')
+        ) {
+          setSupabaseConfigured(false);
+        }
+        throw error instanceof Error ? error : new Error('Failed to update favorite state.');
+      }
+    },
+    [persistLocalCache, cachedAt],
+  );
+
   const isLocalCacheStale = useMemo(() => {
     if (!localCachedAt || !cachedAt) {
       return false;
@@ -258,16 +321,19 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       localCachedAt,
       isLocalCacheStale,
       source,
+      supabaseConfigured,
       onRegionsChange: handleRegionsChange,
       refresh,
       syncing,
       syncFromArcgis,
+      updateListingFavorite: updateFavorite,
       clearCacheAndReload,
     }),
     [
       cachedAt,
       error,
       handleRegionsChange,
+      supabaseConfigured,
       listings,
       loading,
       localCachedAt,
@@ -278,6 +344,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       regions,
       syncing,
       syncFromArcgis,
+      updateFavorite,
     ],
   );
 

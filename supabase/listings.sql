@@ -20,6 +20,7 @@ create table if not exists public.listings (
   public_detail_url text,
   physical_address text,
   is_business_owner boolean,
+  is_favorited boolean not null default false,
   latitude double precision,
   longitude double precision,
   estimated_renewal_date date,
@@ -41,6 +42,9 @@ create index if not exists listings_subdivision_idx
 
 create index if not exists listings_zone_idx
   on public.listings (zone);
+
+create index if not exists listings_is_favorited_idx
+  on public.listings (is_favorited);
 
 create index if not exists listings_estimated_renewal_month_key_idx
   on public.listings (estimated_renewal_month_key);

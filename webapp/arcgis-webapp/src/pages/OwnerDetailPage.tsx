@@ -28,12 +28,13 @@ function OwnerDetailPage(): JSX.Element {
   const { ownerId } = useParams<{ ownerId: string }>();
   const ownerName = decodeParam(ownerId);
 
-  const { listings, loading, error } = useListings();
+  const { listings, loading, error, supabaseConfigured, updateListingFavorite } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [tableState, setTableState] = useState(createDefaultTableState);
+  const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
 
   const normalizedOwner = useMemo(() => ownerName.trim().toLowerCase(), [ownerName]);
 
@@ -105,6 +106,28 @@ function OwnerDetailPage(): JSX.Element {
     }));
   }, []);
 
+  const handleFavoriteChange = useCallback(
+    async (listingId: string, isFavorited: boolean) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(favoritesDisabledMessage);
+        throw new Error(favoritesDisabledMessage);
+      }
+
+      try {
+        await updateListingFavorite(listingId, isFavorited);
+        setStatusMessage(
+          isFavorited ? 'Listing added to favorites.' : 'Listing removed from favorites.',
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to update favorite status.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
+  );
+
   return (
     <>
       <div className="detail-sidebar">
@@ -138,6 +161,9 @@ function OwnerDetailPage(): JSX.Element {
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onFavoriteChange={handleFavoriteChange}
+          canToggleFavorites={supabaseConfigured}
+          favoriteDisabledReason={favoritesDisabledMessage}
         />
       </div>
     </>

@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
 
 import './App.css';
 
 import HomePage from '@/pages/HomePage';
 import ComplexDetailPage from '@/pages/ComplexDetailPage';
+import FavoritesPage from '@/pages/FavoritesPage';
 import OwnerDetailPage from '@/pages/OwnerDetailPage';
 import PasswordModal from '@/components/PasswordModal';
 import { useListings } from '@/context/ListingsContext';
@@ -152,6 +153,22 @@ function Layout(): JSX.Element {
         </div>
       </header>
 
+      <nav className="app__tabs" aria-label="Listing views">
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) => `app__tab${isActive ? ' app__tab--active' : ''}`}
+        >
+          All listings
+        </NavLink>
+        <NavLink
+          to="/favorites"
+          className={({ isActive }) => `app__tab${isActive ? ' app__tab--active' : ''}`}
+        >
+          Favorites
+        </NavLink>
+      </nav>
+
       <section className="app__status" role="status" aria-live="polite">
         {statusMessage}
       </section>
@@ -181,6 +198,7 @@ function App(): JSX.Element {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/complex/:complexId" element={<ComplexDetailPage />} />
         <Route path="/owner/:ownerId" element={<OwnerDetailPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

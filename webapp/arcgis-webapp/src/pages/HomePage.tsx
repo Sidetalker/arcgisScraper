@@ -27,7 +27,6 @@ import {
   normaliseRegionList,
   regionsAreEqual,
 } from '@/services/regionShapes';
-import { supabase } from '@/services/supabaseClient';
 import type {
   ConfigurationProfile,
   ListingFilters,
@@ -112,7 +111,17 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
 }
 
 function HomePage(): JSX.Element {
-  const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
+  const {
+    listings,
+    loading,
+    error,
+    regions,
+    onRegionsChange,
+    cachedAt,
+    source,
+    supabaseConfigured,
+    updateListingFavorite,
+  } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -128,7 +137,7 @@ function HomePage(): JSX.Element {
   const [localProfileName, setLocalProfileName] = useState(DEFAULT_PROFILE_NAME);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const supabaseAvailable = Boolean(supabase);
+  const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
 
   const handleRegionsChange = useCallback(
     (nextRegions: RegionShape[]) => {
@@ -179,8 +188,30 @@ function HomePage(): JSX.Element {
     [],
   );
 
+  const handleFavoriteChange = useCallback(
+    async (listingId: string, isFavorited: boolean) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(favoritesDisabledMessage);
+        throw new Error(favoritesDisabledMessage);
+      }
+
+      try {
+        await updateListingFavorite(listingId, isFavorited);
+        setStatusMessage(
+          isFavorited ? 'Listing added to favorites.' : 'Listing removed from favorites.',
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to update favorite status.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
+  );
+
   const loadProfiles = useCallback(async () => {
-    if (!supabaseAvailable) {
+    if (!supabaseConfigured) {
       setProfiles([]);
       setProfilesError(
         'Supabase client is not configured. Set Supabase environment variables to enable shared profiles.',
@@ -203,7 +234,7 @@ function HomePage(): JSX.Element {
     } finally {
       setProfilesLoading(false);
     }
-  }, [supabaseAvailable]);
+  }, [supabaseConfigured]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -357,7 +388,7 @@ function HomePage(): JSX.Element {
 
   const persistProfile = useCallback(
     async (options?: { duplicate?: boolean }) => {
-      if (!supabaseAvailable) {
+      if (!supabaseConfigured) {
         setProfilesError('Supabase client is not configured. Unable to save configuration profiles.');
         return;
       }
@@ -407,7 +438,7 @@ function HomePage(): JSX.Element {
       filters,
       localProfileId,
       regions,
-      supabaseAvailable,
+      supabaseConfigured,
       trimmedProfileName,
       tableState,
     ],
@@ -489,27 +520,15 @@ function HomePage(): JSX.Element {
 
   return (
     <>
-      <CollapsibleSection
-        title="Listing filters"
-        description="Fine-tune the active dataset by complex, owner, zoning signals, and linked insights."
-        className="collapsible-section--sidebar"
-        collapsible={false}
-        defaultCollapsed={false}
-      >
+      <section className="app__section app__section--sidebar">
         <FilterPanel
           filters={filters}
           onChange={handleFiltersChange}
           disabled={loading}
           onReset={handleResetFilters}
         />
-      </CollapsibleSection>
-      <CollapsibleSection
-        title="Regional explorer"
-        description="Visualise filtered listings on the Summit County map and draw custom focus areas."
-        className="collapsible-section--main"
-        collapsible={false}
-        defaultCollapsed={false}
-      >
+      </section>
+      <section className="app__section app__section--main">
         <RegionMap
           regions={regions}
           onRegionsChange={handleRegionsChange}
@@ -518,7 +537,7 @@ function HomePage(): JSX.Element {
           onListingSelect={handleListingFocus}
           totalListingCount={filteredByFilters.length}
         />
-      </CollapsibleSection>
+      </section>
       <CollapsibleSection
         title="Saved configuration profiles"
         description="Capture and recall map shapes, filters, and column settings. Profiles sync through Supabase when available."
@@ -540,7 +559,7 @@ function HomePage(): JSX.Element {
           onSaveProfileAsNew={handleSaveProfileAsNew}
           onCreateProfile={handleCreateProfile}
           onRefreshProfiles={handleRefreshProfiles}
-          supabaseAvailable={supabaseAvailable}
+          supabaseAvailable={supabaseConfigured}
         />
       </CollapsibleSection>
       <CollapsibleSection
@@ -565,6 +584,9 @@ function HomePage(): JSX.Element {
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onFavoriteChange={handleFavoriteChange}
+          canToggleFavorites={supabaseConfigured}
+          favoriteDisabledReason={favoritesDisabledMessage}
         />
       </CollapsibleSection>
       <CollapsibleSection
@@ -573,7 +595,7 @@ function HomePage(): JSX.Element {
         className="collapsible-section--full"
       >
         <ListingInsights
-          supabaseAvailable={supabaseAvailable}
+          supabaseAvailable={supabaseConfigured}
           filters={filters}
           onFiltersChange={handleFiltersChange}
         />
