@@ -1,3 +1,9 @@
+import {
+  fetchMunicipalLicenseRecords,
+  normaliseMunicipalRecordForSupabase,
+  summariseMunicipalLicenses,
+} from './municipalRosters.mjs';
+
 const NON_PERSON_DATA_URL = new URL('../src/data/nonPersonOwnerNames.json', import.meta.url);
 
 async function loadJsonResource(resourceUrl) {
@@ -20,6 +26,9 @@ const nonPersonOwnerNames = await loadJsonResource(NON_PERSON_DATA_URL);
 const PAGE_SIZE = 1000;
 const MAX_SIGNAL_DEPTH = 4;
 const MAX_SIGNAL_ARRAY_LENGTH = 25;
+const SCHEMA_CACHE_ERROR_CODES = new Set(['PGRST204', 'PGRST205']);
+const SCHEMA_CACHE_RETRY_LIMIT = 5;
+const SCHEMA_CACHE_RETRY_DELAY_MS = 750;
 
 const DATE_KEY_HINT = /(date|dt|year|record|recept|sale|deed|permit|license|renew|transfer|expir|assess|valuation|updated|entered|filed|document)/i;
 const DATE_VALUE_HINT = /(\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{2}|\d{4}))|((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+(?:\d{2}|\d{4}))|(\b(19|20)\d{2}\b)/i;
@@ -184,13 +193,11 @@ async function applyBusinessOwnerCorrections(supabase, listingIds, logger) {
   const batchSize = 500;
   for (let index = 0; index < listingIds.length; index += batchSize) {
     const batch = listingIds.slice(index, index + batchSize);
-    const { error } = await supabase
-      .from('listings')
-      .update({ is_business_owner: true })
-      .in('id', batch);
-    if (error) {
-      throw error;
-    }
+    await withSupabaseRetry(
+      () => supabase.from('listings').update({ is_business_owner: true }).in('id', batch),
+      `mark business-owned listings batch ${index + 1}-${index + batch.length}`,
+      logger,
+    );
   }
   logger.info?.(
     `[metrics] Marked ${listingIds.length.toLocaleString()} listings as business-owned via heuristics.`,
@@ -559,17 +566,18 @@ async function fetchListings(supabase, pageSize, logger) {
 
   while (hasMore) {
     const to = from + pageSize - 1;
-    const { data, error } = await supabase
-      .from('listings')
-      .select(
-        'id, schedule_number, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, municipal_municipality, municipal_license_id, municipal_license_status, municipal_license_normalized_status, municipal_license_expires_on, municipal_licenses, raw',
-      )
-      .order('id', { ascending: true })
-      .range(from, to);
-
-    if (error) {
-      throw error;
-    }
+    const { data } = await withSupabaseRetry(
+      () =>
+        supabase
+          .from('listings')
+          .select(
+            'id, schedule_number, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, municipal_municipality, municipal_license_id, municipal_license_status, municipal_license_normalized_status, municipal_license_expires_on, municipal_licenses, raw',
+          )
+          .order('id', { ascending: true })
+          .range(from, to),
+      `fetch listings range ${from}-${to}`,
+      logger,
+    );
 
     const rows = Array.isArray(data) ? data : [];
     listings.push(...rows);
@@ -593,17 +601,18 @@ async function fetchMunicipalLicenses(supabase, pageSize, logger) {
 
   while (hasMore) {
     const to = from + pageSize - 1;
-    const { data, error } = await supabase
-      .from('municipal_licenses')
-      .select(
-        'id, schedule_number, municipality, municipal_license_id, status, normalized_status, expiration_date, source_updated_at, detail_url',
-      )
-      .order('schedule_number', { ascending: true })
-      .range(from, to);
-
-    if (error) {
-      throw error;
-    }
+    const { data } = await withSupabaseRetry(
+      () =>
+        supabase
+          .from('municipal_licenses')
+          .select(
+            'id, schedule_number, municipality, municipal_license_id, status, normalized_status, expiration_date, source_updated_at, detail_url',
+          )
+          .order('schedule_number', { ascending: true })
+          .range(from, to),
+      `fetch municipal licenses range ${from}-${to}`,
+      logger,
+    );
 
     const rows = Array.isArray(data) ? data : [];
     licenses.push(...rows);
@@ -620,7 +629,7 @@ async function fetchMunicipalLicenses(supabase, pageSize, logger) {
   return licenses;
 }
 
-async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
+async function writeSubdivisionMetrics(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     subdivision: row.subdivision,
     total_listings: row.totalListings,
@@ -629,25 +638,24 @@ async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_subdivision_metrics')
-    .delete()
-    .neq('subdivision', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_subdivision_metrics').delete().neq('subdivision', ''),
+    'clear subdivision metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_subdivision_metrics').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_subdivision_metrics').insert(payload),
+    'insert subdivision metrics',
+    logger,
+  );
 }
 
-async function writeZoneMetrics(supabase, rows, refreshedAt) {
+async function writeZoneMetrics(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     zone: row.zone,
     total_listings: row.totalListings,
@@ -656,22 +664,21 @@ async function writeZoneMetrics(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_zone_metrics')
-    .delete()
-    .neq('zone', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_zone_metrics').delete().neq('zone', ''),
+    'clear zone metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_zone_metrics').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_zone_metrics').insert(payload),
+    'insert zone metrics',
+    logger,
+  );
 }
 
 async function applyMunicipalLicenseAssignments(supabase, assignments, logger) {
@@ -682,10 +689,11 @@ async function applyMunicipalLicenseAssignments(supabase, assignments, logger) {
   const chunkSize = 400;
   for (let start = 0; start < assignments.length; start += chunkSize) {
     const chunk = assignments.slice(start, start + chunkSize);
-    const { error } = await supabase.from('listings').upsert(chunk, { onConflict: 'id' });
-    if (error) {
-      throw error;
-    }
+    await withSupabaseRetry(
+      () => supabase.from('listings').upsert(chunk, { onConflict: 'id' }),
+      `upsert municipal license assignments ${start + 1}-${start + chunk.length}`,
+      logger,
+    );
   }
 
   logger.info?.(
@@ -694,7 +702,7 @@ async function applyMunicipalLicenseAssignments(supabase, assignments, logger) {
   return assignments.length;
 }
 
-async function writeMunicipalityMetrics(supabase, rows, refreshedAt) {
+async function writeMunicipalityMetrics(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     municipality: row.municipality,
     total_listings: row.totalListings,
@@ -704,27 +712,24 @@ async function writeMunicipalityMetrics(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_municipality_metrics')
-    .delete()
-    .neq('municipality', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_municipality_metrics').delete().neq('municipality', ''),
+    'clear municipality metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase
-    .from('listing_municipality_metrics')
-    .insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_municipality_metrics').insert(payload),
+    'insert municipality metrics',
+    logger,
+  );
 }
 
-async function writeRenewalTimeline(supabase, rows, refreshedAt) {
+async function writeRenewalTimeline(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     renewal_month: row.month,
     listing_count: row.count,
@@ -733,25 +738,24 @@ async function writeRenewalTimeline(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_renewal_metrics')
-    .delete()
-    .neq('renewal_month', '1900-01-01');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_metrics').delete().neq('renewal_month', '1900-01-01'),
+    'clear renewal timeline metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_renewal_metrics').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_metrics').insert(payload),
+    'insert renewal timeline metrics',
+    logger,
+  );
 }
 
-async function writeRenewalSummary(supabase, rows, refreshedAt) {
+async function writeRenewalSummary(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     category: row.category,
     listing_count: row.count,
@@ -760,47 +764,48 @@ async function writeRenewalSummary(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_renewal_summary')
-    .delete()
-    .neq('category', '__placeholder__');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_summary').delete().neq('category', '__placeholder__'),
+    'clear renewal summary metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_renewal_summary').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_summary').insert(payload),
+    'insert renewal summary metrics',
+    logger,
+  );
 }
 
-async function writeRenewalMethodSummary(supabase, rows, refreshedAt) {
+async function writeRenewalMethodSummary(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     method: row.method,
     listing_count: row.count,
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase.from('listing_renewal_method_summary').delete().neq('method', '__placeholder__');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_method_summary').delete().neq('method', '__placeholder__'),
+    'clear renewal method summary',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_renewal_method_summary').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_method_summary').insert(payload),
+    'insert renewal method summary',
+    logger,
+  );
 }
 
-async function writeLandBaronLeaderboard(supabase, rows, refreshedAt) {
+async function writeLandBaronLeaderboard(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     owner_name: row.ownerName,
     property_count: row.propertyCount,
@@ -809,22 +814,113 @@ async function writeLandBaronLeaderboard(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('land_baron_leaderboard')
-    .delete()
-    .neq('owner_name', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('land_baron_leaderboard').delete().neq('owner_name', ''),
+    'clear land baron leaderboard',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('land_baron_leaderboard').insert(payload);
-  if (insertError) {
-    throw insertError;
+  await withSupabaseRetry(
+    () => supabase.from('land_baron_leaderboard').insert(payload),
+    'insert land baron leaderboard',
+    logger,
+  );
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isSchemaCacheError(error) {
+  return Boolean(error && typeof error.code === 'string' && SCHEMA_CACHE_ERROR_CODES.has(error.code));
+}
+
+function isRetryableNetworkError(error) {
+  if (!error) {
+    return false;
   }
+  if (error instanceof TypeError) {
+    return error.message === 'Failed to fetch';
+  }
+  if (typeof error === 'object') {
+    const message = error?.message;
+    if (typeof message === 'string' && message.includes('Failed to fetch')) {
+      return true;
+    }
+    const code = error?.code;
+    if (typeof code === 'string' && ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function withSupabaseRetry(operation, context, logger, attempt = 0) {
+  try {
+    const result = await operation();
+    const error = result && typeof result === 'object' && 'error' in result ? result.error : null;
+    if (!error) {
+      return result;
+    }
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      const delay = SCHEMA_CACHE_RETRY_DELAY_MS * (attempt + 1);
+      logger?.warn?.(
+        `[metrics] ${context} failed due to Supabase schema cache (${error.code}). Retrying in ${delay}ms…`,
+      );
+      await wait(delay);
+      return withSupabaseRetry(operation, context, logger, attempt + 1);
+    }
+    throw error;
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      const delay = SCHEMA_CACHE_RETRY_DELAY_MS * (attempt + 1);
+      logger?.warn?.(
+        `[metrics] ${context} encountered a network error (${error?.message ?? error}). Retrying in ${delay}ms…`,
+      );
+      await wait(delay);
+      return withSupabaseRetry(operation, context, logger, attempt + 1);
+    }
+    throw error;
+  }
+}
+
+async function refreshMunicipalLicenseTable(supabase, logger) {
+  const municipalRecords = await fetchMunicipalLicenseRecords(logger);
+  const summary = summariseMunicipalLicenses(municipalRecords);
+  logger.info?.(
+    `[metrics] Retrieved ${summary.total.toLocaleString()} municipal license records across ${summary.municipalities.toLocaleString()} municipalities.`,
+  );
+
+  const supabaseRows = municipalRecords.map((record) => normaliseMunicipalRecordForSupabase(record));
+
+  await withSupabaseRetry(
+    () => supabase.from('municipal_licenses').delete().neq('id', ''),
+    'clear municipal licenses',
+    logger,
+  );
+
+  if (supabaseRows.length === 0) {
+    logger.warn?.('[metrics] Municipal license roster is empty after refresh.');
+    return [];
+  }
+
+  const chunkSize = 500;
+  for (let start = 0; start < supabaseRows.length; start += chunkSize) {
+    const chunk = supabaseRows.slice(start, start + chunkSize);
+    await withSupabaseRetry(
+      () => supabase.from('municipal_licenses').upsert(chunk, { onConflict: 'id' }),
+      `upsert municipal license chunk ${start + 1}-${start + chunk.length}`,
+      logger,
+    );
+  }
+
+  return supabaseRows;
 }
 
 export async function refreshListingAggregates(
@@ -838,7 +934,18 @@ export async function refreshListingAggregates(
   logger.info?.(`[metrics] Loaded ${listings.length.toLocaleString()} listing records.`);
 
   logger.info?.('[metrics] Fetching municipal license roster…');
-  const municipalLicenseRows = await fetchMunicipalLicenses(supabase, pageSize, logger);
+  let municipalLicenseRows = [];
+  try {
+    municipalLicenseRows = await refreshMunicipalLicenseTable(supabase, logger);
+  } catch (error) {
+    logger.error?.(
+      `[metrics] Failed to refresh municipal license roster from ArcGIS (${error?.message ?? error}). Falling back to Supabase cache…`,
+    );
+    municipalLicenseRows = await fetchMunicipalLicenses(supabase, pageSize, logger);
+  }
+  if (municipalLicenseRows.length === 0) {
+    logger.warn?.('[metrics] Municipal license roster is empty; downstream aggregates will omit municipal coverage.');
+  }
   const licensesBySchedule = new Map();
   for (const row of municipalLicenseRows) {
     const scheduleNumber = normaliseScheduleNumber(row.schedule_number);
@@ -1186,19 +1293,19 @@ export async function refreshListingAggregates(
   const refreshedAt = new Date().toISOString();
 
   logger.info?.('[metrics] Writing subdivision metrics…');
-  await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt);
+  await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing zone distribution…');
-  await writeZoneMetrics(supabase, zoneRows, refreshedAt);
+  await writeZoneMetrics(supabase, zoneRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing municipality distribution…');
-  await writeMunicipalityMetrics(supabase, municipalityRows, refreshedAt);
+  await writeMunicipalityMetrics(supabase, municipalityRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing renewal timeline…');
-  await writeRenewalTimeline(supabase, renewalRows, refreshedAt);
+  await writeRenewalTimeline(supabase, renewalRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing renewal summary…');
-  await writeRenewalSummary(supabase, summaryRows, refreshedAt);
+  await writeRenewalSummary(supabase, summaryRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing renewal estimation methods…');
-  await writeRenewalMethodSummary(supabase, methodRows, refreshedAt);
+  await writeRenewalMethodSummary(supabase, methodRows, refreshedAt, logger);
   logger.info?.('[metrics] Crowning the Land Baron Leaderboard…');
-  await writeLandBaronLeaderboard(supabase, landBaronRows, refreshedAt);
+  await writeLandBaronLeaderboard(supabase, landBaronRows, refreshedAt, logger);
 
   logger.info?.('[metrics] Aggregates refreshed successfully.');
 
