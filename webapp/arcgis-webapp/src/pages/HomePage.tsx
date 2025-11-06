@@ -21,6 +21,7 @@ import {
   fetchConfigurationProfiles,
   saveConfigurationProfile,
 } from '@/services/configurationProfiles';
+import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import {
   cloneRegionShape,
   isPointInsideRegions,
@@ -122,6 +123,8 @@ function HomePage(): JSX.Element {
     source,
     supabaseConfigured,
     updateListingFavorite,
+    updateListingDetails,
+    revertListingToOriginal,
   } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
@@ -139,6 +142,7 @@ function HomePage(): JSX.Element {
   const [savingProfile, setSavingProfile] = useState(false);
 
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
+  const editDisabledMessage = 'Connect Supabase to customize listings.';
 
   const handleRegionsChange = useCallback(
     (nextRegions: RegionShape[]) => {
@@ -209,6 +213,51 @@ function HomePage(): JSX.Element {
       }
     },
     [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
+  );
+
+  const handleListingEdit = useCallback(
+    async (listingId: string, overrides: ListingCustomizationOverrides) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(editDisabledMessage);
+        throw new Error(editDisabledMessage);
+      }
+
+      try {
+        await updateListingDetails(listingId, overrides);
+        setStatusMessage('Listing changes saved.');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to save listing changes.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [
+      editDisabledMessage,
+      setStatusMessage,
+      supabaseConfigured,
+      updateListingDetails,
+    ],
+  );
+
+  const handleListingRevert = useCallback(
+    async (listingId: string) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(editDisabledMessage);
+        throw new Error(editDisabledMessage);
+      }
+
+      try {
+        await revertListingToOriginal(listingId);
+        setStatusMessage('Listing restored to original data.');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to restore listing data.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [editDisabledMessage, setStatusMessage, supabaseConfigured, revertListingToOriginal],
   );
 
   const loadProfiles = useCallback(async () => {
@@ -594,8 +643,12 @@ function HomePage(): JSX.Element {
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
           onFavoriteChange={handleFavoriteChange}
+          onListingEdit={handleListingEdit}
+          onListingRevert={handleListingRevert}
           canToggleFavorites={supabaseConfigured}
           favoriteDisabledReason={favoritesDisabledMessage}
+          canEditListings={supabaseConfigured}
+          editDisabledReason={editDisabledMessage}
         />
       </CollapsibleSection>
       <CollapsibleSection

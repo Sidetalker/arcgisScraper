@@ -1,5 +1,10 @@
 import type { ArcgisFeature } from '@/types';
-import type { ListingAttributes, ListingFilters, ListingRecord } from '@/types';
+import type {
+  ListingAttributes,
+  ListingFilters,
+  ListingRecord,
+  ListingSourceOfTruth,
+} from '@/types';
 import { categoriseRenewal } from '@/services/renewalEstimator';
 
 const BUSINESS_KEYWORDS = [
@@ -468,12 +473,11 @@ export function toListingRecord(
   const estimatedRenewalCategory = renewalSnapshot.category;
   const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
 
-  return {
-    id,
+  const sourceOfTruth = {
     complex: normalizeComplexName(attributes),
     unit: extractUnit(attributes),
     ownerName,
-    ownerNames,
+    ownerNames: [...ownerNames],
     mailingAddress,
     mailingAddressLine1: line1,
     mailingAddressLine2: line2,
@@ -482,12 +486,32 @@ export function toListingRecord(
     mailingZip5: zip5,
     mailingZip9: postcode,
     subdivision,
-    zone,
     scheduleNumber,
-    publicDetailUrl,
     physicalAddress: physicalAddressRaw,
     isBusinessOwner,
+  } satisfies ListingSourceOfTruth;
+
+  const record: ListingRecord = {
+    id,
+    complex: sourceOfTruth.complex,
+    unit: sourceOfTruth.unit,
+    ownerName: sourceOfTruth.ownerName,
+    ownerNames: [...sourceOfTruth.ownerNames],
+    mailingAddress: sourceOfTruth.mailingAddress,
+    mailingAddressLine1: sourceOfTruth.mailingAddressLine1,
+    mailingAddressLine2: sourceOfTruth.mailingAddressLine2,
+    mailingCity: sourceOfTruth.mailingCity,
+    mailingState: sourceOfTruth.mailingState,
+    mailingZip5: sourceOfTruth.mailingZip5,
+    mailingZip9: sourceOfTruth.mailingZip9,
+    subdivision: sourceOfTruth.subdivision,
+    zone,
+    scheduleNumber: sourceOfTruth.scheduleNumber,
+    publicDetailUrl,
+    physicalAddress: sourceOfTruth.physicalAddress,
+    isBusinessOwner: sourceOfTruth.isBusinessOwner,
     isFavorited: false,
+    hasCustomizations: false,
     latitude,
     longitude,
     estimatedRenewalDate,
@@ -496,7 +520,10 @@ export function toListingRecord(
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
     raw: attributes,
+    sourceOfTruth,
   };
+
+  return record;
 }
 
 export function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean {

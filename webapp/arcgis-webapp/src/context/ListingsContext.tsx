@@ -11,9 +11,13 @@ import {
 import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import {
+  applyListingOverrides,
   fetchStoredListings,
   replaceAllListings,
+  removeListingCustomization,
+  type ListingCustomizationOverrides,
   updateListingFavorite as updateListingFavoriteFlag,
+  upsertListingCustomization,
 } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
 import {
@@ -42,6 +46,11 @@ export interface ListingsContextValue {
   syncFromArcgis: () => Promise<void>;
   clearCacheAndReload: () => Promise<void>;
   updateListingFavorite: (listingId: string, isFavorited: boolean) => Promise<void>;
+  updateListingDetails: (
+    listingId: string,
+    overrides: ListingCustomizationOverrides,
+  ) => Promise<void>;
+  revertListingToOriginal: (listingId: string) => Promise<void>;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -304,6 +313,116 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     [persistLocalCache, cachedAt],
   );
 
+  const updateDetails = useCallback(
+    async (listingId: string, overrides: ListingCustomizationOverrides) => {
+      let previousListing: ListingRecord | null = null;
+      setListings((current) => {
+        previousListing = current.find((listing) => listing.id === listingId) ?? null;
+        if (!previousListing) {
+          return current;
+        }
+        return current.map((listing) =>
+          listing.id === listingId ? applyListingOverrides(listing, overrides) : listing,
+        );
+      });
+
+      if (!previousListing) {
+        throw new Error('Listing not found.');
+      }
+
+      try {
+        const { record, updatedAt } = await upsertListingCustomization(listingId, overrides);
+        setListings((current) => {
+          const nextListings = current.map((listing) =>
+            listing.id === listingId ? record : listing,
+          );
+          void persistLocalCache(nextListings, updatedAt ?? cachedAt);
+          return nextListings;
+        });
+        setCachedAt((previous) => {
+          if (!updatedAt) {
+            return previous;
+          }
+          if (!previous || updatedAt > previous) {
+            return updatedAt;
+          }
+          return previous;
+        });
+        setSupabaseConfigured(true);
+      } catch (error) {
+        console.error('Failed to save listing customizations in Supabase.', error);
+        setListings((current) =>
+          current.map((listing) =>
+            listing.id === listingId && previousListing ? previousListing : listing,
+          ),
+        );
+        if (
+          error instanceof Error &&
+          error.message.includes('Supabase client is not initialised')
+        ) {
+          setSupabaseConfigured(false);
+        }
+        throw error instanceof Error ? error : new Error('Failed to save listing changes.');
+      }
+    },
+    [persistLocalCache, cachedAt],
+  );
+
+  const revertListing = useCallback(
+    async (listingId: string) => {
+      let previousListing: ListingRecord | null = null;
+      setListings((current) => {
+        previousListing = current.find((listing) => listing.id === listingId) ?? null;
+        if (!previousListing) {
+          return current;
+        }
+        return current.map((listing) =>
+          listing.id === listingId ? { ...listing, hasCustomizations: false } : listing,
+        );
+      });
+
+      if (!previousListing) {
+        throw new Error('Listing not found.');
+      }
+
+      try {
+        const { record, updatedAt } = await removeListingCustomization(listingId);
+        setListings((current) => {
+          const nextListings = current.map((listing) =>
+            listing.id === listingId ? record : listing,
+          );
+          void persistLocalCache(nextListings, updatedAt ?? cachedAt);
+          return nextListings;
+        });
+        setCachedAt((previous) => {
+          if (!updatedAt) {
+            return previous;
+          }
+          if (!previous || updatedAt > previous) {
+            return updatedAt;
+          }
+          return previous;
+        });
+        setSupabaseConfigured(true);
+      } catch (error) {
+        console.error('Failed to revert listing customizations in Supabase.', error);
+        setListings((current) =>
+          current.map((listing) =>
+            listing.id === listingId && previousListing ? previousListing : listing,
+          ),
+        );
+        if (
+          error instanceof Error &&
+          error.message.includes('Supabase client is not initialised')
+        ) {
+          setSupabaseConfigured(false);
+        }
+        throw error instanceof Error ? error : new Error('Failed to revert listing changes.');
+      }
+    },
+    [persistLocalCache, cachedAt],
+  );
+
   const isLocalCacheStale = useMemo(() => {
     if (!localCachedAt || !cachedAt) {
       return false;
@@ -327,6 +446,8 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       syncing,
       syncFromArcgis,
       updateListingFavorite: updateFavorite,
+      updateListingDetails: updateDetails,
+      revertListingToOriginal: revertListing,
       clearCacheAndReload,
     }),
     [
@@ -345,6 +466,8 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       syncing,
       syncFromArcgis,
       updateFavorite,
+      updateDetails,
+      revertListing,
     ],
   );
 
