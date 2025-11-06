@@ -488,6 +488,7 @@ export function toListingRecord(
     physicalAddress: physicalAddressRaw,
     isBusinessOwner,
     isFavorited: false,
+    hasCustomizations: false,
     latitude,
     longitude,
     estimatedRenewalDate,
