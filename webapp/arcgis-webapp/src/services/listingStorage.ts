@@ -1,4 +1,9 @@
-import type { ListingAttributes, ListingRecord, RenewalCategory } from '@/types';
+import type {
+  ListingAttributes,
+  ListingRecord,
+  ListingSourceOfTruth,
+  RenewalCategory,
+} from '@/types';
 import {
   categoriseRenewal,
   normaliseMonthKey,
@@ -191,12 +196,15 @@ function fromListingRow(row: ListingRow): ListingRecord {
   const latitude = typeof row.latitude === 'number' ? row.latitude : null;
   const longitude = typeof row.longitude === 'number' ? row.longitude : null;
 
-  return {
-    id: row.id,
+  const ownerNames = Array.isArray(row.owner_names)
+    ? row.owner_names.filter((value): value is string => typeof value === 'string')
+    : [];
+
+  const sourceOfTruth: ListingSourceOfTruth = {
     complex: row.complex ?? '',
     unit: row.unit ?? '',
     ownerName: row.owner_name ?? '',
-    ownerNames: row.owner_names ?? [],
+    ownerNames: ownerNames.map((value) => value),
     mailingAddress: row.mailing_address ?? '',
     mailingAddressLine1: row.mailing_address_line1 ?? '',
     mailingAddressLine2: row.mailing_address_line2 ?? '',
@@ -205,11 +213,30 @@ function fromListingRow(row: ListingRow): ListingRecord {
     mailingZip5: row.mailing_zip5 ?? '',
     mailingZip9: row.mailing_zip9 ?? '',
     subdivision: row.subdivision ?? '',
-    zone,
     scheduleNumber: row.schedule_number ?? '',
-    publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
     isBusinessOwner: Boolean(row.is_business_owner),
+  };
+
+  return {
+    id: row.id,
+    complex: sourceOfTruth.complex,
+    unit: sourceOfTruth.unit,
+    ownerName: sourceOfTruth.ownerName,
+    ownerNames: [...sourceOfTruth.ownerNames],
+    mailingAddress: sourceOfTruth.mailingAddress,
+    mailingAddressLine1: sourceOfTruth.mailingAddressLine1,
+    mailingAddressLine2: sourceOfTruth.mailingAddressLine2,
+    mailingCity: sourceOfTruth.mailingCity,
+    mailingState: sourceOfTruth.mailingState,
+    mailingZip5: sourceOfTruth.mailingZip5,
+    mailingZip9: sourceOfTruth.mailingZip9,
+    subdivision: sourceOfTruth.subdivision,
+    zone,
+    scheduleNumber: sourceOfTruth.scheduleNumber,
+    publicDetailUrl: row.public_detail_url ?? '',
+    physicalAddress: sourceOfTruth.physicalAddress,
+    isBusinessOwner: sourceOfTruth.isBusinessOwner,
     isFavorited: Boolean(row.is_favorited),
     hasCustomizations: false,
     latitude,
@@ -220,6 +247,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
     raw: rawAttributes,
+    sourceOfTruth,
   };
 }
 

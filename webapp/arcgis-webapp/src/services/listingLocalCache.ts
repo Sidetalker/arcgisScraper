@@ -60,6 +60,7 @@ export async function loadListingsFromCache(): Promise<
     zone: typeof record.zone === 'string' ? record.zone : '',
     hasCustomizations: Boolean(record.hasCustomizations),
     raw: {},
+    sourceOfTruth: record.sourceOfTruth ?? null,
   }));
 
   return {

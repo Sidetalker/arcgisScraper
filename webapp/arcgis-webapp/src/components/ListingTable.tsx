@@ -25,7 +25,7 @@ import {
   toUniqueOwners,
 } from '@/utils/listingColumnFilters';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
-import type { ListingRecord } from '@/types';
+import type { ListingRecord, ListingSourceOfTruth } from '@/types';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -55,6 +55,76 @@ interface ListingTableProps {
 }
 
 type ColumnKey = ListingTableColumnKey;
+
+type SourcePreviewValue = string | string[] | null | undefined;
+
+function formatSourcePreview(value: SourcePreviewValue): string | null {
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean)
+      .join('\n');
+    return joined.length > 0 ? joined : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+}
+
+function getSourceOfTruthText(listing: ListingRecord, columnKey: ColumnKey): string | null {
+  const source: ListingSourceOfTruth = listing.sourceOfTruth ?? {
+    complex: listing.complex,
+    unit: listing.unit,
+    ownerName: listing.ownerName,
+    ownerNames: [...listing.ownerNames],
+    mailingAddress: listing.mailingAddress,
+    mailingAddressLine1: listing.mailingAddressLine1,
+    mailingAddressLine2: listing.mailingAddressLine2,
+    mailingCity: listing.mailingCity,
+    mailingState: listing.mailingState,
+    mailingZip5: listing.mailingZip5,
+    mailingZip9: listing.mailingZip9,
+    subdivision: listing.subdivision,
+    scheduleNumber: listing.scheduleNumber,
+    physicalAddress: listing.physicalAddress,
+    isBusinessOwner: listing.isBusinessOwner,
+  };
+
+  switch (columnKey) {
+    case 'complex':
+      return formatSourcePreview(source.complex);
+    case 'unit':
+      return formatSourcePreview(source.unit);
+    case 'owners':
+      return source.ownerNames.length > 0
+        ? formatSourcePreview(source.ownerNames)
+        : formatSourcePreview(source.ownerName);
+    case 'business':
+      return source.isBusinessOwner ? 'Yes' : 'No';
+    case 'mailingAddress':
+      return formatSourcePreview(
+        streetAddressFromSegments(source.mailingAddressLine1, source.mailingAddressLine2),
+      );
+    case 'mailingCity':
+      return formatSourcePreview(source.mailingCity);
+    case 'mailingState':
+      return formatSourcePreview(source.mailingState);
+    case 'mailingZip':
+      return formatSourcePreview(source.mailingZip9 || source.mailingZip5);
+    case 'subdivision':
+      return formatSourcePreview(source.subdivision);
+    case 'scheduleNumber':
+      return formatSourcePreview(source.scheduleNumber);
+    case 'physicalAddress':
+      return formatSourcePreview(source.physicalAddress);
+    default:
+      return null;
+  }
+}
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -137,13 +207,13 @@ function composeMailingAddressText(
   return lines.join('\n');
 }
 
-function streetAddressFromListing(listing: ListingRecord): string {
+function streetAddressFromSegments(line1: string, line2: string): string {
   const parts: string[] = [];
-  if (listing.mailingAddressLine1.trim()) {
-    parts.push(listing.mailingAddressLine1.trim());
+  if (line1.trim()) {
+    parts.push(line1.trim());
   }
-  if (listing.mailingAddressLine2.trim()) {
-    listing.mailingAddressLine2
+  if (line2.trim()) {
+    line2
       .split(/\r?\n/)
       .map((segment) => segment.trim())
       .filter(Boolean)
@@ -152,6 +222,10 @@ function streetAddressFromListing(listing: ListingRecord): string {
       });
   }
   return parts.join('\n');
+}
+
+function streetAddressFromListing(listing: ListingRecord): string {
+  return streetAddressFromSegments(listing.mailingAddressLine1, listing.mailingAddressLine2);
 }
 
 function parseOwnerNamesInput(text: string): string[] {
@@ -609,37 +683,48 @@ export function ListingTable({
       return definition ? definition.render(listing) : null;
     }
 
+    const originalText = getSourceOfTruthText(listing, columnKey);
+    const wrapWithSource = (control: ReactNode): ReactNode => (
+      <div className="listing-table__edit-control">
+        {control}
+        <p className="listing-table__edit-source">
+          <span className="listing-table__edit-source-label">Original:</span>
+          <span className="listing-table__edit-source-value">{originalText ?? '—'}</span>
+        </p>
+      </div>
+    );
+
     switch (columnKey) {
       case 'complex':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.complex}
             onChange={handleDraftInputChange('complex')}
             className="listing-table__edit-input"
-          />
+          />,
         );
       case 'unit':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.unit}
             onChange={handleDraftInputChange('unit')}
             className="listing-table__edit-input"
-          />
+          />,
         );
       case 'owners':
-        return (
+        return wrapWithSource(
           <textarea
             value={editDraft.ownerNames}
             onChange={handleDraftInputChange('ownerNames')}
             className="listing-table__edit-textarea"
             rows={Math.max(2, editDraft.ownerNames.split(/\r?\n/).length || 2)}
             placeholder="One owner per line"
-          />
+          />,
         );
       case 'business':
-        return (
+        return wrapWithSource(
           <select
             value={editDraft.isBusinessOwner}
             onChange={handleBusinessOwnerChange}
@@ -647,39 +732,39 @@ export function ListingTable({
           >
             <option value="yes">Yes</option>
             <option value="no">No</option>
-          </select>
+          </select>,
         );
       case 'mailingAddress':
-        return (
+        return wrapWithSource(
           <textarea
             value={editDraft.mailingAddress}
             onChange={handleDraftInputChange('mailingAddress')}
             className="listing-table__edit-textarea"
             rows={Math.max(2, editDraft.mailingAddress.split(/\r?\n/).length || 2)}
             placeholder="Street address (one line per entry)"
-          />
+          />,
         );
       case 'mailingCity':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.mailingCity}
             onChange={handleDraftInputChange('mailingCity')}
             className="listing-table__edit-input"
-          />
+          />,
         );
       case 'mailingState':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.mailingState}
             onChange={handleDraftInputChange('mailingState')}
             className="listing-table__edit-input listing-table__edit-input--state"
             maxLength={2}
-          />
+          />,
         );
       case 'mailingZip':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.mailingZip}
@@ -688,34 +773,34 @@ export function ListingTable({
             inputMode="numeric"
             pattern="[0-9-]*"
             placeholder="ZIP or ZIP+4"
-          />
+          />,
         );
       case 'subdivision':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.subdivision}
             onChange={handleDraftInputChange('subdivision')}
             className="listing-table__edit-input"
-          />
+          />,
         );
       case 'scheduleNumber':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.scheduleNumber}
             onChange={handleDraftInputChange('scheduleNumber')}
             className="listing-table__edit-input"
-          />
+          />,
         );
       case 'physicalAddress':
-        return (
+        return wrapWithSource(
           <input
             type="text"
             value={editDraft.physicalAddress}
             onChange={handleDraftInputChange('physicalAddress')}
             className="listing-table__edit-input"
-          />
+          />,
         );
       default: {
         const definition = columnDefinitionMap.get(columnKey);

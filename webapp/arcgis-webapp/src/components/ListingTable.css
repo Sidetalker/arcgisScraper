@@ -314,9 +314,7 @@
 }
 
 .listing-table__detail-cell {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  vertical-align: middle;
 }
 
 .listing-table__favorite-cell {
@@ -426,10 +424,11 @@
 }
 
 .listing-table__detail-actions {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
+  margin: 0 auto;
 }
 
 .listing-table__icon-button {
@@ -630,6 +629,34 @@
 
 .listing-table__edit-input--state {
   text-transform: uppercase;
+}
+
+.listing-table__edit-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.listing-table__edit-source {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.listing-table__edit-source-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.listing-table__edit-source-value {
+  display: block;
+  color: #475569;
+  white-space: pre-line;
 }
 
 .listing-table__detail-link:focus {

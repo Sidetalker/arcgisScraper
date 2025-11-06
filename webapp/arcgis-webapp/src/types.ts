@@ -48,6 +48,24 @@ export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
 export type RenewalCategory = 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'future' | 'missing';
 
+export interface ListingSourceOfTruth {
+  complex: string;
+  unit: string;
+  ownerName: string;
+  ownerNames: string[];
+  mailingAddress: string;
+  mailingAddressLine1: string;
+  mailingAddressLine2: string;
+  mailingCity: string;
+  mailingState: string;
+  mailingZip5: string;
+  mailingZip9: string;
+  subdivision: string;
+  scheduleNumber: string;
+  physicalAddress: string;
+  isBusinessOwner: boolean;
+}
+
 export interface ListingRecord {
   id: string;
   complex: string;
@@ -77,6 +95,7 @@ export interface ListingRecord {
   estimatedRenewalCategory: RenewalCategory;
   estimatedRenewalMonthKey: string | null;
   raw: ListingAttributes;
+  sourceOfTruth: ListingSourceOfTruth | null;
 }
 
 export interface ListingFilters {
