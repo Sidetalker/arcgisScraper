@@ -112,7 +112,16 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
 }
 
 function HomePage(): JSX.Element {
-  const { listings, loading, error, regions, onRegionsChange, cachedAt, source } = useListings();
+  const {
+    listings,
+    loading,
+    error,
+    regions,
+    onRegionsChange,
+    cachedAt,
+    source,
+    updateListingFavorite,
+  } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -129,6 +138,7 @@ function HomePage(): JSX.Element {
   const [savingProfile, setSavingProfile] = useState(false);
 
   const supabaseAvailable = Boolean(supabase);
+  const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
 
   const handleRegionsChange = useCallback(
     (nextRegions: RegionShape[]) => {
@@ -177,6 +187,28 @@ function HomePage(): JSX.Element {
       }));
     },
     [],
+  );
+
+  const handleFavoriteChange = useCallback(
+    async (listingId: string, isFavorited: boolean) => {
+      if (!supabaseAvailable) {
+        setStatusMessage(favoritesDisabledMessage);
+        throw new Error(favoritesDisabledMessage);
+      }
+
+      try {
+        await updateListingFavorite(listingId, isFavorited);
+        setStatusMessage(
+          isFavorited ? 'Listing added to favorites.' : 'Listing removed from favorites.',
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to update favorite status.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [favoritesDisabledMessage, setStatusMessage, supabaseAvailable, updateListingFavorite],
   );
 
   const loadProfiles = useCallback(async () => {
@@ -565,6 +597,9 @@ function HomePage(): JSX.Element {
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onFavoriteChange={handleFavoriteChange}
+          canToggleFavorites={supabaseAvailable}
+          favoriteDisabledReason={favoritesDisabledMessage}
         />
       </CollapsibleSection>
       <CollapsibleSection

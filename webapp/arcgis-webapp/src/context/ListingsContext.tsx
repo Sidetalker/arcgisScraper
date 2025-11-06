@@ -10,7 +10,11 @@ import {
 
 import { fetchListings } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
-import { fetchStoredListings, replaceAllListings } from '@/services/listingStorage';
+import {
+  fetchStoredListings,
+  replaceAllListings,
+  updateListingFavorite as updateListingFavoriteFlag,
+} from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
 import {
   cloneRegionShape,
@@ -35,6 +39,7 @@ export interface ListingsContextValue {
   syncing: boolean;
   syncFromArcgis: () => Promise<void>;
   clearCacheAndReload: () => Promise<void>;
+  updateListingFavorite: (listingId: string, isFavorited: boolean) => Promise<void>;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -241,6 +246,47 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   }, [applyListingSnapshot, persistLocalCache]);
 
+  const updateFavorite = useCallback(
+    async (listingId: string, isFavorited: boolean) => {
+      setListings((current) =>
+        current.map((listing) =>
+          listing.id === listingId ? { ...listing, isFavorited } : listing,
+        ),
+      );
+
+      try {
+        const { record, updatedAt } = await updateListingFavoriteFlag(listingId, isFavorited);
+        setListings((current) => {
+          const nextListings = current.map((listing) =>
+            listing.id === listingId
+              ? { ...listing, isFavorited: record.isFavorited }
+              : listing,
+          );
+          void persistLocalCache(nextListings, updatedAt ?? cachedAt);
+          return nextListings;
+        });
+        setCachedAt((previous) => {
+          if (!updatedAt) {
+            return previous;
+          }
+          if (!previous || updatedAt > previous) {
+            return updatedAt;
+          }
+          return previous;
+        });
+      } catch (error) {
+        console.error('Failed to update favorite state in Supabase.', error);
+        setListings((current) =>
+          current.map((listing) =>
+            listing.id === listingId ? { ...listing, isFavorited: !isFavorited } : listing,
+          ),
+        );
+        throw error instanceof Error ? error : new Error('Failed to update favorite state.');
+      }
+    },
+    [persistLocalCache, cachedAt],
+  );
+
   const isLocalCacheStale = useMemo(() => {
     if (!localCachedAt || !cachedAt) {
       return false;
@@ -262,6 +308,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       refresh,
       syncing,
       syncFromArcgis,
+      updateListingFavorite: updateFavorite,
       clearCacheAndReload,
     }),
     [
@@ -278,6 +325,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       regions,
       syncing,
       syncFromArcgis,
+      updateFavorite,
     ],
   );
 

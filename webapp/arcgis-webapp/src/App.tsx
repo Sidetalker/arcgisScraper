@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
 
 import './App.css';
 
 import HomePage from '@/pages/HomePage';
 import ComplexDetailPage from '@/pages/ComplexDetailPage';
+import FavoritesPage from '@/pages/FavoritesPage';
 import OwnerDetailPage from '@/pages/OwnerDetailPage';
 import PasswordModal from '@/components/PasswordModal';
 import { useListings } from '@/context/ListingsContext';
@@ -103,6 +104,25 @@ function Layout(): JSX.Element {
           <span className="app__datasource-badge" title="Last update of the underlying ArcGIS feature layer">
             Data Source: October 2025
           </span>
+          <nav className="app__nav" aria-label="Primary navigation">
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) =>
+                `app__nav-link${isActive ? ' app__nav-link--active' : ''}`
+              }
+            >
+              All listings
+            </NavLink>
+            <NavLink
+              to="/favorites"
+              className={({ isActive }) =>
+                `app__nav-link${isActive ? ' app__nav-link--active' : ''}`
+              }
+            >
+              Favorites
+            </NavLink>
+          </nav>
         </div>
         <div className="app__actions">
           <button
@@ -181,6 +201,7 @@ function App(): JSX.Element {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/complex/:complexId" element={<ComplexDetailPage />} />
         <Route path="/owner/:ownerId" element={<OwnerDetailPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
