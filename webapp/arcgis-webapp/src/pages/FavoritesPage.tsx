@@ -86,6 +86,16 @@ function FavoritesPage(): JSX.Element {
     [],
   );
 
+  const handleSortChange = useCallback(
+    (nextSort: ListingTableState['sort']) => {
+      setTableState((previous) => ({
+        ...previous,
+        sort: nextSort ? { ...nextSort } : null,
+      }));
+    },
+    [],
+  );
+
   const handleFavoriteChange = useCallback(
     async (listingId: string, isFavorited: boolean) => {
       if (!supabaseConfigured) {
@@ -197,9 +207,11 @@ function FavoritesPage(): JSX.Element {
           columnOrder={tableState.columnOrder}
           hiddenColumns={tableState.hiddenColumns}
           columnFilters={tableState.columnFilters}
+          sort={tableState.sort}
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onSortChange={handleSortChange}
           onFavoriteChange={handleFavoriteChange}
           onListingEdit={handleListingEdit}
           onListingRevert={handleListingRevert}
