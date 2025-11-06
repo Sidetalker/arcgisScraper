@@ -204,6 +204,46 @@ VITE_SUPABASE_ANON_KEY=<anon-key>
 # or SUPABASE_URL / SUPABASE_ANON_KEY
 ```
 
+#### Applying owner overrides from spreadsheets
+
+When you receive curated contact updates for specific complexes, export the
+Google Sheet section as a CSV and import it into Supabase with:
+
+```bash
+node webapp/arcgis-webapp/scripts/applySpreadsheetOverrides.mjs \
+  --input path/to/river-mountain-owners.csv
+```
+
+The importer expects each complex block to start with a header row shaped like
+`River Mountain Lodge,Owner(s),Mailing address,Mailing city,State,ZIP` followed
+by one row per unit. Owner names are split on semicolons, mailing addresses are
+normalised using the same helpers as the web editor, and the resulting overrides
+update `ownerName`, `ownerNames`, the mailing-address fields, and ZIP data. The
+script requires `SUPABASE_URL` plus either `SUPABASE_SERVICE_ROLE_KEY` (preferred)
+or `SUPABASE_ANON_KEY` in the environment.
+
+Runs are dry by default: the tool previews matches, highlights unmatched or
+ambiguous rows, and prints the pending actions. Re-run with `--apply` to persist
+the changes and add `--allow-partial` when you intentionally want to proceed
+despite unresolved rows.
+
+Provide `--watchlist-name "My Import Batch"` to create a Supabase watchlist that
+contains every matched listing ID. The watchlist is only created when `--apply`
+is supplied; dry runs simply preview the data.
+
+#### Backfilling normalized units
+
+The UI now stores a canonical `unit_normalized` column (alphanumeric, lowercase)
+to make matching more reliable. Populate or refresh this column with:
+
+```bash
+node webapp/arcgis-webapp/scripts/backfillUnitNormalized.mjs --apply
+```
+
+Omit `--apply` for a dry run. The script reuses the same normalization logic as
+the spreadsheet importer, so unit edits saved through either path will stay in
+sync.
+
 Create a `listings` table in Supabase before syncing for the first time:
 
 ```sql

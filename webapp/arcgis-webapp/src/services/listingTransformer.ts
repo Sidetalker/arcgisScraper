@@ -50,6 +50,10 @@ const UNIT_RE = /UNIT\s+([A-Za-z0-9-]+)/i;
 const BLDG_RE = /\bBLDG\s+([A-Za-z0-9-]+)/i;
 const BREAK_PLACEHOLDER = '|||BREAK|||';
 
+function normaliseUnitValue(value: string): string {
+  return typeof value === 'string' ? value.replace(/[^A-Za-z0-9]/g, '').toLowerCase() : '';
+}
+
 function decodeHtml(value: unknown): string {
   if (typeof value !== 'string') {
     return '';
@@ -473,9 +477,11 @@ export function toListingRecord(
   const estimatedRenewalCategory = renewalSnapshot.category;
   const estimatedRenewalMonthKey = renewalSnapshot.monthKey;
 
+  const unit = extractUnit(attributes);
   const sourceOfTruth = {
     complex: normalizeComplexName(attributes),
-    unit: extractUnit(attributes),
+    unit,
+    unitNormalized: normaliseUnitValue(unit),
     ownerName,
     ownerNames: [...ownerNames],
     mailingAddress,
@@ -495,6 +501,7 @@ export function toListingRecord(
     id,
     complex: sourceOfTruth.complex,
     unit: sourceOfTruth.unit,
+    unitNormalized: sourceOfTruth.unitNormalized,
     ownerName: sourceOfTruth.ownerName,
     ownerNames: [...sourceOfTruth.ownerNames],
     mailingAddress: sourceOfTruth.mailingAddress,

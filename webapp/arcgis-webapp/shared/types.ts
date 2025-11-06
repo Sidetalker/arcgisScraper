@@ -9,6 +9,7 @@ export interface ListingRecord {
   id: string;
   complex: string;
   unit: string;
+  unitNormalized: string;
   ownerName: string;
   ownerNames: string[];
   mailingAddress: string;
@@ -45,4 +46,3 @@ export interface RegionCircle {
   lng: number;
   radius: number;
 }
-

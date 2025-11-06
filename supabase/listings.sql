@@ -5,6 +5,7 @@ create table if not exists public.listings (
   id text primary key,
   complex text,
   unit text,
+  unit_normalized text,
   owner_name text,
   owner_names text[],
   mailing_address text,
@@ -42,6 +43,9 @@ create index if not exists listings_subdivision_idx
 
 create index if not exists listings_zone_idx
   on public.listings (zone);
+
+create index if not exists listings_unit_normalized_idx
+  on public.listings (unit_normalized);
 
 create index if not exists listings_is_favorited_idx
   on public.listings (is_favorited);

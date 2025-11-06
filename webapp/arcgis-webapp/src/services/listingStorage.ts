@@ -68,6 +68,7 @@ export interface ListingRow {
   id: string;
   complex: Nullable<string>;
   unit: Nullable<string>;
+  unit_normalized: Nullable<string>;
   owner_name: Nullable<string>;
   owner_names: Nullable<string[]>;
   mailing_address: Nullable<string>;
@@ -126,10 +127,12 @@ interface ListingCustomizationRow {
 }
 
 function toListingRow(record: ListingRecord): ListingRow {
+  const unitNormalized = normaliseUnitString(record.unitNormalized || record.unit);
   return {
     id: record.id,
     complex: record.complex || null,
     unit: record.unit || null,
+    unit_normalized: unitNormalized || null,
     owner_name: record.ownerName || null,
     owner_names: record.ownerNames.length ? record.ownerNames : null,
     mailing_address: record.mailingAddress || null,
@@ -200,9 +203,12 @@ function fromListingRow(row: ListingRow): ListingRecord {
     ? row.owner_names.filter((value): value is string => typeof value === 'string')
     : [];
 
+  const unitNormalized = normaliseUnitString(row.unit_normalized ?? row.unit ?? '');
+
   const sourceOfTruth: ListingSourceOfTruth = {
     complex: row.complex ?? '',
     unit: row.unit ?? '',
+    unitNormalized,
     ownerName: row.owner_name ?? '',
     ownerNames: ownerNames.map((value) => value),
     mailingAddress: row.mailing_address ?? '',
@@ -222,6 +228,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     id: row.id,
     complex: sourceOfTruth.complex,
     unit: sourceOfTruth.unit,
+    unitNormalized,
     ownerName: sourceOfTruth.ownerName,
     ownerNames: [...sourceOfTruth.ownerNames],
     mailingAddress: sourceOfTruth.mailingAddress,
@@ -254,6 +261,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
 const CUSTOMIZATION_COMPARISON_KEYS: Array<keyof ListingRecord> = [
   'complex',
   'unit',
+  'unitNormalized',
   'ownerName',
   'mailingAddress',
   'mailingAddressLine1',
@@ -301,6 +309,16 @@ function normaliseOwnerNamesValue(value: unknown): string[] {
   return value
     .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
     .filter((entry) => entry.length > 0);
+}
+
+function normaliseUnitString(value: Nullable<string>): string {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  }
+  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
 }
 
 function formatCityStateZipLine(city: string, state: string, postcode: string): string {
@@ -433,6 +451,7 @@ export function applyListingOverrides(
   const next: ListingRecord = {
     ...record,
     ownerNames: [...record.ownerNames],
+    unitNormalized: record.unitNormalized,
   };
 
   let changed = false;
@@ -456,8 +475,24 @@ export function applyListingOverrides(
     next[key] = safeValue;
   };
 
+  const assignUnit = (value: string | undefined) => {
+    if (value === undefined) {
+      return;
+    }
+    const safeValue = value ?? '';
+    if (safeValue !== next.unit) {
+      changed = true;
+    }
+    next.unit = safeValue;
+    const normalized = normaliseUnitString(safeValue);
+    if (normalized !== next.unitNormalized) {
+      changed = true;
+      next.unitNormalized = normalized;
+    }
+  };
+
   assignString('complex', overrides.complex);
-  assignString('unit', overrides.unit);
+  assignUnit(overrides.unit);
   assignString('subdivision', overrides.subdivision);
   assignString('scheduleNumber', overrides.scheduleNumber);
   assignString('physicalAddress', overrides.physicalAddress);
@@ -594,6 +629,7 @@ const LISTING_COLUMNS = [
   'id',
   'complex',
   'unit',
+  'unit_normalized',
   'owner_name',
   'owner_names',
   'mailing_address',

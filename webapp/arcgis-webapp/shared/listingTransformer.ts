@@ -43,6 +43,10 @@ const UNIT_RE = /UNIT\s+([A-Za-z0-9-]+)/i;
 const BLDG_RE = /\bBLDG\s+([A-Za-z0-9-]+)/i;
 const BREAK_PLACEHOLDER = '|||BREAK|||';
 
+function normaliseUnitValue(value: string): string {
+  return typeof value === 'string' ? value.replace(/[^A-Za-z0-9]/g, '').toLowerCase() : '';
+}
+
 function decodeHtml(value: unknown): string {
   if (typeof value !== 'string') {
     return '';
@@ -456,10 +460,12 @@ export function toListingRecord(
       attributes.BriefPropertyDescription.trim()) ||
     '';
 
+  const unit = extractUnit(attributes);
   return {
     id,
     complex: normalizeComplexName(attributes),
-    unit: extractUnit(attributes),
+    unit,
+    unitNormalized: normaliseUnitValue(unit),
     ownerName,
     ownerNames,
     mailingAddress,
