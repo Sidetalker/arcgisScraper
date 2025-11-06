@@ -79,8 +79,10 @@ export function subscribeToListingComments(
     },
   );
 
-  channel.subscribe().catch((error) => {
-    console.error('Failed to subscribe to listing comments channel.', error);
+  channel.subscribe((status, error) => {
+    if (status === 'CHANNEL_ERROR') {
+      console.error('Failed to subscribe to listing comments channel.', error);
+    }
   });
 
   return () => {
