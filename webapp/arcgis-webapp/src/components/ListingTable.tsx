@@ -1866,7 +1866,7 @@ export function ListingTable({
                         <div className="listing-table__detail-actions">
                           <button
                             type="button"
-                            className="listing-table__icon-button listing-table__edit-button"
+                            className="listing-table__icon-button listing-table__icon-button--edit"
                             onClick={() => handleStartEdit(listing)}
                             disabled={!canEditListings || savingEdit || isRevertPending}
                             title={editButtonTitle}
@@ -1890,7 +1890,7 @@ export function ListingTable({
                               href={listing.publicDetailUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="listing-table__detail-link"
+                              className="listing-table__icon-button listing-table__icon-button--detail"
                               aria-label="Open listing details in a new tab"
                             >
                               <svg
@@ -1909,7 +1909,7 @@ export function ListingTable({
                           )}
                           <button
                             type="button"
-                            className="listing-table__icon-button listing-table__comment-button"
+                            className="listing-table__icon-button listing-table__icon-button--comment"
                             onClick={() => handleToggleComments(listing.id)}
                             title={commentButtonTitle}
                             aria-label={commentButtonTitle}
