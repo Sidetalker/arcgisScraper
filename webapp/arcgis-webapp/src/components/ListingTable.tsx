@@ -88,6 +88,7 @@ function getSourceOfTruthText(listing: ListingRecord, columnKey: ColumnKey): str
   const source: ListingSourceOfTruth = listing.sourceOfTruth ?? {
     complex: listing.complex,
     unit: listing.unit,
+    unitNormalized: listing.unitNormalized,
     ownerName: listing.ownerName,
     ownerNames: [...listing.ownerNames],
     mailingAddress: listing.mailingAddress,
