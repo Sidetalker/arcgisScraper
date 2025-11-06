@@ -304,13 +304,19 @@
 }
 
 .listing-table__favorite-header,
-.listing-table__favorite-cell,
+.listing-table__favorite-cell {
+  width: 3.5rem;
+  text-align: center;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
 .listing-table__details-header,
 .listing-table__detail-cell {
-  width: 6rem;
+  width: 5.4rem;
   text-align: center;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
 }
 
 .listing-table__detail-cell {
@@ -429,6 +435,7 @@
   justify-content: center;
   gap: 0.35rem;
   margin: 0 auto;
+  padding: 0 0.15rem;
 }
 
 .listing-table__icon-button {

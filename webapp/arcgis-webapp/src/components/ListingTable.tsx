@@ -1844,14 +1844,16 @@ export function ListingTable({
                               >
                                 Cancel (changes will not be saved)
                               </button>
-                              <button
-                                type="button"
-                                className="listing-table__edit-tertiary"
-                                onClick={handleRevertListing(listing)}
-                                disabled={savingEdit || isRevertPending}
-                              >
-                                Revert to original data
-                              </button>
+                              {listing.hasCustomizations ? (
+                                <button
+                                  type="button"
+                                  className="listing-table__edit-tertiary"
+                                  onClick={handleRevertListing(listing)}
+                                  disabled={savingEdit || isRevertPending}
+                                >
+                                  Revert to original data
+                                </button>
+                              ) : null}
                             </div>
                             <p className="listing-table__edit-hint">
                               Updates are stored in Supabase so you can revisit them later.
