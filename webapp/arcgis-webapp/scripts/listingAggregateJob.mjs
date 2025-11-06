@@ -629,6 +629,83 @@ async function fetchMunicipalLicenses(supabase, pageSize, logger) {
   return licenses;
 }
 
+let listingMetricsSchemaEnsured = false;
+
+async function ensureListingMetricsTables(supabase, logger) {
+  if (listingMetricsSchemaEnsured) {
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('ensure_listing_metrics_tables');
+    if (error) {
+      if (error.code === 'PGRST202') {
+        logger?.warn?.(
+          '[metrics] Supabase schema cache does not yet expose ensure_listing_metrics_tables. Re-run the latest supabase/listing_metrics.sql migration and trigger a schema reload.',
+        );
+      } else {
+        logger?.warn?.(
+          `[metrics] Failed to ensure listing metrics tables exist (${error.message ?? error}). Proceeding anyway.`,
+        );
+      }
+      return;
+    }
+
+    const tablesToConfirm = [
+      'listing_subdivision_metrics',
+      'listing_zone_metrics',
+      'listing_municipality_metrics',
+      'listing_renewal_metrics',
+      'listing_renewal_summary',
+      'listing_renewal_method_summary',
+      'land_baron_leaderboard',
+    ];
+
+    for (const table of tablesToConfirm) {
+      let attempt = 0;
+      let confirmed = false;
+      while (attempt < 5 && !confirmed) {
+        const { error: tableError } = await supabase
+          .from(table)
+          .select('count', { count: 'exact', head: true })
+          .limit(1);
+
+        if (!tableError) {
+          confirmed = true;
+          break;
+        }
+
+        if (isSchemaCacheError(tableError)) {
+          const backoff = SCHEMA_CACHE_RETRY_DELAY_MS * (attempt + 1);
+          logger?.warn?.(
+            `[metrics] Waiting for Supabase schema cache to expose ${table} (attempt ${attempt + 1}/5, retrying in ${backoff}ms)…`,
+          );
+          await wait(backoff);
+        } else {
+          logger?.warn?.(
+            `[metrics] Unexpected error probing ${table} (${tableError.message ?? tableError}).`,
+          );
+          break;
+        }
+
+        attempt += 1;
+      }
+
+      if (!confirmed) {
+        logger?.warn?.(`[metrics] Unable to confirm ${table} exists in the Supabase schema cache.`);
+        return;
+      }
+    }
+
+    listingMetricsSchemaEnsured = true;
+    logger?.info?.('[metrics] Verified listing metrics tables exist in Supabase schema cache.');
+  } catch (error) {
+    logger?.warn?.(
+      `[metrics] Error while ensuring listing metrics tables exist (${error?.message ?? error}). Proceeding anyway.`,
+    );
+  }
+}
+
 async function writeSubdivisionMetrics(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     subdivision: row.subdivision,
@@ -932,7 +1009,10 @@ export async function refreshListingAggregates(
   supabase,
   options = {},
 ) {
-  const { logger = console, pageSize = PAGE_SIZE } = options;
+  const {
+    logger = console,
+    pageSize = PAGE_SIZE,
+  } = options;
 
   logger.info?.('[metrics] Fetching listings dataset…');
   const listings = await fetchListings(supabase, pageSize, logger);
@@ -1296,6 +1376,8 @@ export async function refreshListingAggregates(
     );
 
   const refreshedAt = new Date().toISOString();
+
+  await ensureListingMetricsTables(supabase, logger);
 
   logger.info?.('[metrics] Writing subdivision metrics…');
   await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt, logger);

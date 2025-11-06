@@ -231,3 +231,125 @@ from public.land_baron_leaderboard
 order by property_count desc, owner_name asc;
 
 grant select on public.land_baron_leaderboard_view to anon, authenticated;
+
+-- Helper to ensure metrics tables exist in lower environments and notify PostgREST to refresh its schema cache.
+create or replace function public.ensure_listing_metrics_tables()
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  execute $ddl$
+    create table if not exists public.listing_subdivision_metrics (
+      subdivision text primary key,
+      total_listings integer not null,
+      business_owner_count integer not null,
+      individual_owner_count integer not null,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute $ddl$
+    create table if not exists public.listing_zone_metrics (
+      zone text primary key,
+      total_listings integer not null,
+      business_owner_count integer not null,
+      individual_owner_count integer not null,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute $ddl$
+    create table if not exists public.listing_municipality_metrics (
+      municipality text primary key,
+      total_listings integer not null,
+      licensed_listing_count integer not null,
+      business_owner_count integer not null,
+      individual_owner_count integer not null,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute $ddl$
+    create table if not exists public.listing_renewal_metrics (
+      renewal_month date primary key,
+      listing_count integer not null,
+      earliest_renewal date,
+      latest_renewal date,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute $ddl$
+    create table if not exists public.listing_renewal_summary (
+      category text primary key,
+      listing_count integer not null,
+      window_start date,
+      window_end date,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute $ddl$
+    create table if not exists public.listing_renewal_method_summary (
+      method text primary key,
+      listing_count integer not null,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute $ddl$
+    create table if not exists public.land_baron_leaderboard (
+      owner_name text primary key,
+      property_count integer not null,
+      business_property_count integer not null,
+      individual_property_count integer not null,
+      updated_at timestamptz not null default timezone('utc', now())
+    )
+  $ddl$;
+
+  execute 'alter table public.listing_subdivision_metrics disable row level security';
+  execute 'alter table public.listing_zone_metrics disable row level security';
+  execute 'alter table public.listing_municipality_metrics disable row level security';
+  execute 'alter table public.listing_renewal_metrics disable row level security';
+  execute 'alter table public.listing_renewal_summary disable row level security';
+  execute 'alter table public.listing_renewal_method_summary disable row level security';
+  execute 'alter table public.land_baron_leaderboard disable row level security';
+
+  execute 'grant usage on schema public to anon, authenticated';
+  execute 'grant select on public.listing_subdivision_metrics to anon, authenticated';
+  execute 'grant select on public.listing_zone_metrics to anon, authenticated';
+  execute 'grant select on public.listing_municipality_metrics to anon, authenticated';
+  execute 'grant select on public.listing_renewal_metrics to anon, authenticated';
+  execute 'grant select on public.listing_renewal_summary to anon, authenticated';
+  execute 'grant select on public.listing_renewal_method_summary to anon, authenticated';
+  execute 'grant select on public.land_baron_leaderboard to anon, authenticated';
+
+  execute 'drop trigger if exists set_listing_subdivision_metrics_updated_at on public.listing_subdivision_metrics';
+  execute 'create trigger set_listing_subdivision_metrics_updated_at before update on public.listing_subdivision_metrics for each row execute procedure public.touch_updated_at()';
+
+  execute 'drop trigger if exists set_listing_zone_metrics_updated_at on public.listing_zone_metrics';
+  execute 'create trigger set_listing_zone_metrics_updated_at before update on public.listing_zone_metrics for each row execute procedure public.touch_updated_at()';
+
+  execute 'drop trigger if exists set_listing_municipality_metrics_updated_at on public.listing_municipality_metrics';
+  execute 'create trigger set_listing_municipality_metrics_updated_at before update on public.listing_municipality_metrics for each row execute procedure public.touch_updated_at()';
+
+  execute 'drop trigger if exists set_listing_renewal_metrics_updated_at on public.listing_renewal_metrics';
+  execute 'create trigger set_listing_renewal_metrics_updated_at before update on public.listing_renewal_metrics for each row execute procedure public.touch_updated_at()';
+
+  execute 'drop trigger if exists set_listing_renewal_summary_updated_at on public.listing_renewal_summary';
+  execute 'create trigger set_listing_renewal_summary_updated_at before update on public.listing_renewal_summary for each row execute procedure public.touch_updated_at()';
+
+  execute 'drop trigger if exists set_listing_renewal_method_summary_updated_at on public.listing_renewal_method_summary';
+  execute 'create trigger set_listing_renewal_method_summary_updated_at before update on public.listing_renewal_method_summary for each row execute procedure public.touch_updated_at()';
+
+  execute 'drop trigger if exists set_land_baron_leaderboard_updated_at on public.land_baron_leaderboard';
+  execute 'create trigger set_land_baron_leaderboard_updated_at before update on public.land_baron_leaderboard for each row execute procedure public.touch_updated_at()';
+
+  perform pg_notify('pgrst', 'reload schema');
+  return true;
+end;
+$$;
+
+grant execute on function public.ensure_listing_metrics_tables() to service_role;
