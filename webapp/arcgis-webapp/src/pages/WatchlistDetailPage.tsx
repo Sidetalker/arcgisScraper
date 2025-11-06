@@ -15,6 +15,7 @@ import { useListings } from '@/context/ListingsContext';
 import { useWatchlists } from '@/context/WatchlistsContext';
 import { applyFilters } from '@/services/listingTransformer';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
+import { saveSelectedWatchlistId } from '@/services/watchlistSelectionStorage';
 import type { ListingFilters } from '@/types';
 
 function WatchlistDetailPage(): JSX.Element {
@@ -44,12 +45,6 @@ function WatchlistDetailPage(): JSX.Element {
   const [tableState, setTableState] = useState<ListingTableState>(() => createDefaultTableState());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [selectedWatchlistId, setSelectedWatchlistId] = useState<string | null>(watchlistId ?? null);
-
-  useEffect(() => {
-    setSelectedWatchlistId(watchlistId ?? null);
-  }, [watchlistId]);
-
   const watchlist = useMemo(
     () => watchlists.find((entry) => entry.id === (watchlistId ?? '')) ?? null,
     [watchlistId, watchlists],
@@ -184,12 +179,13 @@ function WatchlistDetailPage(): JSX.Element {
 
   const handleSelectWatchlist = useCallback(
     (nextId: string | null) => {
-      setSelectedWatchlistId(nextId);
       if (!nextId) {
+        saveSelectedWatchlistId(null);
         navigate('/');
         return;
       }
       if (nextId !== watchlistId) {
+        saveSelectedWatchlistId(nextId);
         navigate(`/watchlists/${nextId}`);
       }
     },
@@ -214,8 +210,8 @@ function WatchlistDetailPage(): JSX.Element {
     setStatusMessage('Creating watchlist…');
     try {
       const record = await createWatchlist(name);
-      setSelectedWatchlistId(record.id);
       navigate(`/watchlists/${record.id}`);
+      saveSelectedWatchlistId(record.id);
       setStatusMessage(`Watchlist “${record.name}” created. Start selecting listings to include.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create watchlist.';
@@ -294,6 +290,17 @@ function WatchlistDetailPage(): JSX.Element {
   const selectedWatchlist = watchlist ?? null;
   const selectedCount = selectedWatchlist ? selectedWatchlist.listingIds.length : 0;
 
+  useEffect(() => {
+    if (selectedWatchlist) {
+      saveSelectedWatchlistId(selectedWatchlist.id);
+      return;
+    }
+
+    if (!watchlistId) {
+      saveSelectedWatchlistId(null);
+    }
+  }, [selectedWatchlist, watchlistId]);
+
   return (
     <div className="watchlist-page">
       <header className="watchlist-page__header">
@@ -319,7 +326,7 @@ function WatchlistDetailPage(): JSX.Element {
               name: entry.name,
               listingCount: entry.listingIds.length,
             })),
-            selectedWatchlistId,
+            selectedWatchlistId: watchlistId ?? null,
             onSelectWatchlist: handleSelectWatchlist,
             onCreateWatchlist: handleCreateWatchlist,
             isBusy: watchlistsLoading,

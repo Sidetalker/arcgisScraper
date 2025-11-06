@@ -116,9 +116,7 @@ export async function addListingToWatchlist(
 ): Promise<void> {
   const client = assertSupabaseClient();
   const payload = { watchlist_id: watchlistId, listing_id: listingId };
-  const { error } = await client
-    .from('watchlist_listings')
-    .upsert(payload, { onConflict: 'watchlist_id, listing_id' });
+  const { error } = await client.from('watchlist_listings').upsert(payload);
 
   if (error) {
     throw error;

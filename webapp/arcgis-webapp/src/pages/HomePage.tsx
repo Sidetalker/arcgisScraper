@@ -24,6 +24,10 @@ import {
 } from '@/services/configurationProfiles';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import {
+  loadSelectedWatchlistId,
+  saveSelectedWatchlistId,
+} from '@/services/watchlistSelectionStorage';
+import {
   cloneRegionShape,
   isPointInsideRegions,
   normaliseRegionList,
@@ -144,7 +148,9 @@ function HomePage(): JSX.Element {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [highlightedListingId, setHighlightedListingId] = useState<string | null>(null);
-  const [selectedWatchlistId, setSelectedWatchlistId] = useState<string | null>(null);
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState<string | null>(() =>
+    loadSelectedWatchlistId(),
+  );
   const [profiles, setProfiles] = useState<ConfigurationProfile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [profilesError, setProfilesError] = useState<string | null>(null);
@@ -162,14 +168,18 @@ function HomePage(): JSX.Element {
   );
 
   useEffect(() => {
-    if (!selectedWatchlistId) {
+    saveSelectedWatchlistId(selectedWatchlistId);
+  }, [selectedWatchlistId]);
+
+  useEffect(() => {
+    if (!selectedWatchlistId || watchlistsLoading) {
       return;
     }
     const exists = watchlists.some((watchlist) => watchlist.id === selectedWatchlistId);
     if (!exists) {
       setSelectedWatchlistId(null);
     }
-  }, [selectedWatchlistId, watchlists]);
+  }, [selectedWatchlistId, watchlists, watchlistsLoading]);
 
   const handleRegionsChange = useCallback(
     (nextRegions: RegionShape[]) => {
