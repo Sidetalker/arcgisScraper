@@ -1,0 +1,59 @@
+.manual-edits-page {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.manual-edits-page__controls,
+.manual-edits-page__table {
+  width: 100%;
+}
+
+.manual-edits-page__threshold {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.manual-edits-page__threshold-inputs {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.manual-edits-page__threshold-input {
+  width: 6rem;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.85);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.manual-edits-page__threshold-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.75);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.manual-edits-page__threshold-summary {
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.manual-edits-page__threshold-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.manual-edits-page__table {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
