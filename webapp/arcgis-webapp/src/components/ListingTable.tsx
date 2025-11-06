@@ -419,6 +419,44 @@ export function ListingTable({
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const element = scrollContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const setCommentViewportWidth = () => {
+      element.style.setProperty(
+        '--listing-table-comment-viewport-width',
+        `${element.clientWidth}px`,
+      );
+    };
+
+    setCommentViewportWidth();
+
+    let resizeObserver: ResizeObserver | null = null;
+
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(() => {
+        setCommentViewportWidth();
+      });
+      resizeObserver.observe(element);
+    }
+
+    window.addEventListener('resize', setCommentViewportWidth);
+
+    return () => {
+      window.removeEventListener('resize', setCommentViewportWidth);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
