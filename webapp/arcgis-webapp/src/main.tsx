@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { CacheProvider } from './context/CacheContext';
 import { ListingsProvider } from './context/ListingsContext';
+import { WatchlistsProvider } from './context/WatchlistsContext';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
@@ -12,7 +13,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <BrowserRouter>
       <CacheProvider>
         <ListingsProvider>
-          <App />
+          <WatchlistsProvider>
+            <App />
+          </WatchlistsProvider>
         </ListingsProvider>
       </CacheProvider>
     </BrowserRouter>

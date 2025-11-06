@@ -1,6 +1,6 @@
 import './FilterPanel.css';
 
-import { ChangeEvent } from 'react';
+import { ChangeEvent, useMemo, useState } from 'react';
 
 import type { ListingFilters } from '@/types';
 
@@ -9,6 +9,18 @@ interface FilterPanelProps {
   onChange: (filters: ListingFilters) => void;
   disabled?: boolean;
   onReset: () => void;
+  watchlistControls?: {
+    options: Array<{ id: string; name: string; listingCount: number }>;
+    selectedWatchlistId: string | null;
+    onSelectWatchlist: (watchlistId: string | null) => void;
+    onCreateWatchlist?: () => void | Promise<void>;
+    isBusy?: boolean;
+    canManage?: boolean;
+    createDisabledReason?: string;
+    errorMessage?: string | null;
+    activeSummary?: { name: string; listingCount: number } | null;
+    defaultOptionLabel?: string;
+  };
 }
 
 export function FilterPanel({
@@ -16,7 +28,9 @@ export function FilterPanel({
   onChange,
   disabled = false,
   onReset,
+  watchlistControls,
 }: FilterPanelProps) {
+  const [isCreatingWatchlist, setIsCreatingWatchlist] = useState(false);
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     if (name === 'searchTerm') {
@@ -59,6 +73,46 @@ export function FilterPanel({
     filters.renewalMethods.length > 0 ||
     filters.renewalMonths.length > 0;
 
+  const watchlistSelectOptions = useMemo(() => {
+    if (!watchlistControls) {
+      return [];
+    }
+    return watchlistControls.options.map((option) => ({
+      ...option,
+      label: `${option.name}${
+        option.listingCount > 0 ? ` (${option.listingCount.toLocaleString()})` : ''
+      }`,
+    }));
+  }, [watchlistControls]);
+
+  const watchlistDefaultLabel = watchlistControls?.defaultOptionLabel ?? 'Favorites (global)';
+  const isWatchlistBusy = watchlistControls?.isBusy ?? false;
+  const canManageWatchlists = watchlistControls?.canManage ?? true;
+  const isCreateDisabled =
+    disabled || isWatchlistBusy || isCreatingWatchlist || !watchlistControls?.onCreateWatchlist || !canManageWatchlists;
+  const isSelectDisabled = disabled || isWatchlistBusy;
+
+  const handleWatchlistSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (!watchlistControls) {
+      return;
+    }
+    const nextValue = event.target.value;
+    const resolved = nextValue.trim().length > 0 ? nextValue : null;
+    watchlistControls.onSelectWatchlist(resolved);
+  };
+
+  const handleCreateWatchlistClick = async () => {
+    if (!watchlistControls?.onCreateWatchlist) {
+      return;
+    }
+    setIsCreatingWatchlist(true);
+    try {
+      await watchlistControls.onCreateWatchlist();
+    } finally {
+      setIsCreatingWatchlist(false);
+    }
+  };
+
   return (
     <aside className="filters" aria-label="Filters">
       <div className="filters__header">
@@ -73,6 +127,50 @@ export function FilterPanel({
           Clear all
         </button>
       </div>
+
+      {watchlistControls ? (
+        <div className="filters__group filters__group--watchlists">
+          <label htmlFor="filters-watchlist-select">Watchlist</label>
+          <div className="filters__watchlist-row">
+            <select
+              id="filters-watchlist-select"
+              value={watchlistControls.selectedWatchlistId ?? ''}
+              onChange={handleWatchlistSelectChange}
+              disabled={isSelectDisabled}
+              className="filters__watchlist-select"
+            >
+              <option value="">{watchlistDefaultLabel}</option>
+              {watchlistSelectOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="filters__watchlist-create"
+              onClick={handleCreateWatchlistClick}
+              disabled={isCreateDisabled}
+              title={watchlistControls.createDisabledReason}
+            >
+              New watchlist
+            </button>
+          </div>
+          {watchlistControls.activeSummary ? (
+            <p className="filters__watchlist-summary">
+              Editing {watchlistControls.activeSummary.name} ·{' '}
+              {watchlistControls.activeSummary.listingCount.toLocaleString()} properties
+            </p>
+          ) : (
+            <p className="filters__watchlist-summary">Managing global favorites</p>
+          )}
+          {watchlistControls.errorMessage ? (
+            <p className="filters__watchlist-error" role="alert">
+              {watchlistControls.errorMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {hasInsightFilters ? (
         <div className="filters__group">

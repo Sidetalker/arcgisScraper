@@ -10,6 +10,8 @@ import FavoritesPage from '@/pages/FavoritesPage';
 import OwnerDetailPage from '@/pages/OwnerDetailPage';
 import PasswordModal from '@/components/PasswordModal';
 import { useListings } from '@/context/ListingsContext';
+import WatchlistDetailPage from '@/pages/WatchlistDetailPage';
+import { useWatchlists } from '@/context/WatchlistsContext';
 
 export type LayoutOutletContext = {
   setStatusMessage: (message: string) => void;
@@ -26,6 +28,7 @@ function Layout(): JSX.Element {
     syncFromArcgis,
     clearCacheAndReload,
   } = useListings();
+  const { watchlists } = useWatchlists();
   const [statusMessage, setStatusMessage] = useState('Loading listings…');
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -167,6 +170,20 @@ function Layout(): JSX.Element {
         >
           Favorites
         </NavLink>
+        {watchlists.map((watchlist) => {
+          const count = watchlist.listingIds.length;
+          const label = `${watchlist.name}${count > 0 ? ` (${count.toLocaleString()})` : ''}`;
+          return (
+            <NavLink
+              key={watchlist.id}
+              to={`/watchlists/${watchlist.id}`}
+              className={({ isActive }) => `app__tab${isActive ? ' app__tab--active' : ''}`}
+              title={`Open the ${watchlist.name} watchlist`}
+            >
+              {label}
+            </NavLink>
+          );
+        })}
       </nav>
 
       <section className="app__status" role="status" aria-live="polite">
@@ -199,6 +216,7 @@ function App(): JSX.Element {
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/watchlists/:watchlistId" element={<WatchlistDetailPage />} />
         <Route path="/complex/:complexId" element={<ComplexDetailPage />} />
         <Route path="/owner/:ownerId" element={<OwnerDetailPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
