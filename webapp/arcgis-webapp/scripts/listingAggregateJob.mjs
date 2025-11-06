@@ -899,16 +899,21 @@ async function refreshMunicipalLicenseTable(supabase, logger) {
 
   const supabaseRows = municipalRecords.map((record) => normaliseMunicipalRecordForSupabase(record));
 
+  if (supabaseRows.length === 0) {
+    await withSupabaseRetry(
+      () => supabase.from('municipal_licenses').delete().neq('id', ''),
+      'clear municipal licenses',
+      logger,
+    );
+    logger.warn?.('[metrics] Municipal license roster is empty after refresh.');
+    return [];
+  }
+
   await withSupabaseRetry(
     () => supabase.from('municipal_licenses').delete().neq('id', ''),
     'clear municipal licenses',
     logger,
   );
-
-  if (supabaseRows.length === 0) {
-    logger.warn?.('[metrics] Municipal license roster is empty after refresh.');
-    return [];
-  }
 
   const chunkSize = 500;
   for (let start = 0; start < supabaseRows.length; start += chunkSize) {

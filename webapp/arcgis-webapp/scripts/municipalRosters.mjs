@@ -23,6 +23,20 @@ const STATUS_ALIASES = new Map([
   ['CANCELED', 'revoked'],
 ]);
 
+const DEFAULT_REFERER =
+  process.env.SUMMIT_ARCGIS_REFERER ??
+  process.env.SUMMIT_MUNICIPAL_REFERER ??
+  'https://experience.arcgis.com/experience/706a6886322445479abadb904db00bc0/';
+
+const STATUS_USER_AGENT = 'arcgis-webapp-metrics/1.0';
+
+function buildArcgisHeaders() {
+  return {
+    Referer: DEFAULT_REFERER,
+    'User-Agent': STATUS_USER_AGENT,
+  };
+}
+
 const DEFAULT_SOURCES = [
   {
     key: 'breckenridge',
@@ -255,7 +269,7 @@ async function fetchFeaturePage(source, offset, limit) {
   });
 
   const url = `${source.layerUrl.replace(/\/?$/, '')}/query?${params.toString()}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: buildArcgisHeaders() });
   if (!response.ok) {
     throw new Error(`Failed to fetch municipal roster ${source.municipality}: ${response.status} ${response.statusText}`);
   }
@@ -351,6 +365,7 @@ async function fetchSourceRecords(source, logger) {
 export async function fetchMunicipalLicenseRecords(logger = console) {
   const sources = loadMunicipalSources();
   const records = [];
+  const failures = [];
 
   for (const source of sources) {
     if (!source.layerUrl) {
@@ -364,8 +379,16 @@ export async function fetchMunicipalLicenseRecords(logger = console) {
       const sourceRecords = await fetchSourceRecords(source, logger);
       records.push(...sourceRecords);
     } catch (error) {
+      failures.push({ source, error });
       logger?.error?.(`Failed to fetch municipal roster for ${source.municipality}: ${error?.message ?? error}`);
     }
+  }
+
+  if (records.length === 0 && failures.length === sources.length && sources.length > 0) {
+    const details = failures
+      .map(({ source, error }) => `${source.municipality}: ${error?.message ?? error}`)
+      .join('; ');
+    throw new Error(`Failed to fetch municipal rosters from ArcGIS (${details})`);
   }
 
   return records;
