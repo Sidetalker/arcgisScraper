@@ -1,6 +1,7 @@
 import './ListingTable.css';
 
 import {
+  Fragment,
   type ChangeEvent,
   type DragEvent,
   type FormEvent,
@@ -23,7 +24,8 @@ import {
   normalizeText,
   toUniqueOwners,
 } from '@/utils/listingColumnFilters';
-import type { ListingRecord } from '@/types';
+import type { ListingCustomizationOverrides } from '@/services/listingStorage';
+import type { ListingRecord, ListingSourceOfTruth } from '@/types';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -43,9 +45,86 @@ interface ListingTableProps {
   onFavoriteChange: (listingId: string, isFavorited: boolean) => Promise<void> | void;
   canToggleFavorites: boolean;
   favoriteDisabledReason?: string;
+  onListingEdit: (
+    listingId: string,
+    overrides: ListingCustomizationOverrides,
+  ) => Promise<void> | void;
+  onListingRevert: (listingId: string) => Promise<void> | void;
+  canEditListings: boolean;
+  editDisabledReason?: string;
 }
 
 type ColumnKey = ListingTableColumnKey;
+
+type SourcePreviewValue = string | string[] | null | undefined;
+
+function formatSourcePreview(value: SourcePreviewValue): string | null {
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean)
+      .join('\n');
+    return joined.length > 0 ? joined : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+}
+
+function getSourceOfTruthText(listing: ListingRecord, columnKey: ColumnKey): string | null {
+  const source: ListingSourceOfTruth = listing.sourceOfTruth ?? {
+    complex: listing.complex,
+    unit: listing.unit,
+    ownerName: listing.ownerName,
+    ownerNames: [...listing.ownerNames],
+    mailingAddress: listing.mailingAddress,
+    mailingAddressLine1: listing.mailingAddressLine1,
+    mailingAddressLine2: listing.mailingAddressLine2,
+    mailingCity: listing.mailingCity,
+    mailingState: listing.mailingState,
+    mailingZip5: listing.mailingZip5,
+    mailingZip9: listing.mailingZip9,
+    subdivision: listing.subdivision,
+    scheduleNumber: listing.scheduleNumber,
+    physicalAddress: listing.physicalAddress,
+    isBusinessOwner: listing.isBusinessOwner,
+  };
+
+  switch (columnKey) {
+    case 'complex':
+      return formatSourcePreview(source.complex);
+    case 'unit':
+      return formatSourcePreview(source.unit);
+    case 'owners':
+      return source.ownerNames.length > 0
+        ? formatSourcePreview(source.ownerNames)
+        : formatSourcePreview(source.ownerName);
+    case 'business':
+      return source.isBusinessOwner ? 'Yes' : 'No';
+    case 'mailingAddress':
+      return formatSourcePreview(
+        streetAddressFromSegments(source.mailingAddressLine1, source.mailingAddressLine2),
+      );
+    case 'mailingCity':
+      return formatSourcePreview(source.mailingCity);
+    case 'mailingState':
+      return formatSourcePreview(source.mailingState);
+    case 'mailingZip':
+      return formatSourcePreview(source.mailingZip9 || source.mailingZip5);
+    case 'subdivision':
+      return formatSourcePreview(source.subdivision);
+    case 'scheduleNumber':
+      return formatSourcePreview(source.scheduleNumber);
+    case 'physicalAddress':
+      return formatSourcePreview(source.physicalAddress);
+    default:
+      return null;
+  }
+}
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -54,6 +133,122 @@ interface ColumnDefinition {
   getFilterValue: (listing: ListingRecord) => string;
   getExportValue: (listing: ListingRecord) => string;
   filterType?: 'text' | 'boolean';
+}
+
+interface ListingEditDraft {
+  complex: string;
+  unit: string;
+  ownerNames: string;
+  isBusinessOwner: 'yes' | 'no';
+  mailingAddress: string;
+  mailingCity: string;
+  mailingState: string;
+  mailingZip: string;
+  subdivision: string;
+  scheduleNumber: string;
+  physicalAddress: string;
+}
+
+function formatCityStateZipLine(city: string, state: string, zip: string): string {
+  const cityPart = city.trim();
+  const statePart = state.trim();
+  const zipPart = zip.trim();
+
+  let line = '';
+  if (cityPart && statePart) {
+    line = `${cityPart}, ${statePart}`;
+  } else if (cityPart) {
+    line = cityPart;
+  } else if (statePart) {
+    line = statePart;
+  }
+
+  if (line && zipPart) {
+    return `${line} ${zipPart}`.trim();
+  }
+
+  if (!line && zipPart) {
+    return zipPart;
+  }
+
+  return line;
+}
+
+function composeMailingAddressText(
+  line1: string,
+  line2: string,
+  city: string,
+  state: string,
+  zip: string,
+): string {
+  const lines: string[] = [];
+  const trimmedLine1 = line1.trim();
+  const trimmedLine2 = line2.trim();
+
+  if (trimmedLine1) {
+    lines.push(trimmedLine1);
+  }
+
+  if (trimmedLine2) {
+    trimmedLine2
+      .split(/\r?\n/)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .forEach((segment) => {
+        lines.push(segment);
+      });
+  }
+
+  const cityLine = formatCityStateZipLine(city, state, zip);
+  if (cityLine) {
+    lines.push(cityLine);
+  }
+
+  return lines.join('\n');
+}
+
+function streetAddressFromSegments(line1: string, line2: string): string {
+  const parts: string[] = [];
+  if (line1.trim()) {
+    parts.push(line1.trim());
+  }
+  if (line2.trim()) {
+    line2
+      .split(/\r?\n/)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .forEach((segment) => {
+        parts.push(segment);
+      });
+  }
+  return parts.join('\n');
+}
+
+function streetAddressFromListing(listing: ListingRecord): string {
+  return streetAddressFromSegments(listing.mailingAddressLine1, listing.mailingAddressLine2);
+}
+
+function parseOwnerNamesInput(text: string): string[] {
+  return text
+    .split(/\r?\n|;/)
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+}
+
+function normaliseZipParts(input: string): { zip5: string; zip9: string } {
+  const digits = input.replace(/[^0-9]/g, '');
+  if (digits.length >= 9) {
+    const zip5 = digits.slice(0, 5);
+    const plus4 = digits.slice(5, 9);
+    return { zip5, zip9: `${zip5}-${plus4}` };
+  }
+
+  if (digits.length >= 5) {
+    const zip5 = digits.slice(0, 5);
+    return { zip5, zip9: '' };
+  }
+
+  return { zip5: digits, zip9: '' };
 }
 
 const COLUMN_DEFINITIONS: ColumnDefinition[] = [
@@ -200,6 +395,10 @@ export function ListingTable({
   onFavoriteChange,
   canToggleFavorites,
   favoriteDisabledReason,
+  onListingEdit,
+  onListingRevert,
+  canEditListings,
+  editDisabledReason,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
@@ -222,8 +421,193 @@ export function ListingTable({
   const pageJumpContainerRef = useRef<HTMLDivElement | null>(null);
   const pageJumpInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<string>>(() => new Set());
+  const [editingListingId, setEditingListingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<ListingEditDraft | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
   const favoriteDisabledMessage =
     favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
+  const createDraftFromListing = useCallback((listing: ListingRecord): ListingEditDraft => {
+    return {
+      complex: listing.complex,
+      unit: listing.unit,
+      ownerNames: listing.ownerNames.length ? listing.ownerNames.join('\n') : listing.ownerName,
+      isBusinessOwner: listing.isBusinessOwner ? 'yes' : 'no',
+      mailingAddress: streetAddressFromListing(listing),
+      mailingCity: listing.mailingCity,
+      mailingState: listing.mailingState,
+      mailingZip: listing.mailingZip9 || listing.mailingZip5,
+      subdivision: listing.subdivision,
+      scheduleNumber: listing.scheduleNumber,
+      physicalAddress: listing.physicalAddress,
+    };
+  }, []);
+  const handleCancelEdit = useCallback(() => {
+    setEditingListingId(null);
+    setEditDraft(null);
+    setEditError(null);
+    setSavingEdit(false);
+  }, []);
+  const handleStartEdit = useCallback(
+    (listing: ListingRecord) => {
+      if (!canEditListings) {
+        return;
+      }
+
+      if (editingListingId && editingListingId !== listing.id && typeof window !== 'undefined') {
+        const confirmed = window.confirm('Discard your current edits?');
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      setEditingListingId(listing.id);
+      setEditDraft(createDraftFromListing(listing));
+      setEditError(null);
+      setSavingEdit(false);
+    },
+    [canEditListings, createDraftFromListing, editingListingId],
+  );
+  const handleDraftInputChange = useCallback(
+    (field: keyof ListingEditDraft) =>
+      (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const rawValue = event.target.value;
+        const value =
+          field === 'mailingState'
+            ? rawValue.toUpperCase().slice(0, 2)
+            : rawValue;
+        setEditDraft((current) => (current ? { ...current, [field]: value } : current));
+      },
+    [],
+  );
+  const handleBusinessOwnerChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = event.target.value === 'yes' ? 'yes' : 'no';
+      setEditDraft((current) => (current ? { ...current, isBusinessOwner: value } : current));
+    },
+    [],
+  );
+  const buildOverridesFromDraft = useCallback(
+    (draft: ListingEditDraft): ListingCustomizationOverrides => {
+      const ownerNames = parseOwnerNamesInput(draft.ownerNames);
+      const ownerName = ownerNames.join('; ');
+      const { zip5, zip9 } = normaliseZipParts(draft.mailingZip);
+      const state = draft.mailingState.trim().toUpperCase();
+      const streetLines = draft.mailingAddress
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      const line1 = streetLines[0] ?? '';
+      const line2 = streetLines.length > 1 ? streetLines.slice(1).join('\n') : '';
+      const city = draft.mailingCity.trim();
+      const mailingAddress = composeMailingAddressText(line1, line2, city, state, zip9 || zip5);
+
+      return {
+        complex: draft.complex.trim(),
+        unit: draft.unit.trim(),
+        ownerName,
+        ownerNames,
+        isBusinessOwner: draft.isBusinessOwner === 'yes',
+        mailingAddress,
+        mailingAddressLine1: line1,
+        mailingAddressLine2: line2,
+        mailingCity: city,
+        mailingState: state,
+        mailingZip5: zip5,
+        mailingZip9: zip9,
+        subdivision: draft.subdivision.trim(),
+        scheduleNumber: draft.scheduleNumber.trim(),
+        physicalAddress: draft.physicalAddress.trim(),
+      };
+    },
+    [],
+  );
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingListingId || !editDraft) {
+      return;
+    }
+
+    if (!canEditListings) {
+      return;
+    }
+
+    const targetListing = listings.find((listing) => listing.id === editingListingId);
+    if (!targetListing) {
+      setEditError('Listing not found.');
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const overrides = buildOverridesFromDraft(editDraft);
+      const result = onListingEdit(editingListingId, overrides);
+      await Promise.resolve(result);
+      handleCancelEdit();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to save listing changes.';
+      setEditError(message);
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [
+    buildOverridesFromDraft,
+    canEditListings,
+    editDraft,
+    editingListingId,
+    handleCancelEdit,
+    listings,
+    onListingEdit,
+  ]);
+  const handleRevertListing = useCallback(
+    (listing: ListingRecord) =>
+      async () => {
+        if (!canEditListings) {
+          return;
+        }
+
+        if (typeof window !== 'undefined') {
+          const confirmed = window.confirm(
+            'Revert to the original listing data? This will discard your customizations.',
+          );
+          if (!confirmed) {
+            return;
+          }
+        }
+
+        setPendingRevertIds((current) => {
+          const next = new Set(current);
+          next.add(listing.id);
+          return next;
+        });
+        setEditError(null);
+
+        try {
+          const result = onListingRevert(listing.id);
+          await Promise.resolve(result);
+          if (editingListingId === listing.id) {
+            handleCancelEdit();
+          }
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Failed to revert listing data.';
+          if (editingListingId === listing.id) {
+            setEditError(message);
+          } else if (typeof window !== 'undefined') {
+            window.alert(message);
+          }
+        } finally {
+          setPendingRevertIds((current) => {
+            const next = new Set(current);
+            next.delete(listing.id);
+            return next;
+          });
+        }
+      },
+    [canEditListings, editingListingId, handleCancelEdit, onListingRevert],
+  );
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -290,6 +674,140 @@ export function ListingTable({
       COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]),
     );
   }, []);
+  const renderEditableCell = (
+    columnKey: ColumnKey,
+    listing: ListingRecord,
+  ): ReactNode => {
+    if (!editDraft) {
+      const definition = columnDefinitionMap.get(columnKey);
+      return definition ? definition.render(listing) : null;
+    }
+
+    const originalText = getSourceOfTruthText(listing, columnKey);
+    const wrapWithSource = (control: ReactNode): ReactNode => (
+      <div className="listing-table__edit-control">
+        {control}
+        <p className="listing-table__edit-source">
+          <span className="listing-table__edit-source-label">Original:</span>
+          <span className="listing-table__edit-source-value">{originalText ?? '—'}</span>
+        </p>
+      </div>
+    );
+
+    switch (columnKey) {
+      case 'complex':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.complex}
+            onChange={handleDraftInputChange('complex')}
+            className="listing-table__edit-input"
+          />,
+        );
+      case 'unit':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.unit}
+            onChange={handleDraftInputChange('unit')}
+            className="listing-table__edit-input"
+          />,
+        );
+      case 'owners':
+        return wrapWithSource(
+          <textarea
+            value={editDraft.ownerNames}
+            onChange={handleDraftInputChange('ownerNames')}
+            className="listing-table__edit-textarea"
+            rows={Math.max(2, editDraft.ownerNames.split(/\r?\n/).length || 2)}
+            placeholder="One owner per line"
+          />,
+        );
+      case 'business':
+        return wrapWithSource(
+          <select
+            value={editDraft.isBusinessOwner}
+            onChange={handleBusinessOwnerChange}
+            className="listing-table__edit-select"
+          >
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>,
+        );
+      case 'mailingAddress':
+        return wrapWithSource(
+          <textarea
+            value={editDraft.mailingAddress}
+            onChange={handleDraftInputChange('mailingAddress')}
+            className="listing-table__edit-textarea"
+            rows={Math.max(2, editDraft.mailingAddress.split(/\r?\n/).length || 2)}
+            placeholder="Street address (one line per entry)"
+          />,
+        );
+      case 'mailingCity':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.mailingCity}
+            onChange={handleDraftInputChange('mailingCity')}
+            className="listing-table__edit-input"
+          />,
+        );
+      case 'mailingState':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.mailingState}
+            onChange={handleDraftInputChange('mailingState')}
+            className="listing-table__edit-input listing-table__edit-input--state"
+            maxLength={2}
+          />,
+        );
+      case 'mailingZip':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.mailingZip}
+            onChange={handleDraftInputChange('mailingZip')}
+            className="listing-table__edit-input"
+            inputMode="numeric"
+            pattern="[0-9-]*"
+            placeholder="ZIP or ZIP+4"
+          />,
+        );
+      case 'subdivision':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.subdivision}
+            onChange={handleDraftInputChange('subdivision')}
+            className="listing-table__edit-input"
+          />,
+        );
+      case 'scheduleNumber':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.scheduleNumber}
+            onChange={handleDraftInputChange('scheduleNumber')}
+            className="listing-table__edit-input"
+          />,
+        );
+      case 'physicalAddress':
+        return wrapWithSource(
+          <input
+            type="text"
+            value={editDraft.physicalAddress}
+            onChange={handleDraftInputChange('physicalAddress')}
+            className="listing-table__edit-input"
+          />,
+        );
+      default: {
+        const definition = columnDefinitionMap.get(columnKey);
+        return definition ? definition.render(listing) : null;
+      }
+    }
+  };
 
   const visibleColumns = useMemo(
     () => columnOrder.filter((key) => !hiddenColumns.includes(key)),
@@ -1203,60 +1721,151 @@ export function ListingTable({
                 const favoriteLabel = listing.complex
                   ? `Toggle favorite for ${listing.complex}${listing.unit ? ` unit ${listing.unit}` : ''}`
                   : 'Toggle favorite for this listing';
+                const isEditing = editingListingId === listing.id;
+                const isRevertPending = pendingRevertIds.has(listing.id);
+                const rowClassName = [
+                  'listing-table__row',
+                  highlightedListingId === listing.id ? 'listing-table__row--highlight' : '',
+                  listing.hasCustomizations ? 'listing-table__row--customized' : '',
+                  isEditing ? 'listing-table__row--editing' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+
+                const listingDescriptor =
+                  listing.complex || listing.scheduleNumber || listing.id;
+                const editButtonTitle = canEditListings
+                  ? listing.hasCustomizations
+                    ? 'Edit listing details (customized)'
+                    : 'Edit listing details'
+                  : editDisabledReason ?? 'Editing is disabled';
+                const editAriaLabel = listing.hasCustomizations
+                  ? `Edit listing ${listingDescriptor} (customized)`
+                  : `Edit listing ${listingDescriptor}`;
+
                 return (
-                  <tr
-                    key={listing.id}
-                    ref={registerRow(listing.id)}
-                    className={`listing-table__row${
-                      highlightedListingId === listing.id ? ' listing-table__row--highlight' : ''
-                    }`}
-                  >
-                    <td
-                      className="listing-table__favorite-cell"
-                      data-loading={isFavoritePending ? 'true' : undefined}
-                      aria-busy={isFavoritePending}
+                  <Fragment key={listing.id}>
+                    <tr
+                      ref={registerRow(listing.id)}
+                      className={rowClassName}
+                      data-customized={listing.hasCustomizations ? 'true' : undefined}
                     >
-                      <input
-                        type="checkbox"
-                        className="listing-table__favorite-checkbox"
-                        checked={listing.isFavorited}
-                        onChange={handleFavoriteToggle(listing.id)}
-                        disabled={isFavoriteDisabled}
-                        aria-label={favoriteLabel}
-                        title={favoriteTitle}
-                      />
-                    </td>
-                    <td className="listing-table__detail-cell">
-                      {listing.publicDetailUrl ? (
-                        <a
-                          href={listing.publicDetailUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="listing-table__detail-link"
-                          aria-label="Open listing details in a new tab"
-                        >
-                          <svg
-                            className="listing-table__detail-icon"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                            focusable="false"
+                      <td
+                        className="listing-table__favorite-cell"
+                        data-loading={isFavoritePending ? 'true' : undefined}
+                        aria-busy={isFavoritePending}
+                      >
+                        <input
+                          type="checkbox"
+                          className="listing-table__favorite-checkbox"
+                          checked={listing.isFavorited}
+                          onChange={handleFavoriteToggle(listing.id)}
+                          disabled={isFavoriteDisabled}
+                          aria-label={favoriteLabel}
+                          title={favoriteTitle}
+                        />
+                      </td>
+                      <td className="listing-table__detail-cell">
+                        <div className="listing-table__detail-actions">
+                          <button
+                            type="button"
+                            className="listing-table__icon-button listing-table__edit-button"
+                            onClick={() => handleStartEdit(listing)}
+                            disabled={!canEditListings || savingEdit || isRevertPending}
+                            title={editButtonTitle}
+                            aria-label={editAriaLabel}
+                            data-edited={listing.hasCustomizations ? 'true' : undefined}
                           >
-                            <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                            <circle cx="12" cy="8" r="1" fill="currentColor" />
-                            <path d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z" fill="currentColor" />
-                          </svg>
-                        </a>
-                      ) : (
-                        <span aria-hidden="true">—</span>
-                      )}
-                    </td>
-                    {visibleColumnDefinitions.map((definition) => (
-                      <td key={`${listing.id}-${definition.key}`}>{definition.render(listing)}</td>
-                    ))}
-                  </tr>
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path
+                                d="M4 15.5 15.59 3.91a2 2 0 0 1 2.83 0l1.67 1.67a2 2 0 0 1 0 2.83L8.5 20H4Z"
+                                fill="currentColor"
+                              />
+                              <path d="M3 22h6l12-12-3-3L3 19Z" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                            </svg>
+                            <span className="visually-hidden">{editAriaLabel}</span>
+                            {listing.hasCustomizations ? (
+                              <span className="visually-hidden">Listing has saved customizations</span>
+                            ) : null}
+                          </button>
+                          {listing.publicDetailUrl ? (
+                            <a
+                              href={listing.publicDetailUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="listing-table__detail-link"
+                              aria-label="Open listing details in a new tab"
+                            >
+                              <svg
+                                className="listing-table__detail-icon"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                                focusable="false"
+                              >
+                                <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                                <circle cx="12" cy="8" r="1" fill="currentColor" />
+                                <path d="M11.25 10.5c0-.414.336-.75.75-.75s.75.336.75.75v5.25a.75.75 0 0 1-1.5 0Z" fill="currentColor" />
+                              </svg>
+                            </a>
+                          ) : (
+                            <span className="listing-table__detail-placeholder" aria-hidden="true">—</span>
+                          )}
+                        </div>
+                      </td>
+                      {visibleColumnDefinitions.map((definition) => (
+                        <td
+                          key={`${listing.id}-${definition.key}`}
+                          className={isEditing ? 'listing-table__cell--editing' : undefined}
+                        >
+                          {isEditing
+                            ? renderEditableCell(definition.key, listing)
+                            : definition.render(listing)}
+                        </td>
+                      ))}
+                    </tr>
+                    {isEditing ? (
+                      <tr className="listing-table__edit-actions-row">
+                        <td colSpan={columnCount}>
+                          <div className="listing-table__edit-actions">
+                            <div className="listing-table__edit-buttons">
+                              <button
+                                type="button"
+                                className="listing-table__edit-primary"
+                                onClick={handleSaveEdit}
+                                disabled={savingEdit}
+                              >
+                                {savingEdit ? 'Saving…' : 'Save changes'}
+                              </button>
+                              <button
+                                type="button"
+                                className="listing-table__edit-secondary"
+                                onClick={handleCancelEdit}
+                                disabled={savingEdit}
+                              >
+                                Cancel (changes will not be saved)
+                              </button>
+                              <button
+                                type="button"
+                                className="listing-table__edit-tertiary"
+                                onClick={handleRevertListing(listing)}
+                                disabled={savingEdit || isRevertPending}
+                              >
+                                Revert to original data
+                              </button>
+                            </div>
+                            <p className="listing-table__edit-hint">
+                              Updates are stored in Supabase so you can revisit them later.
+                            </p>
+                            {editError ? (
+                              <p className="listing-table__edit-error" role="alert">{editError}</p>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 );
-              })
-            )}
+              })            )}
           </tbody>
           </table>
         </div>
