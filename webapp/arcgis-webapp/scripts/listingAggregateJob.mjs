@@ -27,8 +27,8 @@ const PAGE_SIZE = 1000;
 const MAX_SIGNAL_DEPTH = 4;
 const MAX_SIGNAL_ARRAY_LENGTH = 25;
 const SCHEMA_CACHE_ERROR_CODES = new Set(['PGRST204', 'PGRST205']);
-const SCHEMA_CACHE_RETRY_LIMIT = 5;
-const SCHEMA_CACHE_RETRY_DELAY_MS = 750;
+const SCHEMA_CACHE_RETRY_LIMIT = 10;
+const SCHEMA_CACHE_RETRY_DELAY_MS = 1500;
 
 const DATE_KEY_HINT = /(date|dt|year|record|recept|sale|deed|permit|license|renew|transfer|expir|assess|valuation|updated|entered|filed|document)/i;
 const DATE_VALUE_HINT = /(\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{2}|\d{4}))|((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+(?:\d{2}|\d{4}))|(\b(19|20)\d{2}\b)/i;

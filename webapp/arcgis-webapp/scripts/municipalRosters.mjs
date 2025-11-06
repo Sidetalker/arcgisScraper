@@ -29,57 +29,32 @@ const DEFAULT_SOURCES = [
     municipality: 'Breckenridge',
     layerUrl:
       process.env.BRECKENRIDGE_ROSTER_URL ??
-      'https://services1.arcgis.com/DbqCQ5IIGIgjLU4g/arcgis/rest/services/STR_Licenses_Public/FeatureServer/0',
-    scheduleField: process.env.BRECKENRIDGE_SCHEDULE_FIELD ?? 'SCHEDULE_NUM',
-    licenseIdField: process.env.BRECKENRIDGE_LICENSE_FIELD ?? 'LICENSE_NO',
-    statusField: process.env.BRECKENRIDGE_STATUS_FIELD ?? 'STATUS',
-    expirationField: process.env.BRECKENRIDGE_EXPIRATION_FIELD ?? 'EXPIRATION',
-    updatedField: process.env.BRECKENRIDGE_UPDATED_FIELD ?? 'LAST_UPDATE',
+      'https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/STR_Licenses_October_2025_public_view_layer/FeatureServer/0',
+    scheduleField: process.env.BRECKENRIDGE_SCHEDULE_FIELD ?? 'HC_RegistrationsOriginalCleaned',
+    licenseIdField: process.env.BRECKENRIDGE_LICENSE_FIELD ?? 'HC_RegistrationsOriginalClean_1',
+    statusField: process.env.BRECKENRIDGE_STATUS_FIELD ?? 'HC_RegistrationsOriginalClea_43',
+    expirationField: process.env.BRECKENRIDGE_EXPIRATION_FIELD ?? null,
+    updatedField: process.env.BRECKENRIDGE_UPDATED_FIELD ?? null,
     where: '1=1',
     outFields: ['*'],
     detailUrlTemplate:
       process.env.BRECKENRIDGE_LICENSE_URL_TEMPLATE ??
-      'https://www.townofbreckenridge.com/str/{LICENSE_NO}',
+      'https://www.townofbreckenridge.com/str/{HC_RegistrationsOriginalClean_1}',
   },
   {
-    key: 'frisco',
-    municipality: 'Frisco',
+    key: 'unincorporated_summit_county',
+    municipality: 'Unincorporated Summit County',
     layerUrl:
-      process.env.FRISCO_ROSTER_URL ??
-      'https://services7.arcgis.com/r0nAYG7DmzNoKGbT/arcgis/rest/services/Frisco_STR_Licenses/FeatureServer/0',
-    scheduleField: process.env.FRISCO_SCHEDULE_FIELD ?? 'SCHEDULE',
-    licenseIdField: process.env.FRISCO_LICENSE_FIELD ?? 'LICENSE_NO',
-    statusField: process.env.FRISCO_STATUS_FIELD ?? 'STATUS',
-    expirationField: process.env.FRISCO_EXPIRATION_FIELD ?? 'EXPIRATION',
-    updatedField: process.env.FRISCO_UPDATED_FIELD ?? 'LASTUPDATED',
-    where: '1=1',
-    outFields: ['*'],
-  },
-  {
-    key: 'dillon',
-    municipality: 'Dillon',
-    layerUrl:
-      process.env.DILLON_ROSTER_URL ??
-      'https://services7.arcgis.com/4W0wSZ3KFcuX39pB/arcgis/rest/services/Dillon_STR_Licenses/FeatureServer/0',
-    scheduleField: process.env.DILLON_SCHEDULE_FIELD ?? 'SCHEDULE',
-    licenseIdField: process.env.DILLON_LICENSE_FIELD ?? 'LICENSE_NO',
-    statusField: process.env.DILLON_STATUS_FIELD ?? 'STATUS',
-    expirationField: process.env.DILLON_EXPIRATION_FIELD ?? 'EXPIRATION',
-    updatedField: process.env.DILLON_UPDATED_FIELD ?? 'LAST_UPDATED',
-    where: '1=1',
-    outFields: ['*'],
-  },
-  {
-    key: 'silverthorne',
-    municipality: 'Silverthorne',
-    layerUrl:
-      process.env.SILVERTHORNE_ROSTER_URL ??
-      'https://services7.arcgis.com/p0mEetxHUAZJr0qG/arcgis/rest/services/Silverthorne_STR_Licenses/FeatureServer/0',
-    scheduleField: process.env.SILVERTHORNE_SCHEDULE_FIELD ?? 'SCHEDULE',
-    licenseIdField: process.env.SILVERTHORNE_LICENSE_FIELD ?? 'LICENSE_NO',
-    statusField: process.env.SILVERTHORNE_STATUS_FIELD ?? 'STATUS',
-    expirationField: process.env.SILVERTHORNE_EXPIRATION_FIELD ?? 'EXPIRATION',
-    updatedField: process.env.SILVERTHORNE_UPDATED_FIELD ?? 'LAST_MODIFIED',
+      process.env.UNINCORPORATED_SUMMIT_COUNTY_ROSTER_URL ??
+      'https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/STR_Licenses_October_2025_public_view_layer/FeatureServer/0',
+    scheduleField:
+      process.env.UNINCORPORATED_SUMMIT_COUNTY_SCHEDULE_FIELD ?? 'HC_RegistrationsOriginalCleaned',
+    licenseIdField:
+      process.env.UNINCORPORATED_SUMMIT_COUNTY_LICENSE_FIELD ?? 'HC_RegistrationsOriginalClean_1',
+    statusField:
+      process.env.UNINCORPORATED_SUMMIT_COUNTY_STATUS_FIELD ?? 'HC_RegistrationsOriginalClea_43',
+    expirationField: process.env.UNINCORPORATED_SUMMIT_COUNTY_EXPIRATION_FIELD ?? null,
+    updatedField: process.env.UNINCORPORATED_SUMMIT_COUNTY_UPDATED_FIELD ?? null,
     where: '1=1',
     outFields: ['*'],
   },
@@ -407,4 +382,3 @@ export function groupLicensesBySchedule(records) {
   }
   return bySchedule;
 }
-
