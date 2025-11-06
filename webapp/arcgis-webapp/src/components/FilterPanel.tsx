@@ -14,9 +14,11 @@ interface FilterPanelProps {
     selectedWatchlistId: string | null;
     onSelectWatchlist: (watchlistId: string | null) => void;
     onCreateWatchlist?: () => void | Promise<void>;
+    onDeleteWatchlist?: () => void | Promise<void>;
     isBusy?: boolean;
     canManage?: boolean;
     createDisabledReason?: string;
+    deleteDisabledReason?: string;
     errorMessage?: string | null;
     activeSummary?: { name: string; listingCount: number } | null;
     defaultOptionLabel?: string;
@@ -31,6 +33,7 @@ export function FilterPanel({
   watchlistControls,
 }: FilterPanelProps) {
   const [isCreatingWatchlist, setIsCreatingWatchlist] = useState(false);
+  const [isDeletingWatchlist, setIsDeletingWatchlist] = useState(false);
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     if (name === 'searchTerm') {
@@ -90,6 +93,13 @@ export function FilterPanel({
   const canManageWatchlists = watchlistControls?.canManage ?? true;
   const isCreateDisabled =
     disabled || isWatchlistBusy || isCreatingWatchlist || !watchlistControls?.onCreateWatchlist || !canManageWatchlists;
+  const isDeleteDisabled =
+    disabled ||
+    isWatchlistBusy ||
+    isDeletingWatchlist ||
+    !watchlistControls?.onDeleteWatchlist ||
+    !watchlistControls?.selectedWatchlistId ||
+    !canManageWatchlists;
   const isSelectDisabled = disabled || isWatchlistBusy;
 
   const handleWatchlistSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -110,6 +120,18 @@ export function FilterPanel({
       await watchlistControls.onCreateWatchlist();
     } finally {
       setIsCreatingWatchlist(false);
+    }
+  };
+
+  const handleDeleteWatchlistClick = async () => {
+    if (!watchlistControls?.onDeleteWatchlist) {
+      return;
+    }
+    setIsDeletingWatchlist(true);
+    try {
+      await watchlistControls.onDeleteWatchlist();
+    } finally {
+      setIsDeletingWatchlist(false);
     }
   };
 
@@ -157,10 +179,23 @@ export function FilterPanel({
             </button>
           </div>
           {watchlistControls.activeSummary ? (
-            <p className="filters__watchlist-summary">
-              Editing {watchlistControls.activeSummary.name} ·{' '}
-              {watchlistControls.activeSummary.listingCount.toLocaleString()} properties
-            </p>
+            <div className="filters__watchlist-actions">
+              <p className="filters__watchlist-summary">
+                Editing {watchlistControls.activeSummary.name} ·{' '}
+                {watchlistControls.activeSummary.listingCount.toLocaleString()} properties
+              </p>
+              {watchlistControls.onDeleteWatchlist ? (
+                <button
+                  type="button"
+                  className="filters__watchlist-delete"
+                  onClick={handleDeleteWatchlistClick}
+                  disabled={isDeleteDisabled}
+                  title={watchlistControls.deleteDisabledReason}
+                >
+                  Delete watchlist
+                </button>
+              ) : null}
+            </div>
           ) : (
             <p className="filters__watchlist-summary">Managing global favorites</p>
           )}

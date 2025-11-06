@@ -197,3 +197,11 @@ export async function replaceWatchlistListings(
     }
   }
 }
+
+export async function deleteWatchlist(watchlistId: string): Promise<void> {
+  const client = assertSupabaseClient();
+  const { error } = await client.from('watchlists').delete().eq('id', watchlistId);
+  if (error) {
+    throw error;
+  }
+}

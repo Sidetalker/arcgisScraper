@@ -12,6 +12,7 @@ import {
   addListingToWatchlist,
   createWatchlist as createWatchlistInStorage,
   fetchWatchlists,
+  deleteWatchlist as deleteWatchlistInStorage,
   removeListingFromWatchlist,
   renameWatchlist as renameWatchlistInStorage,
   type WatchlistRecord,
@@ -26,6 +27,7 @@ interface WatchlistsContextValue {
   refresh: () => Promise<void>;
   createWatchlist: (name: string) => Promise<WatchlistRecord>;
   renameWatchlist: (watchlistId: string, name: string) => Promise<WatchlistRecord>;
+  deleteWatchlist: (watchlistId: string) => Promise<void>;
   addListing: (watchlistId: string, listingId: string) => Promise<void>;
   removeListing: (watchlistId: string, listingId: string) => Promise<void>;
 }
@@ -163,6 +165,15 @@ export function WatchlistsProvider({ children }: { children: ReactNode }): JSX.E
     );
   }, [supabaseConfigured]);
 
+  const deleteWatchlist = useCallback(async (watchlistId: string) => {
+    if (!supabaseConfigured) {
+      throw new Error('Connect Supabase to manage shared watchlists.');
+    }
+
+    await deleteWatchlistInStorage(watchlistId);
+    setWatchlists((current) => current.filter((watchlist) => watchlist.id !== watchlistId));
+  }, [supabaseConfigured]);
+
   const value = useMemo(
     () => ({
       watchlists,
@@ -172,6 +183,7 @@ export function WatchlistsProvider({ children }: { children: ReactNode }): JSX.E
       refresh,
       createWatchlist,
       renameWatchlist,
+      deleteWatchlist,
       addListing,
       removeListing,
     }),
@@ -183,6 +195,7 @@ export function WatchlistsProvider({ children }: { children: ReactNode }): JSX.E
       refresh,
       createWatchlist,
       renameWatchlist,
+      deleteWatchlist,
       addListing,
       removeListing,
     ],

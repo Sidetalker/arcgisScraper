@@ -139,6 +139,7 @@ function HomePage(): JSX.Element {
     createWatchlist,
     addListing,
     removeListing,
+    deleteWatchlist,
   } = useWatchlists();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
@@ -267,6 +268,48 @@ function HomePage(): JSX.Element {
       watchlistsSupabaseConfigured,
     ],
   );
+
+  const handleDeleteWatchlist = useCallback(async () => {
+    if (!activeWatchlist) {
+      return;
+    }
+
+    if (!watchlistsSupabaseConfigured) {
+      setStatusMessage(watchlistsDisabledMessage);
+      throw new Error(watchlistsDisabledMessage);
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(
+        `Delete watchlist “${activeWatchlist.name}”? This will remove ${activeWatchlist.listingIds.length.toLocaleString()} tracked properties.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setStatusMessage('Deleting watchlist…');
+    try {
+      await deleteWatchlist(activeWatchlist.id);
+      setStatusMessage(`Deleted watchlist “${activeWatchlist.name}”.`);
+      if (selectedWatchlistId === activeWatchlist.id) {
+        setSelectedWatchlistId(null);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete watchlist.';
+      setStatusMessage(message);
+      throw error instanceof Error ? error : new Error(message);
+    }
+  }, [
+    activeWatchlist,
+    deleteWatchlist,
+    selectedWatchlistId,
+    setSelectedWatchlistId,
+    setStatusMessage,
+    watchlistsDisabledMessage,
+    watchlistsSupabaseConfigured,
+  ]);
 
   const handleColumnOrderChange = useCallback(
     (order: ListingTableState['columnOrder']) => {
@@ -716,10 +759,16 @@ function HomePage(): JSX.Element {
             selectedWatchlistId,
             onSelectWatchlist: handleSelectWatchlist,
             onCreateWatchlist: handleCreateWatchlist,
+            onDeleteWatchlist: activeWatchlist ? handleDeleteWatchlist : undefined,
             isBusy: watchlistsLoading,
             canManage: watchlistsSupabaseConfigured,
             createDisabledReason: watchlistsSupabaseConfigured
               ? undefined
+              : watchlistsDisabledMessage,
+            deleteDisabledReason: watchlistsSupabaseConfigured
+              ? activeWatchlist
+                ? undefined
+                : 'Select a watchlist to delete.'
               : watchlistsDisabledMessage,
             errorMessage: watchlistsError,
             activeSummary: activeWatchlist
