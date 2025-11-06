@@ -10,7 +10,6 @@ import {
   type ListingTableColumnKey,
 } from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
-import { supabase } from '@/services/supabaseClient';
 import type { ListingRecord } from '@/types';
 
 function decodeParam(value: string | undefined): string {
@@ -29,13 +28,12 @@ function OwnerDetailPage(): JSX.Element {
   const { ownerId } = useParams<{ ownerId: string }>();
   const ownerName = decodeParam(ownerId);
 
-  const { listings, loading, error, updateListingFavorite } = useListings();
+  const { listings, loading, error, supabaseConfigured, updateListingFavorite } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [tableState, setTableState] = useState(createDefaultTableState);
-  const supabaseAvailable = Boolean(supabase);
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
 
   const normalizedOwner = useMemo(() => ownerName.trim().toLowerCase(), [ownerName]);
@@ -110,7 +108,7 @@ function OwnerDetailPage(): JSX.Element {
 
   const handleFavoriteChange = useCallback(
     async (listingId: string, isFavorited: boolean) => {
-      if (!supabaseAvailable) {
+      if (!supabaseConfigured) {
         setStatusMessage(favoritesDisabledMessage);
         throw new Error(favoritesDisabledMessage);
       }
@@ -127,7 +125,7 @@ function OwnerDetailPage(): JSX.Element {
         throw error instanceof Error ? error : new Error(message);
       }
     },
-    [favoritesDisabledMessage, setStatusMessage, supabaseAvailable, updateListingFavorite],
+    [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
   );
 
   return (
@@ -164,7 +162,7 @@ function OwnerDetailPage(): JSX.Element {
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
           onFavoriteChange={handleFavoriteChange}
-          canToggleFavorites={supabaseAvailable}
+          canToggleFavorites={supabaseConfigured}
           favoriteDisabledReason={favoritesDisabledMessage}
         />
       </div>

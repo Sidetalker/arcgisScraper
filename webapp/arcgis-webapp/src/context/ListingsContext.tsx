@@ -21,6 +21,7 @@ import {
   normaliseRegionList,
   regionsAreEqual,
 } from '@/services/regionShapes';
+import { isSupabaseConfigured } from '@/services/supabaseClient';
 import type { ListingRecord, RegionShape } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
@@ -34,6 +35,7 @@ export interface ListingsContextValue {
   localCachedAt: Date | null;
   isLocalCacheStale: boolean;
   source: 'local' | 'supabase' | 'syncing' | 'unknown';
+  supabaseConfigured: boolean;
   onRegionsChange: (nextRegions: RegionShape[]) => void;
   refresh: () => void;
   syncing: boolean;
@@ -53,6 +55,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [localCachedAt, setLocalCachedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
+  const [supabaseConfigured, setSupabaseConfigured] = useState<boolean>(isSupabaseConfigured);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -151,6 +154,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     setError(null);
     try {
       const { records, latestUpdatedAt } = await fetchStoredListings();
+      setSupabaseConfigured(true);
       applyListingSnapshot(records, latestUpdatedAt ?? null, null);
       await persistLocalCache(records, latestUpdatedAt ?? null);
     } catch (loadError) {
@@ -160,6 +164,12 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
           ? loadError.message
           : 'Unable to load listings from Supabase.';
       setError(message);
+      if (
+        loadError instanceof Error &&
+        loadError.message.includes('Supabase client is not initialised')
+      ) {
+        setSupabaseConfigured(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -274,6 +284,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
           }
           return previous;
         });
+        setSupabaseConfigured(true);
       } catch (error) {
         console.error('Failed to update favorite state in Supabase.', error);
         setListings((current) =>
@@ -281,6 +292,12 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
             listing.id === listingId ? { ...listing, isFavorited: !isFavorited } : listing,
           ),
         );
+        if (
+          error instanceof Error &&
+          error.message.includes('Supabase client is not initialised')
+        ) {
+          setSupabaseConfigured(false);
+        }
         throw error instanceof Error ? error : new Error('Failed to update favorite state.');
       }
     },
@@ -304,6 +321,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       localCachedAt,
       isLocalCacheStale,
       source,
+      supabaseConfigured,
       onRegionsChange: handleRegionsChange,
       refresh,
       syncing,
@@ -315,6 +333,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       cachedAt,
       error,
       handleRegionsChange,
+      supabaseConfigured,
       listings,
       loading,
       localCachedAt,

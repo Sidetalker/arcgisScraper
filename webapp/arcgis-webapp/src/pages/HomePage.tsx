@@ -27,7 +27,6 @@ import {
   normaliseRegionList,
   regionsAreEqual,
 } from '@/services/regionShapes';
-import { supabase } from '@/services/supabaseClient';
 import type {
   ConfigurationProfile,
   ListingFilters,
@@ -120,6 +119,7 @@ function HomePage(): JSX.Element {
     onRegionsChange,
     cachedAt,
     source,
+    supabaseConfigured,
     updateListingFavorite,
   } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
@@ -137,7 +137,6 @@ function HomePage(): JSX.Element {
   const [localProfileName, setLocalProfileName] = useState(DEFAULT_PROFILE_NAME);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const supabaseAvailable = Boolean(supabase);
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
 
   const handleRegionsChange = useCallback(
@@ -191,7 +190,7 @@ function HomePage(): JSX.Element {
 
   const handleFavoriteChange = useCallback(
     async (listingId: string, isFavorited: boolean) => {
-      if (!supabaseAvailable) {
+      if (!supabaseConfigured) {
         setStatusMessage(favoritesDisabledMessage);
         throw new Error(favoritesDisabledMessage);
       }
@@ -208,11 +207,11 @@ function HomePage(): JSX.Element {
         throw error instanceof Error ? error : new Error(message);
       }
     },
-    [favoritesDisabledMessage, setStatusMessage, supabaseAvailable, updateListingFavorite],
+    [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
   );
 
   const loadProfiles = useCallback(async () => {
-    if (!supabaseAvailable) {
+    if (!supabaseConfigured) {
       setProfiles([]);
       setProfilesError(
         'Supabase client is not configured. Set Supabase environment variables to enable shared profiles.',
@@ -235,7 +234,7 @@ function HomePage(): JSX.Element {
     } finally {
       setProfilesLoading(false);
     }
-  }, [supabaseAvailable]);
+  }, [supabaseConfigured]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -389,7 +388,7 @@ function HomePage(): JSX.Element {
 
   const persistProfile = useCallback(
     async (options?: { duplicate?: boolean }) => {
-      if (!supabaseAvailable) {
+      if (!supabaseConfigured) {
         setProfilesError('Supabase client is not configured. Unable to save configuration profiles.');
         return;
       }
@@ -439,7 +438,7 @@ function HomePage(): JSX.Element {
       filters,
       localProfileId,
       regions,
-      supabaseAvailable,
+      supabaseConfigured,
       trimmedProfileName,
       tableState,
     ],
@@ -572,7 +571,7 @@ function HomePage(): JSX.Element {
           onSaveProfileAsNew={handleSaveProfileAsNew}
           onCreateProfile={handleCreateProfile}
           onRefreshProfiles={handleRefreshProfiles}
-          supabaseAvailable={supabaseAvailable}
+          supabaseAvailable={supabaseConfigured}
         />
       </CollapsibleSection>
       <CollapsibleSection
@@ -598,7 +597,7 @@ function HomePage(): JSX.Element {
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
           onFavoriteChange={handleFavoriteChange}
-          canToggleFavorites={supabaseAvailable}
+          canToggleFavorites={supabaseConfigured}
           favoriteDisabledReason={favoritesDisabledMessage}
         />
       </CollapsibleSection>
@@ -608,7 +607,7 @@ function HomePage(): JSX.Element {
         className="collapsible-section--full"
       >
         <ListingInsights
-          supabaseAvailable={supabaseAvailable}
+          supabaseAvailable={supabaseConfigured}
           filters={filters}
           onFiltersChange={handleFiltersChange}
         />
