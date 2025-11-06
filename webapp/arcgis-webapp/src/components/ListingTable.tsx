@@ -1553,6 +1553,20 @@ export function ListingTable({
       return { listingId, commentId };
     });
 
+    const clearPendingCommentTarget = () => {
+      setPendingCommentTarget((current) => {
+        if (!current) {
+          return current;
+        }
+
+        if (current.listingId !== listingId || current.commentId !== commentId) {
+          return current;
+        }
+
+        return null;
+      });
+    };
+
     const row = rowRefs.current.get(listingId);
     if (row && typeof row.scrollIntoView === 'function') {
       if (
@@ -1561,10 +1575,14 @@ export function ListingTable({
       ) {
         window.requestAnimationFrame(() => {
           row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          clearPendingCommentTarget();
         });
       } else {
         row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        clearPendingCommentTarget();
       }
+    } else {
+      clearPendingCommentTarget();
     }
   }, [pendingCommentTarget, filteredListings, effectivePageSize, safePage, onPageChange]);
 
