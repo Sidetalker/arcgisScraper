@@ -77,6 +77,7 @@ export interface ListingRow {
   public_detail_url: Nullable<string>;
   physical_address: Nullable<string>;
   is_business_owner: Nullable<boolean>;
+  is_favorited: Nullable<boolean>;
   latitude: Nullable<number>;
   longitude: Nullable<number>;
   estimated_renewal_date: Nullable<string>;
@@ -113,6 +114,7 @@ function toListingRow(record: ListingRecord): ListingRow {
     public_detail_url: record.publicDetailUrl || null,
     physical_address: record.physicalAddress || null,
     is_business_owner: record.isBusinessOwner,
+    is_favorited: record.isFavorited,
     latitude: typeof record.latitude === 'number' ? record.latitude : null,
     longitude: typeof record.longitude === 'number' ? record.longitude : null,
     estimated_renewal_date: formatDateColumn(record.estimatedRenewalDate),
@@ -182,6 +184,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     publicDetailUrl: row.public_detail_url ?? '',
     physicalAddress: row.physical_address ?? '',
     isBusinessOwner: Boolean(row.is_business_owner),
+    isFavorited: Boolean(row.is_favorited),
     latitude,
     longitude,
     estimatedRenewalDate,
@@ -212,6 +215,7 @@ const LISTING_COLUMNS = [
   'public_detail_url',
   'physical_address',
   'is_business_owner',
+  'is_favorited',
   'latitude',
   'longitude',
   'estimated_renewal_date',
@@ -286,4 +290,31 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
       throw insertError;
     }
   }
+}
+
+export async function updateListingFavorite(
+  listingId: string,
+  isFavorited: boolean,
+): Promise<{ record: ListingRecord; updatedAt: Date | null }> {
+  const client = assertSupabaseClient();
+  const { data, error } = await client
+    .from('listings')
+    .update({ is_favorited: isFavorited })
+    .eq('id', listingId)
+    .select(LISTING_COLUMNS.join(', '))
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('Listing not found while updating favorite state.');
+  }
+
+  const row = data as unknown as ListingRow;
+  const record = fromListingRow(row);
+  const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
+  const safeUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null;
+  return { record, updatedAt: safeUpdatedAt };
 }

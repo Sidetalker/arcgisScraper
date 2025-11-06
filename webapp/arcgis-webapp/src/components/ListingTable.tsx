@@ -40,6 +40,9 @@ interface ListingTableProps {
   onColumnOrderChange: (order: ListingTableColumnKey[]) => void;
   onHiddenColumnsChange: (hidden: ListingTableColumnKey[]) => void;
   onColumnFiltersChange: (filters: ListingTableColumnFilters) => void;
+  onFavoriteChange: (listingId: string, isFavorited: boolean) => Promise<void> | void;
+  canToggleFavorites: boolean;
+  favoriteDisabledReason?: string;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -194,6 +197,9 @@ export function ListingTable({
   onColumnOrderChange,
   onHiddenColumnsChange,
   onColumnFiltersChange,
+  onFavoriteChange,
+  canToggleFavorites,
+  favoriteDisabledReason,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
@@ -215,6 +221,9 @@ export function ListingTable({
   const [pageJumpValue, setPageJumpValue] = useState('');
   const pageJumpContainerRef = useRef<HTMLDivElement | null>(null);
   const pageJumpInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<string>>(() => new Set());
+  const favoriteDisabledMessage =
+    favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
 
   const updateScrollIndicators = useCallback(() => {
     const element = scrollContainerRef.current;
@@ -307,7 +316,39 @@ export function ListingTable({
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
   const pageListings = filteredListings.slice(startIndex, endIndex);
-  const columnCount = Math.max(1, visibleColumns.length);
+  const columnCount = Math.max(1, visibleColumns.length + 2);
+
+  const handleFavoriteToggle = useCallback(
+    (listingId: string) => (event: ChangeEvent<HTMLInputElement>) => {
+      const nextValue = event.target.checked;
+      setPendingFavoriteIds((previous) => {
+        const next = new Set(previous);
+        next.add(listingId);
+        return next;
+      });
+
+      const settle = () => {
+        setPendingFavoriteIds((previous) => {
+          const next = new Set(previous);
+          next.delete(listingId);
+          return next;
+        });
+      };
+
+      try {
+        const result = onFavoriteChange(listingId, nextValue);
+        void Promise.resolve(result)
+          .catch((error) => {
+            console.error('Failed to update favorite state.', error);
+          })
+          .finally(settle);
+      } catch (error) {
+        console.error('Failed to update favorite state.', error);
+        settle();
+      }
+    },
+    [onFavoriteChange],
+  );
 
   useEffect(() => {
     const element = scrollContainerRef.current;
@@ -1055,6 +1096,9 @@ export function ListingTable({
           <table>
             <thead>
               <tr>
+                <th scope="col" className="listing-table__favorite-header">
+                  <span className="visually-hidden">Favorite</span>
+                </th>
                 <th scope="col" className="listing-table__details-header">
                   <span className="visually-hidden">Listing details</span>
                 </th>
@@ -1093,6 +1137,7 @@ export function ListingTable({
               ))}
             </tr>
             <tr className="listing-table__filters">
+              <th aria-hidden="true" />
               <th aria-hidden="true" />
               {visibleColumnDefinitions.map((definition) => {
                 const filterValue = columnFilters[definition.key] ?? '';
@@ -1148,6 +1193,16 @@ export function ListingTable({
               </tr>
             ) : (
               pageListings.map((listing) => {
+                const isFavoritePending = pendingFavoriteIds.has(listing.id);
+                const isFavoriteDisabled = isFavoritePending || !canToggleFavorites;
+                const favoriteTitle = isFavoritePending
+                  ? 'Saving favorite selection…'
+                  : isFavoriteDisabled
+                  ? favoriteDisabledMessage
+                  : 'Toggle favorite for this listing';
+                const favoriteLabel = listing.complex
+                  ? `Toggle favorite for ${listing.complex}${listing.unit ? ` unit ${listing.unit}` : ''}`
+                  : 'Toggle favorite for this listing';
                 return (
                   <tr
                     key={listing.id}
@@ -1156,6 +1211,21 @@ export function ListingTable({
                       highlightedListingId === listing.id ? ' listing-table__row--highlight' : ''
                     }`}
                   >
+                    <td
+                      className="listing-table__favorite-cell"
+                      data-loading={isFavoritePending ? 'true' : undefined}
+                      aria-busy={isFavoritePending}
+                    >
+                      <input
+                        type="checkbox"
+                        className="listing-table__favorite-checkbox"
+                        checked={listing.isFavorited}
+                        onChange={handleFavoriteToggle(listing.id)}
+                        disabled={isFavoriteDisabled}
+                        aria-label={favoriteLabel}
+                        title={favoriteTitle}
+                      />
+                    </td>
                     <td className="listing-table__detail-cell">
                       {listing.publicDetailUrl ? (
                         <a
