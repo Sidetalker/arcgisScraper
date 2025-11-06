@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import {
   type ListingTableColumnFilters,
@@ -26,6 +26,7 @@ import {
 } from '@/utils/listingColumnFilters';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingRecord, ListingSourceOfTruth } from '@/types';
+import ListingComments from '@/components/ListingComments';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -58,6 +59,7 @@ interface ListingTableProps {
   canChangeSelection?: boolean;
   selectionDisabledReason?: string;
   selectionLabel?: string;
+  commentLinkPath?: string;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -85,6 +87,7 @@ function getSourceOfTruthText(listing: ListingRecord, columnKey: ColumnKey): str
   const source: ListingSourceOfTruth = listing.sourceOfTruth ?? {
     complex: listing.complex,
     unit: listing.unit,
+    unitNormalized: listing.unitNormalized,
     ownerName: listing.ownerName,
     ownerNames: [...listing.ownerNames],
     mailingAddress: listing.mailingAddress,
@@ -411,6 +414,7 @@ export function ListingTable({
   canChangeSelection,
   selectionDisabledReason,
   selectionLabel,
+  commentLinkPath,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
@@ -438,6 +442,18 @@ export function ListingTable({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
+  const [expandedCommentListingIds, setExpandedCommentListingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const location = useLocation();
+  const commentLinkBasePath = commentLinkPath ?? location.pathname;
+  const [pendingCommentTarget, setPendingCommentTarget] = useState<
+    { listingId: string; commentId: string } | null
+  >(null);
+  const [commentHighlightTarget, setCommentHighlightTarget] = useState<
+    { listingId: string; commentId: string } | null
+  >(null);
+  const pendingCommentPageRef = useRef<number | null>(null);
   const favoriteDisabledMessage =
     favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
   const watchlistDisabledMessage =
@@ -458,6 +474,47 @@ export function ListingTable({
     }
     return new Set<string>(selectedListingIds);
   }, [selectedListingIds]);
+
+  const urlCommentTarget = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const listingParam = params.get('listing');
+    const commentParam = params.get('comment');
+    if (!listingParam || !commentParam) {
+      return null;
+    }
+    return { listingId: listingParam, commentId: commentParam } as const;
+  }, [location.search]);
+
+  useEffect(() => {
+    setPendingCommentTarget(urlCommentTarget);
+    if (!urlCommentTarget) {
+      setCommentHighlightTarget(null);
+    }
+  }, [urlCommentTarget]);
+  useEffect(() => {
+    setExpandedCommentListingIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      const validIds = new Set(listings.map((listing) => listing.id));
+      let changed = false;
+      current.forEach((id) => {
+        if (!validIds.has(id)) {
+          changed = true;
+        }
+      });
+      if (!changed) {
+        return current;
+      }
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (validIds.has(id)) {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [listings]);
   const createDraftFromListing = useCallback((listing: ListingRecord): ListingEditDraft => {
     return {
       complex: listing.complex,
@@ -499,6 +556,17 @@ export function ListingTable({
     },
     [canEditListings, createDraftFromListing, editingListingId],
   );
+  const handleToggleComments = useCallback((listingId: string) => {
+    setExpandedCommentListingIds((current) => {
+      const next = new Set(current);
+      if (next.has(listingId)) {
+        next.delete(listingId);
+      } else {
+        next.add(listingId);
+      }
+      return next;
+    });
+  }, []);
   const handleDraftInputChange = useCallback(
     (field: keyof ListingEditDraft) =>
       (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -1403,6 +1471,66 @@ export function ListingTable({
   };
 
   useEffect(() => {
+    if (!pendingCommentTarget) {
+      pendingCommentPageRef.current = null;
+      return;
+    }
+
+    const { listingId, commentId } = pendingCommentTarget;
+    const filteredIndex = filteredListings.findIndex((listing) => listing.id === listingId);
+    if (filteredIndex === -1) {
+      setCommentHighlightTarget((current) => {
+        if (current && current.listingId === listingId) {
+          return null;
+        }
+        return current;
+      });
+      return;
+    }
+
+    const targetPage = Math.floor(filteredIndex / effectivePageSize) + 1;
+    if (targetPage !== safePage) {
+      if (pendingCommentPageRef.current !== targetPage) {
+        pendingCommentPageRef.current = targetPage;
+        onPageChange(targetPage);
+      }
+      return;
+    }
+
+    pendingCommentPageRef.current = null;
+
+    setExpandedCommentListingIds((current) => {
+      if (current.has(listingId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(listingId);
+      return next;
+    });
+
+    setCommentHighlightTarget((current) => {
+      if (current && current.listingId === listingId && current.commentId === commentId) {
+        return current;
+      }
+      return { listingId, commentId };
+    });
+
+    const row = rowRefs.current.get(listingId);
+    if (row && typeof row.scrollIntoView === 'function') {
+      if (
+        typeof window !== 'undefined' &&
+        typeof window.requestAnimationFrame === 'function'
+      ) {
+        window.requestAnimationFrame(() => {
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+      } else {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }, [pendingCommentTarget, filteredListings, effectivePageSize, safePage, onPageChange]);
+
+  useEffect(() => {
     if (!highlightedListingId) {
       return;
     }
@@ -1795,6 +1923,10 @@ export function ListingTable({
                 const editAriaLabel = listing.hasCustomizations
                   ? `Edit listing ${listingDescriptor} (customized)`
                   : `Edit listing ${listingDescriptor}`;
+                const isCommentOpen = expandedCommentListingIds.has(listing.id);
+                const commentSectionId = `listing-${listing.id}-comments`;
+                const commentToggleLabel = isCommentOpen ? 'Hide comments' : 'Show comments';
+                const commentButtonTitle = `${commentToggleLabel} for ${listingDescriptor}`;
 
                 return (
                   <Fragment key={listing.id}>
@@ -1822,7 +1954,7 @@ export function ListingTable({
                         <div className="listing-table__detail-actions">
                           <button
                             type="button"
-                            className="listing-table__icon-button listing-table__edit-button"
+                            className="listing-table__icon-button listing-table__icon-button--edit"
                             onClick={() => handleStartEdit(listing)}
                             disabled={!canEditListings || savingEdit || isRevertPending}
                             title={editButtonTitle}
@@ -1846,7 +1978,7 @@ export function ListingTable({
                               href={listing.publicDetailUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="listing-table__detail-link"
+                              className="listing-table__icon-button listing-table__icon-button--detail"
                               aria-label="Open listing details in a new tab"
                             >
                               <svg
@@ -1863,6 +1995,27 @@ export function ListingTable({
                           ) : (
                             <span className="listing-table__detail-placeholder" aria-hidden="true">—</span>
                           )}
+                          <button
+                            type="button"
+                            className="listing-table__icon-button listing-table__icon-button--comment"
+                            onClick={() => handleToggleComments(listing.id)}
+                            title={commentButtonTitle}
+                            aria-label={commentButtonTitle}
+                            aria-expanded={isCommentOpen}
+                            aria-controls={commentSectionId}
+                            data-open={isCommentOpen ? 'true' : undefined}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path
+                                d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H9.56l-3.83 3.09A.75.75 0 0 1 4 18.5Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            <span className="visually-hidden">{commentButtonTitle}</span>
+                          </button>
                         </div>
                       </td>
                       {visibleColumnDefinitions.map((definition) => (
@@ -1914,6 +2067,25 @@ export function ListingTable({
                             {editError ? (
                               <p className="listing-table__edit-error" role="alert">{editError}</p>
                             ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {isCommentOpen ? (
+                      <tr className="listing-table__comment-row">
+                        <td colSpan={columnCount} className="listing-table__comment-cell">
+                          <div className="listing-table__comment-container">
+                            <ListingComments
+                              listingId={listing.id}
+                              sectionId={commentSectionId}
+                              heading={listingDescriptor}
+                              sharePath={commentLinkBasePath}
+                              highlightCommentId={
+                                commentHighlightTarget?.listingId === listing.id
+                                  ? commentHighlightTarget.commentId
+                                  : undefined
+                              }
+                            />
                           </div>
                         </td>
                       </tr>

@@ -800,6 +800,7 @@ function HomePage(): JSX.Element {
           selectionLabel={activeWatchlist ? `${activeWatchlist.name} membership` : undefined}
           canEditListings={supabaseConfigured}
           editDisabledReason={editDisabledMessage}
+          commentLinkPath="/"
         />
       </CollapsibleSection>
       <CollapsibleSection
