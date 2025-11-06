@@ -432,17 +432,17 @@
 }
 
 .listing-table__icon-button {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.65rem;
-  border: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
   background-color: rgba(15, 23, 42, 0.06);
   color: #1e293b;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 160ms ease, transform 160ms ease, color 160ms ease;
+  transition: background-color 160ms ease, transform 160ms ease, color 160ms ease, border-color 160ms ease;
 }
 
 .listing-table__icon-button svg {
@@ -462,24 +462,29 @@
   transform: none;
 }
 
+
 .listing-table__edit-button {
-  background-color: rgba(37, 99, 235, 0.14);
+  background-color: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.35);
   color: #1d4ed8;
 }
 
 .listing-table__edit-button:hover,
 .listing-table__edit-button:focus {
   background-color: rgba(37, 99, 235, 0.22);
+  border-color: rgba(37, 99, 235, 0.45);
 }
 
 .listing-table__revert-button {
-  background-color: rgba(220, 38, 38, 0.12);
+  background-color: rgba(248, 113, 113, 0.08);
+  border-color: rgba(239, 68, 68, 0.55);
   color: #b91c1c;
 }
 
 .listing-table__revert-button:hover,
 .listing-table__revert-button:focus {
-  background-color: rgba(220, 38, 38, 0.18);
+  background-color: rgba(248, 113, 113, 0.14);
+  border-color: rgba(220, 38, 38, 0.65);
 }
 
 .listing-table__revert-button[data-pending='true'] {
@@ -499,6 +504,7 @@
 
 .listing-table__cell--editing {
   background-color: rgba(59, 130, 246, 0.08);
+  vertical-align: top;
 }
 
 .listing-table__row--customized {
@@ -632,9 +638,14 @@
 }
 
 .listing-table__edit-control {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  width: 100%;
+}
+
+.listing-table__edit-control > * {
+  min-width: 0;
 }
 
 .listing-table__edit-source {
@@ -642,6 +653,8 @@
   font-size: 0.72rem;
   color: #64748b;
   line-height: 1.4;
+  display: grid;
+  gap: 0.15rem;
 }
 
 .listing-table__edit-source-label {
@@ -657,6 +670,7 @@
   display: block;
   color: #475569;
   white-space: pre-line;
+  word-break: break-word;
 }
 
 .listing-table__detail-link:focus {
