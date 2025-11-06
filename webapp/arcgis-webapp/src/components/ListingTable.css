@@ -1,4 +1,6 @@
 .listing-table {
+  --listing-table-min-width: 1100px;
+
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -285,9 +287,8 @@
 
 .listing-table table {
   width: max-content;
-  min-width: 100%;
+  min-width: var(--listing-table-min-width);
   border-collapse: collapse;
-  min-width: 1100px;
 }
 
 .listing-table thead {
@@ -949,15 +950,27 @@
   color: #64748b;
 }
 
-.listing-table__comment-row td {
+.listing-table__comment-cell {
+  padding: 0;
+  width: 100%;
+  min-width: var(--listing-table-min-width);
+  border-bottom: none;
+}
+
+.listing-table__comment-container {
   background: rgba(241, 245, 249, 0.72);
   padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.75);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: var(--listing-table-min-width);
 }
 
 .listing-table__comments {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  max-width: 100%;
 }
 
 .listing-table__comments-header {

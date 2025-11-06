@@ -1985,12 +1985,14 @@ export function ListingTable({
                     ) : null}
                     {isCommentOpen ? (
                       <tr className="listing-table__comment-row">
-                        <td colSpan={columnCount}>
-                          <ListingComments
-                            listingId={listing.id}
-                            sectionId={commentSectionId}
-                            heading={listingDescriptor}
-                          />
+                        <td colSpan={columnCount} className="listing-table__comment-cell">
+                          <div className="listing-table__comment-container">
+                            <ListingComments
+                              listingId={listing.id}
+                              sectionId={commentSectionId}
+                              heading={listingDescriptor}
+                            />
+                          </div>
                         </td>
                       </tr>
                     ) : null}
