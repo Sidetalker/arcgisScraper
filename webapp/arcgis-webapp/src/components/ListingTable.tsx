@@ -52,6 +52,12 @@ interface ListingTableProps {
   onListingRevert: (listingId: string) => Promise<void> | void;
   canEditListings: boolean;
   editDisabledReason?: string;
+  selectionMode?: 'favorites' | 'watchlist';
+  selectedListingIds?: Set<string> | string[];
+  onSelectionChange?: (listingId: string, isSelected: boolean) => Promise<void> | void;
+  canChangeSelection?: boolean;
+  selectionDisabledReason?: string;
+  selectionLabel?: string;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -399,6 +405,12 @@ export function ListingTable({
   onListingRevert,
   canEditListings,
   editDisabledReason,
+  selectionMode,
+  selectedListingIds,
+  onSelectionChange,
+  canChangeSelection,
+  selectionDisabledReason,
+  selectionLabel,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
@@ -420,7 +432,7 @@ export function ListingTable({
   const [pageJumpValue, setPageJumpValue] = useState('');
   const pageJumpContainerRef = useRef<HTMLDivElement | null>(null);
   const pageJumpInputRef = useRef<HTMLInputElement | null>(null);
-  const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<string>>(() => new Set());
+  const [pendingSelectionIds, setPendingSelectionIds] = useState<Set<string>>(() => new Set());
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ListingEditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -428,6 +440,24 @@ export function ListingTable({
   const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
   const favoriteDisabledMessage =
     favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
+  const watchlistDisabledMessage =
+    selectionDisabledReason ?? 'Supabase is not configured. Watchlists are read-only.';
+  const effectiveSelectionMode = selectionMode ?? 'favorites';
+  const canToggleSelection =
+    effectiveSelectionMode === 'watchlist'
+      ? canChangeSelection ?? true
+      : canToggleFavorites;
+  const selectionDisabledMessage =
+    effectiveSelectionMode === 'watchlist' ? watchlistDisabledMessage : favoriteDisabledMessage;
+  const selectedListingSet = useMemo(() => {
+    if (!selectedListingIds) {
+      return new Set<string>();
+    }
+    if (selectedListingIds instanceof Set) {
+      return selectedListingIds;
+    }
+    return new Set<string>(selectedListingIds);
+  }, [selectedListingIds]);
   const createDraftFromListing = useCallback((listing: ListingRecord): ListingEditDraft => {
     return {
       complex: listing.complex,
@@ -836,36 +866,41 @@ export function ListingTable({
   const pageListings = filteredListings.slice(startIndex, endIndex);
   const columnCount = Math.max(1, visibleColumns.length + 2);
 
-  const handleFavoriteToggle = useCallback(
+  const handleSelectionToggle = useCallback(
     (listingId: string) => (event: ChangeEvent<HTMLInputElement>) => {
       const nextValue = event.target.checked;
-      setPendingFavoriteIds((previous) => {
+      setPendingSelectionIds((previous) => {
         const next = new Set(previous);
         next.add(listingId);
         return next;
       });
 
       const settle = () => {
-        setPendingFavoriteIds((previous) => {
+        setPendingSelectionIds((previous) => {
           const next = new Set(previous);
           next.delete(listingId);
           return next;
         });
       };
 
+      const handler =
+        effectiveSelectionMode === 'watchlist' && onSelectionChange
+          ? onSelectionChange
+          : onFavoriteChange;
+
       try {
-        const result = onFavoriteChange(listingId, nextValue);
+        const result = handler(listingId, nextValue);
         void Promise.resolve(result)
           .catch((error) => {
-            console.error('Failed to update favorite state.', error);
+            console.error('Failed to update selection state.', error);
           })
           .finally(settle);
       } catch (error) {
-        console.error('Failed to update favorite state.', error);
+        console.error('Failed to update selection state.', error);
         settle();
       }
     },
-    [onFavoriteChange],
+    [effectiveSelectionMode, onFavoriteChange, onSelectionChange],
   );
 
   useEffect(() => {
@@ -1711,16 +1746,34 @@ export function ListingTable({
               </tr>
             ) : (
               pageListings.map((listing) => {
-                const isFavoritePending = pendingFavoriteIds.has(listing.id);
-                const isFavoriteDisabled = isFavoritePending || !canToggleFavorites;
-                const favoriteTitle = isFavoritePending
-                  ? 'Saving favorite selection…'
-                  : isFavoriteDisabled
-                  ? favoriteDisabledMessage
+                const isSelectionPending = pendingSelectionIds.has(listing.id);
+                const isSelectionDisabled = isSelectionPending || !canToggleSelection;
+                const selectionContextLabel =
+                  effectiveSelectionMode === 'watchlist'
+                    ? selectionLabel ?? 'watchlist membership'
+                    : 'favorite';
+                const selectionTitle = isSelectionPending
+                  ? 'Saving selection…'
+                  : isSelectionDisabled
+                  ? selectionDisabledMessage
+                  : effectiveSelectionMode === 'watchlist'
+                  ? `Toggle ${selectionContextLabel}`
                   : 'Toggle favorite for this listing';
-                const favoriteLabel = listing.complex
-                  ? `Toggle favorite for ${listing.complex}${listing.unit ? ` unit ${listing.unit}` : ''}`
-                  : 'Toggle favorite for this listing';
+                const selectionLabelText = (() => {
+                  const listingContext = listing.complex
+                    ? `${listing.complex}${listing.unit ? ` unit ${listing.unit}` : ''}`
+                    : 'this listing';
+                  if (effectiveSelectionMode === 'watchlist') {
+                    return `Toggle ${selectionContextLabel} for ${listingContext}`;
+                  }
+                  return listing.complex
+                    ? `Toggle favorite for ${listingContext}`
+                    : 'Toggle favorite for this listing';
+                })();
+                const isSelected =
+                  effectiveSelectionMode === 'watchlist'
+                    ? selectedListingSet.has(listing.id)
+                    : listing.isFavorited;
                 const isEditing = editingListingId === listing.id;
                 const isRevertPending = pendingRevertIds.has(listing.id);
                 const rowClassName = [
@@ -1752,17 +1805,17 @@ export function ListingTable({
                     >
                       <td
                         className="listing-table__favorite-cell"
-                        data-loading={isFavoritePending ? 'true' : undefined}
-                        aria-busy={isFavoritePending}
+                        data-loading={isSelectionPending ? 'true' : undefined}
+                        aria-busy={isSelectionPending}
                       >
                         <input
                           type="checkbox"
                           className="listing-table__favorite-checkbox"
-                          checked={listing.isFavorited}
-                          onChange={handleFavoriteToggle(listing.id)}
-                          disabled={isFavoriteDisabled}
-                          aria-label={favoriteLabel}
-                          title={favoriteTitle}
+                          checked={isSelected}
+                          onChange={handleSelectionToggle(listing.id)}
+                          disabled={isSelectionDisabled}
+                          aria-label={selectionLabelText}
+                          title={selectionTitle}
                         />
                       </td>
                       <td className="listing-table__detail-cell">

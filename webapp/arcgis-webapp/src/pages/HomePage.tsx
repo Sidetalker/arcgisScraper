@@ -16,12 +16,17 @@ import {
   type ListingTableState,
 } from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
+import { useWatchlists } from '@/context/WatchlistsContext';
 import { applyFilters } from '@/services/listingTransformer';
 import {
   fetchConfigurationProfiles,
   saveConfigurationProfile,
 } from '@/services/configurationProfiles';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
+import {
+  loadSelectedWatchlistId,
+  saveSelectedWatchlistId,
+} from '@/services/watchlistSelectionStorage';
 import {
   cloneRegionShape,
   isPointInsideRegions,
@@ -126,6 +131,15 @@ function HomePage(): JSX.Element {
     updateListingDetails,
     revertListingToOriginal,
   } = useListings();
+  const {
+    watchlists,
+    loading: watchlistsLoading,
+    error: watchlistsError,
+    supabaseConfigured: watchlistsSupabaseConfigured,
+    createWatchlist,
+    addListing,
+    removeListing,
+  } = useWatchlists();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -134,6 +148,9 @@ function HomePage(): JSX.Element {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [highlightedListingId, setHighlightedListingId] = useState<string | null>(null);
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState<string | null>(() =>
+    loadSelectedWatchlistId(),
+  );
   const [profiles, setProfiles] = useState<ConfigurationProfile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [profilesError, setProfilesError] = useState<string | null>(null);
@@ -143,6 +160,26 @@ function HomePage(): JSX.Element {
 
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
   const editDisabledMessage = 'Connect Supabase to customize listings.';
+  const watchlistsDisabledMessage = 'Connect Supabase to manage shared watchlists.';
+
+  const activeWatchlist = useMemo(
+    () => watchlists.find((watchlist) => watchlist.id === selectedWatchlistId) ?? null,
+    [selectedWatchlistId, watchlists],
+  );
+
+  useEffect(() => {
+    saveSelectedWatchlistId(selectedWatchlistId);
+  }, [selectedWatchlistId]);
+
+  useEffect(() => {
+    if (!selectedWatchlistId || watchlistsLoading) {
+      return;
+    }
+    const exists = watchlists.some((watchlist) => watchlist.id === selectedWatchlistId);
+    if (!exists) {
+      setSelectedWatchlistId(null);
+    }
+  }, [selectedWatchlistId, watchlists, watchlistsLoading]);
 
   const handleRegionsChange = useCallback(
     (nextRegions: RegionShape[]) => {
@@ -162,6 +199,74 @@ function HomePage(): JSX.Element {
     handleRegionsChange([]);
     setHighlightedListingId(null);
   }, [handleRegionsChange]);
+
+  const handleSelectWatchlist = useCallback((watchlistId: string | null) => {
+    setSelectedWatchlistId(watchlistId);
+    setHighlightedListingId(null);
+  }, []);
+
+  const handleCreateWatchlist = useCallback(async () => {
+    if (!watchlistsSupabaseConfigured) {
+      setStatusMessage(watchlistsDisabledMessage);
+      throw new Error(watchlistsDisabledMessage);
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const name = window.prompt('Name your new watchlist', 'New watchlist');
+    if (!name) {
+      return;
+    }
+
+    setStatusMessage('Creating watchlist…');
+    try {
+      const record = await createWatchlist(name);
+      setSelectedWatchlistId(record.id);
+      setStatusMessage(`Watchlist “${record.name}” created. Start selecting listings to include.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create watchlist.';
+      setStatusMessage(message);
+      throw error instanceof Error ? error : new Error(message);
+    }
+  }, [createWatchlist, setStatusMessage, watchlistsDisabledMessage, watchlistsSupabaseConfigured]);
+
+  const handleWatchlistToggle = useCallback(
+    async (listingId: string, isSelected: boolean) => {
+      if (!activeWatchlist) {
+        return;
+      }
+
+      if (!watchlistsSupabaseConfigured) {
+        setStatusMessage(watchlistsDisabledMessage);
+        throw new Error(watchlistsDisabledMessage);
+      }
+
+      try {
+        if (isSelected) {
+          await addListing(activeWatchlist.id, listingId);
+          setStatusMessage(`Listing added to ${activeWatchlist.name}.`);
+        } else {
+          await removeListing(activeWatchlist.id, listingId);
+          setStatusMessage(`Listing removed from ${activeWatchlist.name}.`);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to update watchlist membership.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [
+      activeWatchlist,
+      addListing,
+      removeListing,
+      setStatusMessage,
+      watchlistsDisabledMessage,
+      watchlistsSupabaseConfigured,
+    ],
+  );
 
   const handleColumnOrderChange = useCallback(
     (order: ListingTableState['columnOrder']) => {
@@ -319,6 +424,13 @@ function HomePage(): JSX.Element {
     return regions.length > 0 ? columnFilteredListings : [];
   }, [columnFilteredListings, regions.length]);
 
+  const watchlistMembership = useMemo(() => {
+    if (!activeWatchlist) {
+      return new Set<string>();
+    }
+    return new Set<string>(activeWatchlist.listingIds);
+  }, [activeWatchlist]);
+
   useEffect(() => {
     if (!highlightedListingId) {
       return;
@@ -403,6 +515,9 @@ function HomePage(): JSX.Element {
     if (error) {
       return `ArcGIS request failed: ${error}`;
     }
+    if (watchlistsError) {
+      return `Watchlist error: ${watchlistsError}`;
+    }
     if (listings.length === 0) {
       return 'No ArcGIS listings have been loaded yet.';
     }
@@ -421,7 +536,15 @@ function HomePage(): JSX.Element {
     }
 
     return baseMessage;
-  }, [cachedAt, error, filteredListings.length, loading, listings.length, source]);
+  }, [
+    cachedAt,
+    error,
+    filteredListings.length,
+    loading,
+    listings.length,
+    source,
+    watchlistsError,
+  ]);
 
   useEffect(() => {
     setStatusMessage(statusMessage);
@@ -582,8 +705,30 @@ function HomePage(): JSX.Element {
         <FilterPanel
           filters={filters}
           onChange={handleFiltersChange}
-          disabled={loading}
+          disabled={loading || watchlistsLoading}
           onReset={handleResetFilters}
+          watchlistControls={{
+            options: watchlists.map((watchlist) => ({
+              id: watchlist.id,
+              name: watchlist.name,
+              listingCount: watchlist.listingIds.length,
+            })),
+            selectedWatchlistId,
+            onSelectWatchlist: handleSelectWatchlist,
+            onCreateWatchlist: handleCreateWatchlist,
+            isBusy: watchlistsLoading,
+            canManage: watchlistsSupabaseConfigured,
+            createDisabledReason: watchlistsSupabaseConfigured
+              ? undefined
+              : watchlistsDisabledMessage,
+            errorMessage: watchlistsError,
+            activeSummary: activeWatchlist
+              ? {
+                  name: activeWatchlist.name,
+                  listingCount: activeWatchlist.listingIds.length,
+                }
+              : null,
+          }}
         />
       </section>
       <section className="app__section app__section--main">
@@ -647,6 +792,12 @@ function HomePage(): JSX.Element {
           onListingRevert={handleListingRevert}
           canToggleFavorites={supabaseConfigured}
           favoriteDisabledReason={favoritesDisabledMessage}
+          selectionMode={activeWatchlist ? 'watchlist' : 'favorites'}
+          selectedListingIds={activeWatchlist ? watchlistMembership : undefined}
+          onSelectionChange={activeWatchlist ? handleWatchlistToggle : undefined}
+          canChangeSelection={activeWatchlist ? watchlistsSupabaseConfigured : undefined}
+          selectionDisabledReason={activeWatchlist ? watchlistsDisabledMessage : undefined}
+          selectionLabel={activeWatchlist ? `${activeWatchlist.name} membership` : undefined}
           canEditListings={supabaseConfigured}
           editDisabledReason={editDisabledMessage}
         />
