@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import { CacheProvider } from '@/context/CacheContext';
 import { ListingsProvider } from '@/context/ListingsContext';
+import { WatchlistsProvider } from '@/context/WatchlistsContext';
 
 vi.mock('@/services/arcgisClient', async () => {
   const actual = await vi.importActual<typeof import('@/services/arcgisClient')>(
@@ -44,7 +45,9 @@ describe('App', () => {
       <BrowserRouter>
         <CacheProvider>
           <ListingsProvider>
-            <App />
+            <WatchlistsProvider>
+              <App />
+            </WatchlistsProvider>
           </ListingsProvider>
         </CacheProvider>
       </BrowserRouter>,

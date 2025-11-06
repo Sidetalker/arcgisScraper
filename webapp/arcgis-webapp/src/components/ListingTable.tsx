@@ -26,6 +26,7 @@ import {
 } from '@/utils/listingColumnFilters';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingRecord, ListingSourceOfTruth } from '@/types';
+import ListingComments from '@/components/ListingComments';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -438,6 +439,9 @@ export function ListingTable({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
+  const [expandedCommentListingIds, setExpandedCommentListingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const favoriteDisabledMessage =
     favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
   const watchlistDisabledMessage =
@@ -458,6 +462,30 @@ export function ListingTable({
     }
     return new Set<string>(selectedListingIds);
   }, [selectedListingIds]);
+  useEffect(() => {
+    setExpandedCommentListingIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      const validIds = new Set(listings.map((listing) => listing.id));
+      let changed = false;
+      current.forEach((id) => {
+        if (!validIds.has(id)) {
+          changed = true;
+        }
+      });
+      if (!changed) {
+        return current;
+      }
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (validIds.has(id)) {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [listings]);
   const createDraftFromListing = useCallback((listing: ListingRecord): ListingEditDraft => {
     return {
       complex: listing.complex,
@@ -499,6 +527,17 @@ export function ListingTable({
     },
     [canEditListings, createDraftFromListing, editingListingId],
   );
+  const handleToggleComments = useCallback((listingId: string) => {
+    setExpandedCommentListingIds((current) => {
+      const next = new Set(current);
+      if (next.has(listingId)) {
+        next.delete(listingId);
+      } else {
+        next.add(listingId);
+      }
+      return next;
+    });
+  }, []);
   const handleDraftInputChange = useCallback(
     (field: keyof ListingEditDraft) =>
       (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -1795,6 +1834,10 @@ export function ListingTable({
                 const editAriaLabel = listing.hasCustomizations
                   ? `Edit listing ${listingDescriptor} (customized)`
                   : `Edit listing ${listingDescriptor}`;
+                const isCommentOpen = expandedCommentListingIds.has(listing.id);
+                const commentSectionId = `listing-${listing.id}-comments`;
+                const commentToggleLabel = isCommentOpen ? 'Hide comments' : 'Show comments';
+                const commentButtonTitle = `${commentToggleLabel} for ${listingDescriptor}`;
 
                 return (
                   <Fragment key={listing.id}>
@@ -1863,6 +1906,27 @@ export function ListingTable({
                           ) : (
                             <span className="listing-table__detail-placeholder" aria-hidden="true">—</span>
                           )}
+                          <button
+                            type="button"
+                            className="listing-table__icon-button listing-table__comment-button"
+                            onClick={() => handleToggleComments(listing.id)}
+                            title={commentButtonTitle}
+                            aria-label={commentButtonTitle}
+                            aria-expanded={isCommentOpen}
+                            aria-controls={commentSectionId}
+                            data-open={isCommentOpen ? 'true' : undefined}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path
+                                d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H9.56l-3.83 3.09A.75.75 0 0 1 4 18.5Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            <span className="visually-hidden">{commentButtonTitle}</span>
+                          </button>
                         </div>
                       </td>
                       {visibleColumnDefinitions.map((definition) => (
@@ -1915,6 +1979,17 @@ export function ListingTable({
                               <p className="listing-table__edit-error" role="alert">{editError}</p>
                             ) : null}
                           </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {isCommentOpen ? (
+                      <tr className="listing-table__comment-row">
+                        <td colSpan={columnCount}>
+                          <ListingComments
+                            listingId={listing.id}
+                            sectionId={commentSectionId}
+                            heading={listingDescriptor}
+                          />
                         </td>
                       </tr>
                     ) : null}
