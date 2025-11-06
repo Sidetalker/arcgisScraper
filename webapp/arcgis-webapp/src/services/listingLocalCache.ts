@@ -58,7 +58,9 @@ export async function loadListingsFromCache(): Promise<
   const records: ListingRecord[] = (payload.records ?? []).map((record) => ({
     ...record,
     zone: typeof record.zone === 'string' ? record.zone : '',
+    hasCustomizations: Boolean(record.hasCustomizations),
     raw: {},
+    sourceOfTruth: record.sourceOfTruth ?? null,
   }));
 
   return {

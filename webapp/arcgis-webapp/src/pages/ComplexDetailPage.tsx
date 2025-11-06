@@ -10,6 +10,7 @@ import {
   type ListingTableColumnKey,
 } from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
+import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingRecord } from '@/types';
 
 function decodeParam(value: string | undefined): string {
@@ -28,13 +29,22 @@ function ComplexDetailPage(): JSX.Element {
   const { complexId } = useParams<{ complexId: string }>();
   const complexName = decodeParam(complexId);
 
-  const { listings, loading, error, supabaseConfigured, updateListingFavorite } = useListings();
+  const {
+    listings,
+    loading,
+    error,
+    supabaseConfigured,
+    updateListingFavorite,
+    updateListingDetails,
+    revertListingToOriginal,
+  } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [tableState, setTableState] = useState(createDefaultTableState);
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
+  const editDisabledMessage = 'Connect Supabase to customize listings.';
 
   const normalizedComplex = useMemo(() => complexName.trim().toLowerCase(), [complexName]);
 
@@ -125,6 +135,51 @@ function ComplexDetailPage(): JSX.Element {
     [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
   );
 
+  const handleListingEdit = useCallback(
+    async (listingId: string, overrides: ListingCustomizationOverrides) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(editDisabledMessage);
+        throw new Error(editDisabledMessage);
+      }
+
+      try {
+        await updateListingDetails(listingId, overrides);
+        setStatusMessage('Listing changes saved.');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to save listing changes.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [
+      editDisabledMessage,
+      setStatusMessage,
+      supabaseConfigured,
+      updateListingDetails,
+    ],
+  );
+
+  const handleListingRevert = useCallback(
+    async (listingId: string) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(editDisabledMessage);
+        throw new Error(editDisabledMessage);
+      }
+
+      try {
+        await revertListingToOriginal(listingId);
+        setStatusMessage('Listing restored to original data.');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to restore listing data.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [editDisabledMessage, setStatusMessage, supabaseConfigured, revertListingToOriginal],
+  );
+
   return (
     <>
       <div className="detail-sidebar">
@@ -159,8 +214,12 @@ function ComplexDetailPage(): JSX.Element {
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
           onFavoriteChange={handleFavoriteChange}
+          onListingEdit={handleListingEdit}
+          onListingRevert={handleListingRevert}
           canToggleFavorites={supabaseConfigured}
           favoriteDisabledReason={favoritesDisabledMessage}
+          canEditListings={supabaseConfigured}
+          editDisabledReason={editDisabledMessage}
         />
       </div>
     </>

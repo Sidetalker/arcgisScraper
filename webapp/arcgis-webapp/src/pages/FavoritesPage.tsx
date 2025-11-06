@@ -13,10 +13,19 @@ import {
 } from '@/constants/listingTable';
 import { useListings } from '@/context/ListingsContext';
 import { applyFilters } from '@/services/listingTransformer';
+import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingFilters } from '@/types';
 
 function FavoritesPage(): JSX.Element {
-  const { listings, loading, error, supabaseConfigured, updateListingFavorite } = useListings();
+  const {
+    listings,
+    loading,
+    error,
+    supabaseConfigured,
+    updateListingFavorite,
+    updateListingDetails,
+    revertListingToOriginal,
+  } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -25,6 +34,7 @@ function FavoritesPage(): JSX.Element {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
+  const editDisabledMessage = 'Connect Supabase to customize listings.';
 
   const favoritedListings = useMemo(
     () => listings.filter((listing) => listing.isFavorited),
@@ -98,6 +108,51 @@ function FavoritesPage(): JSX.Element {
     [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
   );
 
+  const handleListingEdit = useCallback(
+    async (listingId: string, overrides: ListingCustomizationOverrides) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(editDisabledMessage);
+        throw new Error(editDisabledMessage);
+      }
+
+      try {
+        await updateListingDetails(listingId, overrides);
+        setStatusMessage('Listing changes saved.');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to save listing changes.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [
+      editDisabledMessage,
+      setStatusMessage,
+      supabaseConfigured,
+      updateListingDetails,
+    ],
+  );
+
+  const handleListingRevert = useCallback(
+    async (listingId: string) => {
+      if (!supabaseConfigured) {
+        setStatusMessage(editDisabledMessage);
+        throw new Error(editDisabledMessage);
+      }
+
+      try {
+        await revertListingToOriginal(listingId);
+        setStatusMessage('Listing restored to original data.');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to restore listing data.';
+        setStatusMessage(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [editDisabledMessage, setStatusMessage, supabaseConfigured, revertListingToOriginal],
+  );
+
   const statusMessage = useMemo(() => {
     if (loading) {
       return 'Loading favorites from Supabase…';
@@ -146,8 +201,12 @@ function FavoritesPage(): JSX.Element {
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
           onFavoriteChange={handleFavoriteChange}
+          onListingEdit={handleListingEdit}
+          onListingRevert={handleListingRevert}
           canToggleFavorites={supabaseConfigured}
           favoriteDisabledReason={favoritesDisabledMessage}
+          canEditListings={supabaseConfigured}
+          editDisabledReason={editDisabledMessage}
         />
       </section>
     </div>
