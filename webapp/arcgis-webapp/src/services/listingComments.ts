@@ -58,10 +58,25 @@ export async function addListingComment(listingId: string, body: string): Promis
   return mapRowToComment(data as ListingCommentRow);
 }
 
+export async function deleteListingComment(commentId: string): Promise<void> {
+  const supabase = assertSupabaseClient();
+  const { error } = await supabase.from('listing_comments').delete().eq('id', commentId);
+
+  if (error) {
+    throw new Error(error.message ?? 'Failed to delete the comment.');
+  }
+}
+
+interface ListingCommentSubscriptionHandlers {
+  onInsert?: (comment: ListingComment) => void;
+  onDelete?: (comment: ListingComment) => void;
+}
+
 export function subscribeToListingComments(
   listingId: string,
-  onInsert: (comment: ListingComment) => void,
+  handlers: ListingCommentSubscriptionHandlers = {},
 ): () => void {
+  const { onInsert, onDelete } = handlers;
   const supabase = assertSupabaseClient();
   const channel = supabase.channel(`listing-comments:${listingId}`);
 
@@ -74,8 +89,28 @@ export function subscribeToListingComments(
       filter: `listing_id=eq.${listingId}`,
     },
     (payload) => {
+      if (!onInsert) {
+        return;
+      }
       const row = payload.new as ListingCommentRow;
       onInsert(mapRowToComment(row));
+    },
+  );
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'DELETE',
+      schema: 'public',
+      table: 'listing_comments',
+      filter: `listing_id=eq.${listingId}`,
+    },
+    (payload) => {
+      if (!onDelete) {
+        return;
+      }
+      const row = payload.old as ListingCommentRow;
+      onDelete(mapRowToComment(row));
     },
   );
 

@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 
 import {
   addListingComment,
+  deleteListingComment,
   fetchListingComments,
   subscribeToListingComments,
   type ListingComment,
@@ -34,13 +35,15 @@ export default function ListingComments({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
   const [saving, setSaving] = useState(false);
   const [copiedCommentId, setCopiedCommentId] = useState<string | null>(null);
-  const [copyAnnouncement, setCopyAnnouncement] = useState<string | null>(null);
-  const copyResetTimeoutRef = useRef<number | null>(null);
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string | null>(null);
+  const feedbackResetTimeoutRef = useRef<number | null>(null);
   const commentRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -49,6 +52,7 @@ export default function ListingComments({
     const initialise = async () => {
       setLoading(true);
       setLoadError(null);
+      setDeleteError(null);
 
       try {
         const initial = await fetchListingComments(listingId);
@@ -57,13 +61,20 @@ export default function ListingComments({
         }
         setComments(sortCommentsAscending(initial));
 
-        unsubscribe = subscribeToListingComments(listingId, (comment) => {
-          setComments((current) => {
-            if (current.some((existing) => existing.id === comment.id)) {
-              return current;
-            }
-            return sortCommentsAscending([...current, comment]);
-          });
+        unsubscribe = subscribeToListingComments(listingId, {
+          onInsert: (comment) => {
+            setComments((current) => {
+              if (current.some((existing) => existing.id === comment.id)) {
+                return current;
+              }
+              return sortCommentsAscending([...current, comment]);
+            });
+          },
+          onDelete: (comment) => {
+            setComments((current) => current.filter((existing) => existing.id !== comment.id));
+            setActiveHighlightId((current) => (current === comment.id ? null : current));
+            setCopiedCommentId((current) => (current === comment.id ? null : current));
+          },
         });
       } catch (error) {
         if (!active) {
@@ -111,8 +122,8 @@ export default function ListingComments({
 
   useEffect(() => {
     return () => {
-      if (copyResetTimeoutRef.current !== null && typeof window !== 'undefined') {
-        window.clearTimeout(copyResetTimeoutRef.current);
+      if (feedbackResetTimeoutRef.current !== null && typeof window !== 'undefined') {
+        window.clearTimeout(feedbackResetTimeoutRef.current);
       }
     };
   }, []);
@@ -185,18 +196,57 @@ export default function ListingComments({
       }
 
       setCopiedCommentId(commentId);
-      setCopyAnnouncement('Comment link copied to clipboard.');
+      setLiveAnnouncement('Comment link copied to clipboard.');
 
-      if (copyResetTimeoutRef.current !== null) {
-        window.clearTimeout(copyResetTimeoutRef.current);
+      if (feedbackResetTimeoutRef.current !== null) {
+        window.clearTimeout(feedbackResetTimeoutRef.current);
       }
 
-      copyResetTimeoutRef.current = window.setTimeout(() => {
+      feedbackResetTimeoutRef.current = window.setTimeout(() => {
         setCopiedCommentId((current) => (current === commentId ? null : current));
-        setCopyAnnouncement(null);
+        setLiveAnnouncement(null);
       }, 2500);
     },
     [buildCommentLink],
+  );
+
+  const handleDeleteComment = useCallback(
+    async (commentId: string) => {
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm(
+          'Are you sure you want to delete this comment? This action cannot be undone.',
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      setDeleteError(null);
+      setDeletingCommentId(commentId);
+
+      try {
+        await deleteListingComment(commentId);
+        setComments((current) => current.filter((comment) => comment.id !== commentId));
+        setActiveHighlightId((current) => (current === commentId ? null : current));
+        setCopiedCommentId((current) => (current === commentId ? null : current));
+
+        if (typeof window !== 'undefined') {
+          if (feedbackResetTimeoutRef.current !== null) {
+            window.clearTimeout(feedbackResetTimeoutRef.current);
+          }
+          setLiveAnnouncement('Comment deleted.');
+          feedbackResetTimeoutRef.current = window.setTimeout(() => {
+            setLiveAnnouncement(null);
+          }, 2500);
+        }
+      } catch (error) {
+        console.error('Unable to delete listing comment.', error);
+        setDeleteError(error instanceof Error ? error.message : 'Unable to delete this comment.');
+      } finally {
+        setDeletingCommentId((current) => (current === commentId ? null : current));
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -297,20 +347,35 @@ export default function ListingComments({
                   <p className="listing-table__comments-body">{comment.body}</p>
                   <div className="listing-table__comments-meta">
                     <p className="listing-table__comments-timestamp">{comment.formattedDate}</p>
-                    <button
-                      type="button"
-                      className="listing-table__comments-share"
-                      onClick={() => handleCopyLink(comment.id)}
-                    >
-                      {isCopied ? 'Link copied!' : 'Copy link'}
-                    </button>
+                    <div className="listing-table__comments-actions">
+                      <button
+                        type="button"
+                        className="listing-table__comments-share"
+                        onClick={() => handleCopyLink(comment.id)}
+                      >
+                        {isCopied ? 'Link copied!' : 'Copy link'}
+                      </button>
+                      <button
+                        type="button"
+                        className="listing-table__comments-delete"
+                        onClick={() => handleDeleteComment(comment.id)}
+                        disabled={deletingCommentId === comment.id}
+                      >
+                        {deletingCommentId === comment.id ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
                   </div>
                 </li>
               );
             })}
           </ul>
+          {deleteError ? (
+            <p className="listing-table__comments-error" role="alert">
+              {deleteError}
+            </p>
+          ) : null}
           <p className="listing-table__sr-only" aria-live="polite">
-            {copyAnnouncement ?? ''}
+            {liveAnnouncement ?? ''}
           </p>
         </>
       ) : (
