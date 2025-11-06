@@ -119,7 +119,11 @@ function Layout(): JSX.Element {
               className={({ isActive }) =>
                 `app__nav-link${isActive ? ' app__nav-link--active' : ''}`
               }
+              title="Open the dedicated favorites workspace"
             >
+              <span aria-hidden="true" className="app__nav-icon" role="img">
+                ★
+              </span>
               Favorites
             </NavLink>
           </nav>

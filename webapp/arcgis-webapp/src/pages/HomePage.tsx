@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 
 import CollapsibleSection from '@/components/CollapsibleSection';
 import FilterPanel from '@/components/FilterPanel';
@@ -138,6 +138,27 @@ function HomePage(): JSX.Element {
   const [savingProfile, setSavingProfile] = useState(false);
 
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
+  const favoritedCount = useMemo(
+    () => listings.filter((listing) => listing.isFavorited).length,
+    [listings],
+  );
+  const favoritesCtaTitle = useMemo(() => {
+    if (!supabaseConfigured) {
+      return 'Connect Supabase to enable shared favorites across your team.';
+    }
+    if (favoritedCount > 0) {
+      return `${favoritedCount.toLocaleString()} listing${
+        favoritedCount === 1 ? '' : 's'
+      } are marked as favorites.`;
+    }
+    return 'Build a shortlist by starring listings in the results table.';
+  }, [favoritedCount, supabaseConfigured]);
+  const favoritesCtaSubtitle = useMemo(() => {
+    if (!supabaseConfigured) {
+      return 'Add your Supabase credentials to start saving and sharing favorite listings.';
+    }
+    return 'Jump into the dedicated favorites workspace to focus on saved opportunities.';
+  }, [supabaseConfigured]);
 
   const handleRegionsChange = useCallback(
     (nextRegions: RegionShape[]) => {
@@ -581,6 +602,22 @@ function HomePage(): JSX.Element {
         collapsible={false}
         defaultCollapsed={false}
       >
+        <div className="listing-results__favorites-cta">
+          <div className="listing-results__favorites-copy">
+            <p className="listing-results__favorites-title">
+              {favoritesCtaTitle}
+            </p>
+            <p className="listing-results__favorites-subtitle">
+              {favoritesCtaSubtitle}
+            </p>
+          </div>
+          <Link className="listing-results__favorites-button" to="/favorites">
+            Open favorites view
+            {supabaseConfigured && favoritedCount > 0
+              ? ` (${favoritedCount.toLocaleString()})`
+              : ''}
+          </Link>
+        </div>
         <ListingTable
           listings={filteredListings}
           pageSize={pageSize}
