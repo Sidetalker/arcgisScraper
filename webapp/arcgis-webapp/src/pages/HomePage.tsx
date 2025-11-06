@@ -341,6 +341,16 @@ function HomePage(): JSX.Element {
     [],
   );
 
+  const handleSortChange = useCallback(
+    (nextSort: ListingTableState['sort']) => {
+      setTableState((previous) => ({
+        ...previous,
+        sort: nextSort ? { ...nextSort } : null,
+      }));
+    },
+    [],
+  );
+
   const handleFavoriteChange = useCallback(
     async (listingId: string, isFavorited: boolean) => {
       if (!supabaseConfigured) {
@@ -534,6 +544,7 @@ function HomePage(): JSX.Element {
           columnOrder: [...tableState.columnOrder],
           hiddenColumns: [...tableState.hiddenColumns],
           columnFilters: { ...tableState.columnFilters },
+          sort: tableState.sort ? { ...tableState.sort } : null,
         },
       };
       window.localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(payload));
@@ -630,6 +641,7 @@ function HomePage(): JSX.Element {
             columnOrder: [...tableState.columnOrder],
             hiddenColumns: [...tableState.hiddenColumns],
             columnFilters: { ...tableState.columnFilters },
+            sort: tableState.sort ? { ...tableState.sort } : null,
           },
         });
         setLocalProfileId(savedProfile.id);
@@ -638,6 +650,7 @@ function HomePage(): JSX.Element {
           columnOrder: [...savedProfile.table.columnOrder],
           hiddenColumns: [...savedProfile.table.hiddenColumns],
           columnFilters: { ...savedProfile.table.columnFilters },
+          sort: savedProfile.table.sort ? { ...savedProfile.table.sort } : null,
         });
         setProfilesError(null);
         setProfiles((current) => {
@@ -712,6 +725,7 @@ function HomePage(): JSX.Element {
         columnOrder: [...profile.table.columnOrder],
         hiddenColumns: [...profile.table.hiddenColumns],
         columnFilters: { ...profile.table.columnFilters },
+        sort: profile.table.sort ? { ...profile.table.sort } : null,
       });
     },
     [handleRegionsChange, profiles],
@@ -833,9 +847,11 @@ function HomePage(): JSX.Element {
           columnOrder={tableState.columnOrder}
           hiddenColumns={tableState.hiddenColumns}
           columnFilters={tableState.columnFilters}
+          sort={tableState.sort}
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onSortChange={handleSortChange}
           onFavoriteChange={handleFavoriteChange}
           onListingEdit={handleListingEdit}
           onListingRevert={handleListingRevert}

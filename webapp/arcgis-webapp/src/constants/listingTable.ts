@@ -16,10 +16,18 @@ export type ListingTableColumnKey = (typeof LISTING_TABLE_COLUMN_KEYS)[number];
 
 export type ListingTableColumnFilters = Record<ListingTableColumnKey, string>;
 
+export type ListingTableSortDirection = 'asc' | 'desc';
+
+export interface ListingTableSort {
+  columnKey: ListingTableColumnKey;
+  direction: ListingTableSortDirection;
+}
+
 export interface ListingTableState {
   columnOrder: ListingTableColumnKey[];
   hiddenColumns: ListingTableColumnKey[];
   columnFilters: ListingTableColumnFilters;
+  sort: ListingTableSort | null;
 }
 
 export function isListingTableColumnKey(value: unknown): value is ListingTableColumnKey {
@@ -44,11 +52,16 @@ export function createDefaultColumnFilters(): ListingTableColumnFilters {
   }, {} as ListingTableColumnFilters);
 }
 
+export function createDefaultSort(): ListingTableSort | null {
+  return null;
+}
+
 export function createDefaultTableState(): ListingTableState {
   return {
     columnOrder: createDefaultColumnOrder(),
     hiddenColumns: createDefaultHiddenColumns(),
     columnFilters: createDefaultColumnFilters(),
+    sort: createDefaultSort(),
   };
 }
 
@@ -107,6 +120,29 @@ export function normaliseColumnFilters(filters: unknown): ListingTableColumnFilt
   return base;
 }
 
+function isSortDirection(value: unknown): value is ListingTableSortDirection {
+  return value === 'asc' || value === 'desc';
+}
+
+export function normaliseSort(sort: unknown): ListingTableSort | null {
+  if (!sort || typeof sort !== 'object') {
+    return createDefaultSort();
+  }
+
+  const sortObject = sort as Record<string, unknown>;
+  const columnKey = sortObject.columnKey;
+  const direction = sortObject.direction;
+
+  if (!isListingTableColumnKey(columnKey) || !isSortDirection(direction)) {
+    return createDefaultSort();
+  }
+
+  return {
+    columnKey,
+    direction,
+  };
+}
+
 export function normaliseTableState(table: unknown): ListingTableState {
   if (!table || typeof table !== 'object') {
     return createDefaultTableState();
@@ -117,6 +153,7 @@ export function normaliseTableState(table: unknown): ListingTableState {
     columnOrder: normaliseColumnOrder(tableObject.columnOrder),
     hiddenColumns: normaliseHiddenColumns(tableObject.hiddenColumns),
     columnFilters: normaliseColumnFilters(tableObject.columnFilters),
+    sort: normaliseSort(tableObject.sort),
   };
 }
 
@@ -147,11 +184,24 @@ export function areColumnFiltersEqual(
   return LISTING_TABLE_COLUMN_KEYS.every((key) => a[key] === b[key]);
 }
 
+export function areSortsEqual(a: ListingTableSort | null, b: ListingTableSort | null): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (!a || !b) {
+    return false;
+  }
+
+  return a.columnKey === b.columnKey && a.direction === b.direction;
+}
+
 export function areTableStatesEqual(a: ListingTableState, b: ListingTableState): boolean {
   return (
     areColumnOrdersEqual(a.columnOrder, b.columnOrder) &&
     areHiddenColumnsEqual(a.hiddenColumns, b.hiddenColumns) &&
-    areColumnFiltersEqual(a.columnFilters, b.columnFilters)
+    areColumnFiltersEqual(a.columnFilters, b.columnFilters) &&
+    areSortsEqual(a.sort, b.sort)
   );
 }
 
