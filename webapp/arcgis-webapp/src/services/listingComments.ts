@@ -89,3 +89,32 @@ export function subscribeToListingComments(
     void channel.unsubscribe();
   };
 }
+
+export async function fetchListingCommentCounts(
+  listingIds: readonly string[],
+): Promise<Record<string, number>> {
+  if (listingIds.length === 0) {
+    return {};
+  }
+
+  const supabase = assertSupabaseClient();
+  const { data, error } = await supabase
+    .from('listing_comments')
+    .select('listing_id')
+    .in('listing_id', listingIds);
+
+  if (error) {
+    throw new Error(error.message ?? 'Failed to load listing comment counts.');
+  }
+
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const listingId = (row as Pick<ListingCommentRow, 'listing_id'>).listing_id;
+    if (!listingId) {
+      continue;
+    }
+    counts[listingId] = (counts[listingId] ?? 0) + 1;
+  }
+
+  return counts;
+}

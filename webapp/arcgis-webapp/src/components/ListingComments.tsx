@@ -13,6 +13,9 @@ interface ListingCommentsProps {
   sectionId: string;
   sharePath: string;
   highlightCommentId?: string | null;
+  onCommentSummaryChange?: (
+    summary: { listingId: string; count: number; hasComments: boolean },
+  ) => void;
 }
 
 function sortCommentsAscending(comments: ListingComment[]): ListingComment[] {
@@ -25,6 +28,7 @@ export default function ListingComments({
   sectionId,
   sharePath,
   highlightCommentId,
+  onCommentSummaryChange,
 }: ListingCommentsProps) {
   const [comments, setComments] = useState<ListingComment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +105,8 @@ export default function ListingComments({
     [comments],
   );
 
-  const hasComments = formattedComments.length > 0;
+  const commentCount = comments.length;
+  const hasComments = commentCount > 0;
   const canSubmit = newComment.trim().length > 0 && !saving && !loading && !loadError;
 
   useEffect(() => {
@@ -111,6 +116,14 @@ export default function ListingComments({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!onCommentSummaryChange) {
+      return;
+    }
+
+    onCommentSummaryChange({ listingId, count: commentCount, hasComments: commentCount > 0 });
+  }, [commentCount, listingId, onCommentSummaryChange]);
 
   const registerComment = useCallback((id: string) => (element: HTMLLIElement | null) => {
     if (element) {

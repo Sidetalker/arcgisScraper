@@ -469,12 +469,25 @@
 }
 
 .listing-table__icon-button--comment {
+  position: relative;
   background: linear-gradient(140deg, #10b981, #34d399);
   color: #ecfdf5;
 }
 
 .listing-table__icon-button--comment[data-open='true'] {
   filter: brightness(1.08);
+}
+
+.listing-table__icon-button--comment[data-has-comments='true']::after {
+  content: '';
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0f766e, #14b8a6);
+  box-shadow: 0 0 0 2px rgba(236, 253, 245, 0.92);
 }
 
 .listing-table__icon-button--edit[data-edited='true']::after {

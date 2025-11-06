@@ -27,6 +27,7 @@ import {
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingRecord, ListingSourceOfTruth } from '@/types';
 import ListingComments from '@/components/ListingComments';
+import { fetchListingCommentCounts } from '@/services/listingComments';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -482,6 +483,9 @@ export function ListingTable({
   const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
   const [expandedCommentListingIds, setExpandedCommentListingIds] = useState<Set<string>>(
     () => new Set(),
+  );
+  const [listingCommentCounts, setListingCommentCounts] = useState<Map<string, number>>(
+    () => new Map(),
   );
   const location = useLocation();
   const commentLinkBasePath = commentLinkPath ?? location.pathname;
@@ -969,8 +973,59 @@ export function ListingTable({
   const safePage = clampPage(requestedPage);
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
-  const pageListings = filteredListings.slice(startIndex, endIndex);
+  const pageListings = useMemo(
+    () => filteredListings.slice(startIndex, endIndex),
+    [filteredListings, startIndex, endIndex],
+  );
   const columnCount = Math.max(1, visibleColumns.length + 2);
+  const pageListingIds = useMemo(
+    () => pageListings.map((listing) => listing.id),
+    [pageListings],
+  );
+
+  useEffect(() => {
+    if (pageListingIds.length === 0) {
+      return;
+    }
+
+    let active = true;
+
+    const load = async () => {
+      try {
+        const counts = await fetchListingCommentCounts(pageListingIds);
+        if (!active) {
+          return;
+        }
+
+        setListingCommentCounts((current) => {
+          const next = new Map(current);
+          pageListingIds.forEach((id) => next.delete(id));
+          for (const [listingId, count] of Object.entries(counts)) {
+            if (count > 0) {
+              next.set(listingId, count);
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        console.error('Failed to load comment counts for visible listings.', error);
+        setListingCommentCounts((current) => {
+          if (current.size === 0) {
+            return current;
+          }
+          const next = new Map(current);
+          pageListingIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [pageListingIds]);
 
   const handleSelectionToggle = useCallback(
     (listingId: string) => (event: ChangeEvent<HTMLInputElement>) => {
@@ -1007,6 +1062,21 @@ export function ListingTable({
       }
     },
     [effectiveSelectionMode, onFavoriteChange, onSelectionChange],
+  );
+
+  const handleListingCommentSummary = useCallback(
+    (summary: { listingId: string; count: number; hasComments: boolean }) => {
+      setListingCommentCounts((current) => {
+        const next = new Map(current);
+        if (summary.count > 0) {
+          next.set(summary.listingId, summary.count);
+        } else {
+          next.delete(summary.listingId);
+        }
+        return next;
+      });
+    },
+    [],
   );
 
   useEffect(() => {
@@ -1983,6 +2053,8 @@ export function ListingTable({
                 const commentSectionId = `listing-${listing.id}-comments`;
                 const commentToggleLabel = isCommentOpen ? 'Hide comments' : 'Show comments';
                 const commentButtonTitle = `${commentToggleLabel} for ${listingDescriptor}`;
+                const storedCommentCount = listingCommentCounts.get(listing.id) ?? 0;
+                const hasStoredComments = storedCommentCount > 0;
 
                 return (
                   <Fragment key={listing.id}>
@@ -2060,6 +2132,7 @@ export function ListingTable({
                             aria-expanded={isCommentOpen}
                             aria-controls={commentSectionId}
                             data-open={isCommentOpen ? 'true' : undefined}
+                            data-has-comments={hasStoredComments ? 'true' : undefined}
                           >
                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                               <path
@@ -2067,10 +2140,13 @@ export function ListingTable({
                                 fill="none"
                                 stroke="currentColor"
                                 strokeWidth="1.5"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                            <span className="visually-hidden">{commentButtonTitle}</span>
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="visually-hidden">{commentButtonTitle}</span>
+                          {hasStoredComments ? (
+                            <span className="visually-hidden">Listing has comments</span>
+                          ) : null}
                           </button>
                         </div>
                       </td>
@@ -2139,8 +2215,9 @@ export function ListingTable({
                               highlightCommentId={
                                 commentHighlightTarget?.listingId === listing.id
                                   ? commentHighlightTarget.commentId
-                                  : undefined
+                                  : null
                               }
+                              onCommentSummaryChange={handleListingCommentSummary}
                             />
                           </div>
                         </td>
