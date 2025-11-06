@@ -707,9 +707,33 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
   const client = assertSupabaseClient();
   const rows = records.map((record) => toListingRow(record));
 
-  const { error: deleteError } = await client.from('listings').delete().neq('id', '');
-  if (deleteError) {
-    throw deleteError;
+  const { data: existingRows, error: fetchError } = await client.from('listings').select('id');
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  const incomingIds = new Set(rows.map((row) => row.id));
+  const existingIds = new Set(
+    (existingRows ?? [])
+      .map((row) => (typeof row?.id === 'string' ? row.id : null))
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  const idsToDelete: string[] = [];
+  existingIds.forEach((id) => {
+    if (!incomingIds.has(id)) {
+      idsToDelete.push(id);
+    }
+  });
+
+  if (idsToDelete.length > 0) {
+    const { error: deleteMissingError } = await client
+      .from('listings')
+      .delete()
+      .in('id', idsToDelete);
+    if (deleteMissingError) {
+      throw deleteMissingError;
+    }
   }
 
   const chunkSize = 400;
@@ -718,9 +742,11 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
     if (chunk.length === 0) {
       continue;
     }
-    const { error: insertError } = await client.from('listings').insert(chunk);
-    if (insertError) {
-      throw insertError;
+    const { error: upsertError } = await client
+      .from('listings')
+      .upsert(chunk, { onConflict: 'id' });
+    if (upsertError) {
+      throw upsertError;
     }
   }
 }
