@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "stage": "node scripts/run-with-env.mjs .vercel/.env.staging.local vite --mode staging",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
     "test": "vitest",
-    "refresh-metrics": "node scripts/computeListingAggregates.mjs"
+    "refresh-metrics": "node scripts/computeListingAggregates.mjs",
+    "refresh-metrics-staging": "node scripts/computeListingAggregatesStaging.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",

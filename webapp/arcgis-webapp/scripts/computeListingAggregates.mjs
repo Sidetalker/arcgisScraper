@@ -8,6 +8,19 @@ import { refreshListingAggregates } from './listingAggregateJob.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, '..');
+const VERCEL_ENV_DIR = path.join(WORKSPACE_ROOT, '.vercel');
+
+const TARGET_ENVIRONMENT = (process.env.REFRESH_METRICS_ENVIRONMENT || 'development').toLowerCase();
+
+const SUPPORTED_ENVIRONMENTS = new Set(['development', 'staging']);
+
+if (!SUPPORTED_ENVIRONMENTS.has(TARGET_ENVIRONMENT)) {
+  console.warn(
+    `[metrics] Unknown REFRESH_METRICS_ENVIRONMENT "${TARGET_ENVIRONMENT}". Falling back to development configuration.`,
+  );
+}
+
+const resolvedEnvironment = SUPPORTED_ENVIRONMENTS.has(TARGET_ENVIRONMENT) ? TARGET_ENVIRONMENT : 'development';
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -48,22 +61,33 @@ function loadEnvFile(filePath) {
   }
 }
 
+const envFiles = [];
+
+if (resolvedEnvironment === 'staging') {
+  envFiles.push('.env.staging.local', '.env.staging');
+} else {
+  envFiles.push('.env.development.local', '.env.development');
+}
+
+envFiles.push('.env.local', '.env');
+
+for (const envFile of envFiles) {
+  loadEnvFile(path.join(VERCEL_ENV_DIR, envFile));
+}
+
 for (const envFile of ['.env.local', '.env']) {
   loadEnvFile(path.join(WORKSPACE_ROOT, envFile));
 }
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL ||
-  process.env.VITE_SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.SUPABASE_PROJECT_URL;
+if (resolvedEnvironment === 'staging') {
+  console.info('[metrics] Loaded staging environment configuration.');
+} else {
+  console.info('[metrics] Loaded development environment configuration.');
+}
 
-const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.SUPABASE_SECRET_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE ||
-  process.env.SUPABASE_KEY;
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+
+const SUPABASE_SERVICE_ROLE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL) {
   console.error('Missing Supabase URL. Provide SUPABASE_URL (or VITE_/NEXT_PUBLIC_ variants).');

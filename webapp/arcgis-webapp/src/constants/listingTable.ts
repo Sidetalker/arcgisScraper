@@ -8,6 +8,7 @@ export const LISTING_TABLE_COLUMN_KEYS = [
   'mailingState',
   'mailingZip',
   'subdivision',
+  'municipalStatus',
   'scheduleNumber',
   'physicalAddress',
 ] as const;

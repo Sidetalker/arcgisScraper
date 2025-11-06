@@ -476,6 +476,12 @@ export function toListingRecord(
     isBusinessOwner,
     latitude,
     longitude,
+    municipalMunicipality: null,
+    municipalLicenseId: null,
+    municipalLicenseStatus: null,
+    municipalLicenseNormalizedStatus: null,
+    municipalLicenseExpiration: null,
+    municipalLicenses: [],
     raw: attributes,
   };
 }
@@ -490,6 +496,7 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.physicalAddress,
       listing.scheduleNumber,
       listing.subdivision,
+      listing.municipalMunicipality ?? '',
       listing.mailingAddress,
     ]
       .join(' ')
@@ -512,6 +519,16 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       listing.ownerNames.some((name) => name.toLowerCase().includes(ownerQuery)) ||
       listing.ownerName.toLowerCase().includes(ownerQuery);
     if (!ownerMatches) {
+      return false;
+    }
+  }
+
+  if (filters.municipalities.length > 0) {
+    const listingMunicipality = (listing.municipalMunicipality ?? '').toLowerCase();
+    const municipalityMatch = filters.municipalities.some(
+      (value) => listingMunicipality === value.toLowerCase(),
+    );
+    if (!municipalityMatch) {
       return false;
     }
   }

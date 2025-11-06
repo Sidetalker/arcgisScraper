@@ -1,5 +1,6 @@
 -- Primary listings table storing the denormalised Summit County STR dataset
 drop table if exists public.listings cascade;
+drop table if exists public.municipal_licenses cascade;
 
 create table if not exists public.listings (
   id text primary key,
@@ -28,6 +29,12 @@ create table if not exists public.listings (
   estimated_renewal_category text default 'missing',
   estimated_renewal_month_key text,
   nearest_ev_station_distance_meters double precision,
+  municipal_municipality text,
+  municipal_license_id text,
+  municipal_license_status text,
+  municipal_license_normalized_status text,
+  municipal_license_expires_on date,
+  municipal_licenses jsonb,
   raw jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -48,11 +55,41 @@ create index if not exists listings_estimated_renewal_month_key_idx
 create index if not exists listings_estimated_renewal_category_idx
   on public.listings (estimated_renewal_category);
 
+create index if not exists listings_municipal_municipality_idx
+  on public.listings (municipal_municipality);
+
+create index if not exists listings_municipal_license_status_idx
+  on public.listings (municipal_license_normalized_status);
+
 -- Disable row level security so anon clients can read/write listings directly.
 alter table public.listings disable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.listings to anon, authenticated;
+
+create table if not exists public.municipal_licenses (
+  id text primary key,
+  schedule_number text not null,
+  municipality text not null,
+  municipal_license_id text not null,
+  status text,
+  normalized_status text,
+  expiration_date date,
+  updated_at timestamptz not null default timezone('utc', now()),
+  source_updated_at timestamptz,
+  detail_url text,
+  raw jsonb
+);
+
+create index if not exists municipal_licenses_schedule_number_idx
+  on public.municipal_licenses (schedule_number);
+
+create index if not exists municipal_licenses_municipality_idx
+  on public.municipal_licenses (municipality);
+
+alter table public.municipal_licenses disable row level security;
+
+grant select, insert, update, delete on public.municipal_licenses to anon, authenticated;
 
 -- Maintain updated_at automatically on updates
 create or replace function public.touch_updated_at()
@@ -66,5 +103,11 @@ $$ language plpgsql;
 drop trigger if exists set_listings_updated_at on public.listings;
 create trigger set_listings_updated_at
 before update on public.listings
+for each row
+execute procedure public.touch_updated_at();
+
+drop trigger if exists set_municipal_licenses_updated_at on public.municipal_licenses;
+create trigger set_municipal_licenses_updated_at
+before update on public.municipal_licenses
 for each row
 execute procedure public.touch_updated_at();

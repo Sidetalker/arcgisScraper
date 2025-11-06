@@ -20,6 +20,8 @@ from arcgis.gis import GIS
 from arcgis.geometry import Geometry
 from arcgis.geometry.filters import intersects
 
+from municipal_rosters import dump_municipal_rosters
+
 
 # The hosted feature layer that powers the Summit County, CO Short-Term Rental
 # public map. The layer exposes individual rental properties keyed by their
@@ -381,6 +383,15 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "--rewrite-output",
         help="Optional destination for the rewritten workbook (defaults to in-place overwrite).",
     )
+    parser.add_argument(
+        "--municipal-rosters",
+        action="store_true",
+        help="Fetch municipal short-term rental license rosters and emit a unified JSON payload.",
+    )
+    parser.add_argument(
+        "--municipal-output",
+        help="Optional destination for the municipal roster JSON payload (defaults to stdout).",
+    )
     return parser.parse_args(argv)
 
 
@@ -397,6 +408,29 @@ def main():
             args.complex_gid,
             args.owner_gid,
         )
+        return
+
+    if args.municipal_rosters:
+        # Emit verbose logs so operators can trace API pagination and record counts.
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+        logger = logging.getLogger("municipal_rosters")
+        api_key = args.api_key
+        referer = args.referer
+        try:
+            gis = create_gis(args.portal_url, args.username, args.password, api_key, referer)
+            payload = dump_municipal_rosters(
+                gis,
+                output_path=args.municipal_output,
+                logger=logger,
+            )
+            if not args.municipal_output:
+                print(json.dumps(payload, indent=2))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Failed to fetch municipal rosters: %%s", exc)
+            sys.exit(1)
         return
 
     areas: List[Tuple[float, float, float]] = []

@@ -77,6 +77,7 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     owner: typeof filters?.owner === 'string' ? filters.owner : '',
     zones: normaliseStringList(filters?.zones),
     subdivisions: normaliseStringList(filters?.subdivisions),
+    municipalities: normaliseStringList(filters?.municipalities),
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
@@ -105,6 +106,7 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
     a.owner === b.owner &&
     stringSetsEqual(a.zones, b.zones) &&
     stringSetsEqual(a.subdivisions, b.subdivisions) &&
+    stringSetsEqual(a.municipalities, b.municipalities) &&
     stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
     stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
     stringSetsEqual(a.renewalMonths, b.renewalMonths)

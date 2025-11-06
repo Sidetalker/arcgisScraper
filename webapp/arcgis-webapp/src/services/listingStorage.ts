@@ -1,4 +1,11 @@
-import type { ListingAttributes, ListingRecord, RenewalCategory } from '@/types';
+import type { PostgrestError } from '@supabase/supabase-js';
+
+import type {
+  ListingAttributes,
+  ListingRecord,
+  RenewalCategory,
+  MunicipalLicenseSummary,
+} from '@/types';
 import {
   categoriseRenewal,
   normaliseMonthKey,
@@ -58,6 +65,86 @@ function formatDateColumn(value: Date | null): string | null {
   return value.toISOString().slice(0, 10);
 }
 
+function serialiseMunicipalLicenses(
+  licenses: MunicipalLicenseSummary[],
+): Record<string, unknown>[] | null {
+  if (!Array.isArray(licenses) || licenses.length === 0) {
+    return null;
+  }
+
+  return licenses.map((license) => ({
+    municipality: license.municipality,
+    license_id: license.licenseId,
+    status: license.status,
+    normalized_status: license.normalizedStatus,
+    expiration_date: formatDateColumn(license.expirationDate),
+    detail_url: license.detailUrl ?? null,
+    source_updated_at: license.sourceUpdatedAt
+      ? license.sourceUpdatedAt.toISOString()
+      : null,
+  }));
+}
+
+function parseMunicipalLicenses(value: Nullable<unknown>): MunicipalLicenseSummary[] {
+  if (!value) {
+    return [];
+  }
+
+  let rawList: unknown;
+  if (Array.isArray(value)) {
+    rawList = value;
+  } else if (typeof value === 'string') {
+    try {
+      rawList = JSON.parse(value);
+    } catch (error) {
+      return [];
+    }
+  } else {
+    rawList = value;
+  }
+
+  if (!Array.isArray(rawList)) {
+    return [];
+  }
+
+  const results: MunicipalLicenseSummary[] = [];
+  for (const entry of rawList) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const municipality = typeof record.municipality === 'string' ? record.municipality : '';
+    const licenseId = typeof record.license_id === 'string' ? record.license_id : '';
+    const status = typeof record.status === 'string' ? record.status : '';
+    const normalizedStatus =
+      typeof record.normalized_status === 'string' ? record.normalized_status : '';
+    const expirationDate = parseDateColumn((record.expiration_date ?? null) as Nullable<unknown>);
+    const detailUrl = typeof record.detail_url === 'string' ? record.detail_url : null;
+
+    let sourceUpdatedAt: Date | null = null;
+    const sourceUpdatedRaw = record.source_updated_at ?? null;
+    if (sourceUpdatedRaw) {
+      const parsed = new Date(sourceUpdatedRaw as string);
+      if (!Number.isNaN(parsed.getTime())) {
+        sourceUpdatedAt = parsed;
+      }
+    }
+
+    results.push({
+      municipality,
+      licenseId,
+      status,
+      normalizedStatus,
+      expirationDate,
+      detailUrl,
+      sourceUpdatedAt,
+    });
+  }
+
+  return results;
+}
+
 export interface ListingRow {
   id: string;
   complex: Nullable<string>;
@@ -84,6 +171,12 @@ export interface ListingRow {
   estimated_renewal_reference: Nullable<string>;
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
+  municipal_municipality: Nullable<string>;
+  municipal_license_id: Nullable<string>;
+  municipal_license_status: Nullable<string>;
+  municipal_license_normalized_status: Nullable<string>;
+  municipal_license_expires_on: Nullable<string>;
+  municipal_licenses: Nullable<unknown>;
   raw: Nullable<Record<string, unknown>>;
   updated_at?: string;
 }
@@ -91,6 +184,16 @@ export interface ListingRow {
 export interface StoredListingSet {
   records: ListingRecord[];
   latestUpdatedAt: Date | null;
+}
+
+const SCHEMA_CACHE_ERROR_CODE = 'PGRST204';
+const SCHEMA_CACHE_RETRY_LIMIT = 5;
+const SCHEMA_CACHE_RETRY_DELAY_MS = 750;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function toListingRow(record: ListingRecord): ListingRow {
@@ -120,6 +223,12 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_reference: formatDateColumn(record.estimatedRenewalReference),
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
+    municipal_municipality: record.municipalMunicipality ?? null,
+    municipal_license_id: record.municipalLicenseId ?? null,
+    municipal_license_status: record.municipalLicenseStatus ?? null,
+    municipal_license_normalized_status: record.municipalLicenseNormalizedStatus ?? null,
+    municipal_license_expires_on: formatDateColumn(record.municipalLicenseExpiration),
+    municipal_licenses: serialiseMunicipalLicenses(record.municipalLicenses),
     raw: (record.raw as Record<string, unknown>) ?? null,
   };
 }
@@ -163,6 +272,9 @@ function fromListingRow(row: ListingRow): ListingRecord {
   const latitude = typeof row.latitude === 'number' ? row.latitude : null;
   const longitude = typeof row.longitude === 'number' ? row.longitude : null;
 
+  const municipalExpiration = parseDateColumn(row.municipal_license_expires_on);
+  const municipalLicenses = parseMunicipalLicenses(row.municipal_licenses);
+
   return {
     id: row.id,
     complex: row.complex ?? '',
@@ -189,6 +301,12 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
+    municipalMunicipality: row.municipal_municipality ?? null,
+    municipalLicenseId: row.municipal_license_id ?? null,
+    municipalLicenseStatus: row.municipal_license_status ?? null,
+    municipalLicenseNormalizedStatus: row.municipal_license_normalized_status ?? null,
+    municipalLicenseExpiration: municipalExpiration,
+    municipalLicenses,
     raw: rawAttributes,
   };
 }
@@ -219,21 +337,48 @@ const LISTING_COLUMNS = [
   'estimated_renewal_reference',
   'estimated_renewal_category',
   'estimated_renewal_month_key',
+  'municipal_municipality',
+  'municipal_license_id',
+  'municipal_license_status',
+  'municipal_license_normalized_status',
+  'municipal_license_expires_on',
+  'municipal_licenses',
   'raw',
   'updated_at',
 ] as const;
 
 const PAGE_SIZE = 1000;
 
-export async function fetchStoredListings(): Promise<StoredListingSet> {
-  const client = assertSupabaseClient();
-  let from = 0;
-  let latest: Date | null = null;
-  const records: ListingRecord[] = [];
+function isSchemaCacheError(error: PostgrestError | null): boolean {
+  return Boolean(error && error.code === SCHEMA_CACHE_ERROR_CODE);
+}
 
-  let hasMore = true;
-  while (hasMore) {
-    const to = from + PAGE_SIZE - 1;
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  if (error instanceof TypeError) {
+    return error.message === 'Failed to fetch';
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.includes('Failed to fetch')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function selectListingChunk(
+  from: number,
+  to: number,
+  attempt = 0,
+): Promise<ListingRow[]> {
+  const client = assertSupabaseClient();
+  try {
     const { data, error } = await client
       .from('listings')
       .select(LISTING_COLUMNS.join(', '))
@@ -241,10 +386,87 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
       .range(from, to);
 
     if (error) {
+      if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+        await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+        return selectListingChunk(from, to, attempt + 1);
+      }
       throw error;
     }
 
-    const rows = (data ?? []) as unknown as ListingRow[];
+    return ((data ?? []) as unknown as ListingRow[]).map((row) => ({ ...row }));
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      return selectListingChunk(from, to, attempt + 1);
+    }
+    throw error;
+  }
+}
+
+async function deleteAllListings(attempt = 0): Promise<void> {
+  const client = assertSupabaseClient();
+  try {
+    const { error } = await client.from('listings').delete().neq('id', '');
+    if (!error) {
+      return;
+    }
+
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await deleteAllListings(attempt + 1);
+      return;
+    }
+
+    throw error;
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await deleteAllListings(attempt + 1);
+      return;
+    }
+    throw error;
+  }
+}
+
+async function insertListingChunk(
+  chunk: ListingRow[],
+  attempt = 0,
+): Promise<void> {
+  const client = assertSupabaseClient();
+  try {
+    const { error } = await client
+      .from('listings')
+      .upsert(chunk, { onConflict: 'id' });
+    if (!error) {
+      return;
+    }
+
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await insertListingChunk(chunk, attempt + 1);
+      return;
+    }
+
+    throw error;
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      await wait(SCHEMA_CACHE_RETRY_DELAY_MS);
+      await insertListingChunk(chunk, attempt + 1);
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function fetchStoredListings(): Promise<StoredListingSet> {
+  let from = 0;
+  let latest: Date | null = null;
+  const records: ListingRecord[] = [];
+
+  let hasMore = true;
+  while (hasMore) {
+    const to = from + PAGE_SIZE - 1;
+    const rows = await selectListingChunk(from, to);
     rows.forEach((row) => {
       if (row.updated_at) {
         const timestamp = new Date(row.updated_at);
@@ -267,13 +489,9 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
 }
 
 export async function replaceAllListings(records: ListingRecord[]): Promise<void> {
-  const client = assertSupabaseClient();
   const rows = records.map((record) => toListingRow(record));
 
-  const { error: deleteError } = await client.from('listings').delete().neq('id', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await deleteAllListings();
 
   const chunkSize = 400;
   for (let start = 0; start < rows.length; start += chunkSize) {
@@ -281,9 +499,6 @@ export async function replaceAllListings(records: ListingRecord[]): Promise<void
     if (chunk.length === 0) {
       continue;
     }
-    const { error: insertError } = await client.from('listings').insert(chunk);
-    if (insertError) {
-      throw insertError;
-    }
+    await insertListingChunk(chunk);
   }
 }

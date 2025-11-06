@@ -48,6 +48,16 @@ export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
 export type RenewalCategory = 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'future' | 'missing';
 
+export interface MunicipalLicenseSummary {
+  municipality: string;
+  licenseId: string;
+  status: string;
+  normalizedStatus: string;
+  expirationDate: Date | null;
+  detailUrl: string | null;
+  sourceUpdatedAt: Date | null;
+}
+
 export interface ListingRecord {
   id: string;
   complex: string;
@@ -74,6 +84,12 @@ export interface ListingRecord {
   estimatedRenewalReference: Date | null;
   estimatedRenewalCategory: RenewalCategory;
   estimatedRenewalMonthKey: string | null;
+  municipalMunicipality: string | null;
+  municipalLicenseId: string | null;
+  municipalLicenseStatus: string | null;
+  municipalLicenseNormalizedStatus: string | null;
+  municipalLicenseExpiration: Date | null;
+  municipalLicenses: MunicipalLicenseSummary[];
   raw: ListingAttributes;
 }
 
@@ -83,6 +99,7 @@ export interface ListingFilters {
   owner: string;
   zones: string[];
   subdivisions: string[];
+  municipalities: string[];
   renewalCategories: string[];
   renewalMethods: string[];
   renewalMonths: string[];

@@ -326,16 +326,22 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       const ownersWritten =
         typeof result.landBaronsWritten === 'number' ? result.landBaronsWritten : 0;
       const zonesWritten = typeof result.zonesWritten === 'number' ? result.zonesWritten : 0;
+      const municipalitiesWritten =
+        typeof result.municipalitiesWritten === 'number' ? result.municipalitiesWritten : 0;
       const businessReclassified =
         typeof result.businessOwnerReclassifications === 'number'
           ? result.businessOwnerReclassifications
           : 0;
+      const municipalAssignments =
+        typeof result.municipalAssignmentUpdates === 'number'
+          ? result.municipalAssignmentUpdates
+          : 0;
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, reclassified ${businessReclassified.toLocaleString()} business owners, then tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions, ${zonesWritten} zones, and ${municipalitiesWritten} municipalities, reclassified ${businessReclassified.toLocaleString()} business owners, updated ${municipalAssignments.toLocaleString()} municipal permit assignments, then tallied ${ownersWritten.toLocaleString()} owners. Loading latest insights…`,
       );
       await loadMetrics();
       setJobStatus(
-        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions and ${zonesWritten} zones, reclassified ${businessReclassified.toLocaleString()} business owners, then tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
+        `Supabase processed ${result.listingsProcessed.toLocaleString()} listings across ${result.subdivisionsWritten} subdivisions, ${zonesWritten} zones, and ${municipalitiesWritten} municipalities, reclassified ${businessReclassified.toLocaleString()} business owners, updated ${municipalAssignments.toLocaleString()} municipal permit assignments, then tallied ${ownersWritten.toLocaleString()} owners. Insights refreshed.`,
       );
     } catch (refreshError) {
       console.error('Failed to trigger listing metrics refresh.', refreshError);
@@ -519,6 +525,12 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
     return deriveLatestMetricsTimestamp(metrics);
   }, [metrics]);
 
+  const municipalityRows = useMemo(() => metrics?.municipalities ?? [], [metrics]);
+
+  const maxMunicipalityListings = useMemo(() => {
+    return municipalityRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
+  }, [municipalityRows]);
+
   const maxSubdivisionListings = useMemo(() => {
     return subdivisionRows.reduce((max, item) => Math.max(max, item.totalListings), 0);
   }, [subdivisionRows]);
@@ -566,6 +578,14 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
       }
       const next = toggleStringValue(filters.subdivisions, subdivision);
       onFiltersChange({ ...filters, subdivisions: next });
+    },
+    [filters, onFiltersChange],
+  );
+
+  const handleMunicipalityToggle = useCallback(
+    (municipality: string) => {
+      const next = toggleStringValue(filters.municipalities, municipality);
+      onFiltersChange({ ...filters, municipalities: next });
     },
     [filters, onFiltersChange],
   );
@@ -725,6 +745,72 @@ function ListingInsights({ supabaseAvailable, filters, onFiltersChange }: Listin
             </ul>
           )}
           <p className="insight-card__hint">Subdivision filters sync with the search inputs and drawn map regions.</p>
+        </article>
+
+        <article
+          className="insight-card insight-card--municipalities"
+          aria-labelledby="insights-municipal-overview"
+        >
+          <div className="insight-card__header">
+            <div>
+              <h3 id="insights-municipal-overview">Municipal permit coverage</h3>
+              <p className="insight-card__description">
+                Active municipal STR licenses by jurisdiction. Tap a row to focus on a town&rsquo;s listings.
+              </p>
+            </div>
+          </div>
+          {municipalityRows.length === 0 ? (
+            <p className="insight-card__empty">No municipal license data available.</p>
+          ) : (
+            <ul className="insight-card__list">
+              {municipalityRows.map((item) => {
+                const percentage = maxMunicipalityListings
+                  ? Math.max(12, Math.round((item.totalListings / maxMunicipalityListings) * 100))
+                  : 0;
+                const activeShare = item.totalListings
+                  ? Math.round((item.licensedListingCount / item.totalListings) * 100)
+                  : 0;
+                const businessShare = item.totalListings
+                  ? Math.round((item.businessOwnerCount / item.totalListings) * 100)
+                  : 0;
+                const active = isStringActive(filters.municipalities, item.municipality);
+                return (
+                  <li key={item.municipality}>
+                    <button
+                      type="button"
+                      className={`insight-card__list-item${active ? ' insight-card__list-item--active' : ''}`}
+                      onClick={() => handleMunicipalityToggle(item.municipality)}
+                      aria-pressed={active}
+                    >
+                      <div className="insight-card__list-line">
+                        <span className="insight-card__list-label">{item.municipality}</span>
+                        <span className="insight-card__list-value">{item.totalListings.toLocaleString()}</span>
+                      </div>
+                      <div className="insight-card__bar" aria-hidden="true">
+                        <span className="insight-card__bar-fill" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge">
+                          {item.licensedListingCount.toLocaleString()} active permits ({activeShare}%)
+                        </span>
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {businessShare}% business-owned
+                        </span>
+                      </div>
+                      <div className="insight-card__list-meta">
+                        <span className="insight-card__badge insight-card__badge--muted">
+                          {item.individualOwnerCount.toLocaleString()} individual owners
+                        </span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="insight-card__hint">
+            Municipality filters sync with the search inputs and highlight local permitting trends.
+          </p>
         </article>
 
         <article className="insight-card insight-card--zones" aria-labelledby="insights-top-zones">

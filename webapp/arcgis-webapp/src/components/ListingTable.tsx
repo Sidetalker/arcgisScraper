@@ -85,6 +85,114 @@ function fuzzyMatch(haystack: string, needle: string): boolean {
   return true;
 }
 
+const MUNICIPAL_EXPIRATION_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+
+function formatMunicipalExpiration(date: Date | null | undefined): string {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return MUNICIPAL_EXPIRATION_FORMATTER.format(date);
+}
+
+function summariseMunicipalLicenses(listing: ListingRecord): {
+  lines: string[];
+  filterValue: string;
+  exportValue: string;
+} {
+  const entries = listing.municipalLicenses.length > 0
+    ? listing.municipalLicenses.slice()
+    : [];
+
+  if (entries.length === 0) {
+    const hasCanonicalDetails = [
+      listing.municipalMunicipality,
+      listing.municipalLicenseStatus,
+      listing.municipalLicenseNormalizedStatus,
+      listing.municipalLicenseId,
+      listing.municipalLicenseExpiration,
+    ].some((value) => {
+      if (value instanceof Date) {
+        return !Number.isNaN(value.getTime());
+      }
+      return typeof value === 'string' && value.trim().length > 0;
+    });
+
+    if (hasCanonicalDetails) {
+      entries.push({
+        municipality: listing.municipalMunicipality ?? '',
+        licenseId: listing.municipalLicenseId ?? '',
+        status: listing.municipalLicenseStatus ?? '',
+        normalizedStatus: listing.municipalLicenseNormalizedStatus ?? '',
+        expirationDate: listing.municipalLicenseExpiration ?? null,
+        detailUrl: null,
+        sourceUpdatedAt: null,
+      });
+    }
+  }
+
+  if (entries.length === 0) {
+    return { lines: [], filterValue: '', exportValue: '' };
+  }
+
+  const lines: string[] = [];
+  const filterTokens: string[] = [];
+
+  entries.forEach((license) => {
+    const municipality = (
+      license.municipality ?? listing.municipalMunicipality ?? ''
+    ).trim();
+    const status = (license.status ?? '').trim();
+    const normalizedStatus = (license.normalizedStatus ?? '').trim();
+    const licenseId = (license.licenseId ?? '').trim();
+    const expiration = formatMunicipalExpiration(license.expirationDate);
+
+    const detailParts: string[] = [];
+    if (status) {
+      detailParts.push(status);
+    }
+    if (
+      normalizedStatus &&
+      (!status || normalizedStatus.toLowerCase() !== status.toLowerCase())
+    ) {
+      detailParts.push(normalizedStatus);
+    }
+    if (licenseId) {
+      detailParts.push(`ID ${licenseId}`);
+    }
+    if (expiration) {
+      detailParts.push(`Expires ${expiration}`);
+    }
+
+    const segments: string[] = [];
+    if (municipality) {
+      segments.push(municipality);
+    }
+    if (detailParts.length > 0) {
+      segments.push(detailParts.join(' • '));
+    }
+
+    if (segments.length > 0) {
+      lines.push(segments.join(' — '));
+    }
+
+    filterTokens.push(municipality, status, normalizedStatus, licenseId, expiration);
+  });
+
+  const filterValue = filterTokens
+    .filter((token) => typeof token === 'string' && token.trim().length > 0)
+    .join(' ');
+
+  return {
+    lines,
+    filterValue: normalizeText(filterValue),
+    exportValue: lines.join(' | '),
+  };
+}
+
 const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   {
     key: 'complex',
@@ -192,6 +300,25 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.subdivision || '—',
     getFilterValue: (listing) => normalizeText(listing.subdivision),
     getExportValue: (listing) => normalizeText(listing.subdivision),
+  },
+  {
+    key: 'municipalStatus',
+    label: 'Municipal permit',
+    render: (listing) => {
+      const summary = summariseMunicipalLicenses(listing);
+      if (summary.lines.length === 0) {
+        return '—';
+      }
+      return (
+        <span className="listing-table__multiline">
+          {summary.lines.map((line, index) => (
+            <span key={`${listing.id}-municipal-${index}`}>{line}</span>
+          ))}
+        </span>
+      );
+    },
+    getFilterValue: (listing) => summariseMunicipalLicenses(listing).filterValue,
+    getExportValue: (listing) => summariseMunicipalLicenses(listing).exportValue,
   },
   {
     key: 'scheduleNumber',

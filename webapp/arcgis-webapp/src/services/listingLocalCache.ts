@@ -2,7 +2,7 @@ import { del, get, set } from 'idb-keyval';
 
 import type { ListingRecord } from '@/types';
 
-const LISTINGS_CACHE_KEY = 'arcgis:listings-cache:v1';
+const LISTINGS_CACHE_KEY = 'arcgis:listings-cache:v2';
 
 type CachedListingRecord = Omit<ListingRecord, 'raw'>;
 
@@ -58,6 +58,25 @@ export async function loadListingsFromCache(): Promise<
   const records: ListingRecord[] = (payload.records ?? []).map((record) => ({
     ...record,
     zone: typeof record.zone === 'string' ? record.zone : '',
+    municipalMunicipality:
+      record.municipalMunicipality !== undefined ? record.municipalMunicipality : null,
+    municipalLicenseId:
+      record.municipalLicenseId !== undefined ? record.municipalLicenseId : null,
+    municipalLicenseStatus:
+      record.municipalLicenseStatus !== undefined ? record.municipalLicenseStatus : null,
+    municipalLicenseNormalizedStatus:
+      record.municipalLicenseNormalizedStatus !== undefined
+        ? record.municipalLicenseNormalizedStatus
+        : null,
+    municipalLicenseExpiration:
+      record.municipalLicenseExpiration instanceof Date
+        ? record.municipalLicenseExpiration
+        : record.municipalLicenseExpiration
+        ? new Date(record.municipalLicenseExpiration)
+        : null,
+    municipalLicenses: Array.isArray(record.municipalLicenses)
+      ? record.municipalLicenses
+      : [],
     raw: {},
   }));
 

@@ -8,6 +8,7 @@ export const DEFAULT_FILTERS: ListingFilters = {
   owner: '',
   zones: [],
   subdivisions: [],
+  municipalities: [],
   renewalCategories: [],
   renewalMethods: [],
   renewalMonths: [],

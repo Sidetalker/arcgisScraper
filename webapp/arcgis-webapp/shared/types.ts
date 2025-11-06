@@ -5,6 +5,16 @@ export interface ArcgisFeature<A = Record<string, unknown>, G = Record<string, u
 
 export type ListingAttributes = Record<string, string | number | boolean | null>;
 
+export interface MunicipalLicenseSummary {
+  municipality: string;
+  licenseId: string;
+  status: string;
+  normalizedStatus: string;
+  expirationDate: string | null;
+  detailUrl: string | null;
+  sourceUpdatedAt: string | null;
+}
+
 export interface ListingRecord {
   id: string;
   complex: string;
@@ -25,6 +35,12 @@ export interface ListingRecord {
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;
+  municipalMunicipality: string | null;
+  municipalLicenseId: string | null;
+  municipalLicenseStatus: string | null;
+  municipalLicenseNormalizedStatus: string | null;
+  municipalLicenseExpiration: string | null;
+  municipalLicenses: MunicipalLicenseSummary[];
   raw: ListingAttributes;
 }
 
@@ -34,6 +50,7 @@ export interface ListingFilters {
   owner: string;
   zones: string[];
   subdivisions: string[];
+  municipalities: string[];
   renewalCategories: string[];
   renewalMethods: string[];
   renewalMonths: string[];

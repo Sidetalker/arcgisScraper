@@ -1,3 +1,9 @@
+import {
+  fetchMunicipalLicenseRecords,
+  normaliseMunicipalRecordForSupabase,
+  summariseMunicipalLicenses,
+} from './municipalRosters.mjs';
+
 const NON_PERSON_DATA_URL = new URL('../src/data/nonPersonOwnerNames.json', import.meta.url);
 
 async function loadJsonResource(resourceUrl) {
@@ -20,6 +26,9 @@ const nonPersonOwnerNames = await loadJsonResource(NON_PERSON_DATA_URL);
 const PAGE_SIZE = 1000;
 const MAX_SIGNAL_DEPTH = 4;
 const MAX_SIGNAL_ARRAY_LENGTH = 25;
+const SCHEMA_CACHE_ERROR_CODES = new Set(['PGRST204', 'PGRST205']);
+const SCHEMA_CACHE_RETRY_LIMIT = 10;
+const SCHEMA_CACHE_RETRY_DELAY_MS = 1500;
 
 const DATE_KEY_HINT = /(date|dt|year|record|recept|sale|deed|permit|license|renew|transfer|expir|assess|valuation|updated|entered|filed|document)/i;
 const DATE_VALUE_HINT = /(\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{2}|\d{4}))|((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+(?:\d{2}|\d{4}))|(\b(19|20)\d{2}\b)/i;
@@ -184,17 +193,76 @@ async function applyBusinessOwnerCorrections(supabase, listingIds, logger) {
   const batchSize = 500;
   for (let index = 0; index < listingIds.length; index += batchSize) {
     const batch = listingIds.slice(index, index + batchSize);
-    const { error } = await supabase
-      .from('listings')
-      .update({ is_business_owner: true })
-      .in('id', batch);
-    if (error) {
-      throw error;
-    }
+    await withSupabaseRetry(
+      () => supabase.from('listings').update({ is_business_owner: true }).in('id', batch),
+      `mark business-owned listings batch ${index + 1}-${index + batch.length}`,
+      logger,
+    );
   }
   logger.info?.(
     `[metrics] Marked ${listingIds.length.toLocaleString()} listings as business-owned via heuristics.`,
   );
+}
+
+function normaliseScheduleNumber(value) {
+  if (!value) {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function normaliseMunicipality(value) {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  return trimmed.replace(/\s+/g, ' ');
+}
+
+const MUNICIPAL_STATUS_RANKS = new Map([
+  ['active', 5],
+  ['pending', 3],
+  ['unknown', 1],
+  ['expired', 0],
+  ['inactive', -1],
+  ['revoked', -2],
+]);
+
+function rankMunicipalStatus(status) {
+  if (!status) {
+    return MUNICIPAL_STATUS_RANKS.get('unknown');
+  }
+  return MUNICIPAL_STATUS_RANKS.get(status) ?? MUNICIPAL_STATUS_RANKS.get('unknown');
+}
+
+function isMunicipalStatusActive(status) {
+  if (!status) {
+    return false;
+  }
+  const normalised = status.toLowerCase();
+  return normalised === 'active' || normalised === 'pending';
+}
+
+function normaliseMunicipalLicenseList(value) {
+  if (!value) {
+    return null;
+  }
+  try {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : null;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
 }
 
 function addDays(date, days) {
@@ -264,6 +332,65 @@ function parseDateValue(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
   return null;
+}
+
+function compareMunicipalLicenses(a, b) {
+  const rankDifference = rankMunicipalStatus(b.normalizedStatus) - rankMunicipalStatus(a.normalizedStatus);
+  if (rankDifference !== 0) {
+    return rankDifference;
+  }
+
+  const aExpiration = a.expirationDate instanceof Date ? a.expirationDate.getTime() : 0;
+  const bExpiration = b.expirationDate instanceof Date ? b.expirationDate.getTime() : 0;
+  if (aExpiration !== bExpiration) {
+    return bExpiration - aExpiration;
+  }
+
+  return a.licenseId.localeCompare(b.licenseId, undefined, { sensitivity: 'base' });
+}
+
+function selectPrimaryMunicipalLicense(licenses) {
+  if (!Array.isArray(licenses) || licenses.length === 0) {
+    return null;
+  }
+  const sorted = [...licenses].sort(compareMunicipalLicenses);
+  return sorted[0] ?? null;
+}
+
+function serialiseMunicipalLicenses(licenses) {
+  if (!Array.isArray(licenses) || licenses.length === 0) {
+    return null;
+  }
+  const sorted = [...licenses].sort(compareMunicipalLicenses);
+  return sorted.map((license) => ({
+    municipality: license.municipality,
+    license_id: license.licenseId,
+    status: license.status,
+    normalized_status: license.normalizedStatus,
+    expiration_date: license.expirationDateIso ?? null,
+    detail_url: license.detailUrl ?? null,
+    source_updated_at: license.sourceUpdatedAtIso ?? null,
+  }));
+}
+
+function normaliseMunicipalAssignmentList(list) {
+  if (!Array.isArray(list) || list.length === 0) {
+    return null;
+  }
+
+  const normalised = list
+    .map((item) => ({
+      municipality: item.municipality ?? '',
+      license_id: item.license_id ?? '',
+      status: item.status ?? '',
+      normalized_status: item.normalized_status ?? '',
+      expiration_date: item.expiration_date ?? null,
+      detail_url: item.detail_url ?? null,
+      source_updated_at: item.source_updated_at ?? null,
+    }))
+    .sort((a, b) => a.license_id.localeCompare(b.license_id, undefined, { sensitivity: 'base' }));
+
+  return JSON.stringify(normalised);
 }
 
 function classifySignalType(path) {
@@ -439,17 +566,18 @@ async function fetchListings(supabase, pageSize, logger) {
 
   while (hasMore) {
     const to = from + pageSize - 1;
-    const { data, error } = await supabase
-      .from('listings')
-      .select(
-        'id, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, raw',
-      )
-      .order('id', { ascending: true })
-      .range(from, to);
-
-    if (error) {
-      throw error;
-    }
+    const { data } = await withSupabaseRetry(
+      () =>
+        supabase
+          .from('listings')
+          .select(
+            'id, schedule_number, subdivision, zone, owner_name, owner_names, is_business_owner, estimated_renewal_date, estimated_renewal_method, estimated_renewal_reference, estimated_renewal_month_key, estimated_renewal_category, municipal_municipality, municipal_license_id, municipal_license_status, municipal_license_normalized_status, municipal_license_expires_on, municipal_licenses, raw',
+          )
+          .order('id', { ascending: true })
+          .range(from, to),
+      `fetch listings range ${from}-${to}`,
+      logger,
+    );
 
     const rows = Array.isArray(data) ? data : [];
     listings.push(...rows);
@@ -466,7 +594,119 @@ async function fetchListings(supabase, pageSize, logger) {
   return listings;
 }
 
-async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
+async function fetchMunicipalLicenses(supabase, pageSize, logger) {
+  const licenses = [];
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const to = from + pageSize - 1;
+    const { data } = await withSupabaseRetry(
+      () =>
+        supabase
+          .from('municipal_licenses')
+          .select(
+            'id, schedule_number, municipality, municipal_license_id, status, normalized_status, expiration_date, source_updated_at, detail_url',
+          )
+          .order('schedule_number', { ascending: true })
+          .range(from, to),
+      `fetch municipal licenses range ${from}-${to}`,
+      logger,
+    );
+
+    const rows = Array.isArray(data) ? data : [];
+    licenses.push(...rows);
+
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      from += pageSize;
+    }
+
+    logger.info?.(`Fetched ${licenses.length.toLocaleString()} municipal license records so far…`);
+  }
+
+  return licenses;
+}
+
+let listingMetricsSchemaEnsured = false;
+
+async function ensureListingMetricsTables(supabase, logger) {
+  if (listingMetricsSchemaEnsured) {
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('ensure_listing_metrics_tables');
+    if (error) {
+      if (error.code === 'PGRST202') {
+        logger?.warn?.(
+          '[metrics] Supabase schema cache does not yet expose ensure_listing_metrics_tables. Re-run the latest supabase/listing_metrics.sql migration and trigger a schema reload.',
+        );
+      } else {
+        logger?.warn?.(
+          `[metrics] Failed to ensure listing metrics tables exist (${error.message ?? error}). Proceeding anyway.`,
+        );
+      }
+      return;
+    }
+
+    const tablesToConfirm = [
+      'listing_subdivision_metrics',
+      'listing_zone_metrics',
+      'listing_municipality_metrics',
+      'listing_renewal_metrics',
+      'listing_renewal_summary',
+      'listing_renewal_method_summary',
+      'land_baron_leaderboard',
+    ];
+
+    for (const table of tablesToConfirm) {
+      let attempt = 0;
+      let confirmed = false;
+      while (attempt < 5 && !confirmed) {
+        const { error: tableError } = await supabase
+          .from(table)
+          .select('count', { count: 'exact', head: true })
+          .limit(1);
+
+        if (!tableError) {
+          confirmed = true;
+          break;
+        }
+
+        if (isSchemaCacheError(tableError)) {
+          const backoff = SCHEMA_CACHE_RETRY_DELAY_MS * (attempt + 1);
+          logger?.warn?.(
+            `[metrics] Waiting for Supabase schema cache to expose ${table} (attempt ${attempt + 1}/5, retrying in ${backoff}ms)…`,
+          );
+          await wait(backoff);
+        } else {
+          logger?.warn?.(
+            `[metrics] Unexpected error probing ${table} (${tableError.message ?? tableError}).`,
+          );
+          break;
+        }
+
+        attempt += 1;
+      }
+
+      if (!confirmed) {
+        logger?.warn?.(`[metrics] Unable to confirm ${table} exists in the Supabase schema cache.`);
+        return;
+      }
+    }
+
+    listingMetricsSchemaEnsured = true;
+    logger?.info?.('[metrics] Verified listing metrics tables exist in Supabase schema cache.');
+  } catch (error) {
+    logger?.warn?.(
+      `[metrics] Error while ensuring listing metrics tables exist (${error?.message ?? error}). Proceeding anyway.`,
+    );
+  }
+}
+
+async function writeSubdivisionMetrics(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     subdivision: row.subdivision,
     total_listings: row.totalListings,
@@ -475,25 +715,24 @@ async function writeSubdivisionMetrics(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_subdivision_metrics')
-    .delete()
-    .neq('subdivision', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_subdivision_metrics').delete().neq('subdivision', ''),
+    'clear subdivision metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_subdivision_metrics').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_subdivision_metrics').insert(payload),
+    'insert subdivision metrics',
+    logger,
+  );
 }
 
-async function writeZoneMetrics(supabase, rows, refreshedAt) {
+async function writeZoneMetrics(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     zone: row.zone,
     total_listings: row.totalListings,
@@ -502,25 +741,72 @@ async function writeZoneMetrics(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_zone_metrics')
-    .delete()
-    .neq('zone', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_zone_metrics').delete().neq('zone', ''),
+    'clear zone metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_zone_metrics').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_zone_metrics').insert(payload),
+    'insert zone metrics',
+    logger,
+  );
 }
 
-async function writeRenewalTimeline(supabase, rows, refreshedAt) {
+async function applyMunicipalLicenseAssignments(supabase, assignments, logger) {
+  if (!assignments.length) {
+    return 0;
+  }
+
+  const chunkSize = 400;
+  for (let start = 0; start < assignments.length; start += chunkSize) {
+    const chunk = assignments.slice(start, start + chunkSize);
+    await withSupabaseRetry(
+      () => supabase.from('listings').upsert(chunk, { onConflict: 'id' }),
+      `upsert municipal license assignments ${start + 1}-${start + chunk.length}`,
+      logger,
+    );
+  }
+
+  logger.info?.(
+    `[metrics] Updated municipal permit assignments for ${assignments.length.toLocaleString()} listings.`,
+  );
+  return assignments.length;
+}
+
+async function writeMunicipalityMetrics(supabase, rows, refreshedAt, logger) {
+  const payload = rows.map((row) => ({
+    municipality: row.municipality,
+    total_listings: row.totalListings,
+    licensed_listing_count: row.licensedListings,
+    business_owner_count: row.businessOwners,
+    individual_owner_count: row.individualOwners,
+    updated_at: refreshedAt,
+  }));
+
+  await withSupabaseRetry(
+    () => supabase.from('listing_municipality_metrics').delete().neq('municipality', ''),
+    'clear municipality metrics',
+    logger,
+  );
+
+  if (payload.length === 0) {
+    return;
+  }
+
+  await withSupabaseRetry(
+    () => supabase.from('listing_municipality_metrics').insert(payload),
+    'insert municipality metrics',
+    logger,
+  );
+}
+
+async function writeRenewalTimeline(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     renewal_month: row.month,
     listing_count: row.count,
@@ -529,25 +815,24 @@ async function writeRenewalTimeline(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_renewal_metrics')
-    .delete()
-    .neq('renewal_month', '1900-01-01');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_metrics').delete().neq('renewal_month', '1900-01-01'),
+    'clear renewal timeline metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_renewal_metrics').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_metrics').insert(payload),
+    'insert renewal timeline metrics',
+    logger,
+  );
 }
 
-async function writeRenewalSummary(supabase, rows, refreshedAt) {
+async function writeRenewalSummary(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     category: row.category,
     listing_count: row.count,
@@ -556,47 +841,48 @@ async function writeRenewalSummary(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('listing_renewal_summary')
-    .delete()
-    .neq('category', '__placeholder__');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_summary').delete().neq('category', '__placeholder__'),
+    'clear renewal summary metrics',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_renewal_summary').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_summary').insert(payload),
+    'insert renewal summary metrics',
+    logger,
+  );
 }
 
-async function writeRenewalMethodSummary(supabase, rows, refreshedAt) {
+async function writeRenewalMethodSummary(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     method: row.method,
     listing_count: row.count,
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase.from('listing_renewal_method_summary').delete().neq('method', '__placeholder__');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_method_summary').delete().neq('method', '__placeholder__'),
+    'clear renewal method summary',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('listing_renewal_method_summary').insert(payload);
-  if (insertError) {
-    throw insertError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('listing_renewal_method_summary').insert(payload),
+    'insert renewal method summary',
+    logger,
+  );
 }
 
-async function writeLandBaronLeaderboard(supabase, rows, refreshedAt) {
+async function writeLandBaronLeaderboard(supabase, rows, refreshedAt, logger) {
   const payload = rows.map((row) => ({
     owner_name: row.ownerName,
     property_count: row.propertyCount,
@@ -605,39 +891,199 @@ async function writeLandBaronLeaderboard(supabase, rows, refreshedAt) {
     updated_at: refreshedAt,
   }));
 
-  const { error: deleteError } = await supabase
-    .from('land_baron_leaderboard')
-    .delete()
-    .neq('owner_name', '');
-  if (deleteError) {
-    throw deleteError;
-  }
+  await withSupabaseRetry(
+    () => supabase.from('land_baron_leaderboard').delete().neq('owner_name', ''),
+    'clear land baron leaderboard',
+    logger,
+  );
 
   if (payload.length === 0) {
     return;
   }
 
-  const { error: insertError } = await supabase.from('land_baron_leaderboard').insert(payload);
-  if (insertError) {
-    throw insertError;
+  await withSupabaseRetry(
+    () => supabase.from('land_baron_leaderboard').insert(payload),
+    'insert land baron leaderboard',
+    logger,
+  );
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isSchemaCacheError(error) {
+  return Boolean(error && typeof error.code === 'string' && SCHEMA_CACHE_ERROR_CODES.has(error.code));
+}
+
+function isRetryableNetworkError(error) {
+  if (!error) {
+    return false;
   }
+  if (error instanceof TypeError) {
+    return error.message === 'Failed to fetch';
+  }
+  if (typeof error === 'object') {
+    const message = error?.message;
+    if (typeof message === 'string' && message.includes('Failed to fetch')) {
+      return true;
+    }
+    const code = error?.code;
+    if (typeof code === 'string' && ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function withSupabaseRetry(operation, context, logger, attempt = 0) {
+  try {
+    const result = await operation();
+    const error = result && typeof result === 'object' && 'error' in result ? result.error : null;
+    if (!error) {
+      return result;
+    }
+    if (isSchemaCacheError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      const delay = SCHEMA_CACHE_RETRY_DELAY_MS * (attempt + 1);
+      logger?.warn?.(
+        `[metrics] ${context} failed due to Supabase schema cache (${error.code}). Retrying in ${delay}ms…`,
+      );
+      await wait(delay);
+      return withSupabaseRetry(operation, context, logger, attempt + 1);
+    }
+    throw error;
+  } catch (error) {
+    if (isRetryableNetworkError(error) && attempt < SCHEMA_CACHE_RETRY_LIMIT) {
+      const delay = SCHEMA_CACHE_RETRY_DELAY_MS * (attempt + 1);
+      logger?.warn?.(
+        `[metrics] ${context} encountered a network error (${error?.message ?? error}). Retrying in ${delay}ms…`,
+      );
+      await wait(delay);
+      return withSupabaseRetry(operation, context, logger, attempt + 1);
+    }
+    throw error;
+  }
+}
+
+async function refreshMunicipalLicenseTable(supabase, logger) {
+  const municipalRecords = await fetchMunicipalLicenseRecords(logger);
+  const summary = summariseMunicipalLicenses(municipalRecords);
+  logger.info?.(
+    `[metrics] Retrieved ${summary.total.toLocaleString()} municipal license records across ${summary.municipalities.toLocaleString()} municipalities.`,
+  );
+
+  const supabaseRows = municipalRecords.map((record) => normaliseMunicipalRecordForSupabase(record));
+
+  if (supabaseRows.length === 0) {
+    await withSupabaseRetry(
+      () => supabase.from('municipal_licenses').delete().neq('id', ''),
+      'clear municipal licenses',
+      logger,
+    );
+    logger.warn?.('[metrics] Municipal license roster is empty after refresh.');
+    return [];
+  }
+
+  await withSupabaseRetry(
+    () => supabase.from('municipal_licenses').delete().neq('id', ''),
+    'clear municipal licenses',
+    logger,
+  );
+
+  const chunkSize = 500;
+  for (let start = 0; start < supabaseRows.length; start += chunkSize) {
+    const chunk = supabaseRows.slice(start, start + chunkSize);
+    await withSupabaseRetry(
+      () => supabase.from('municipal_licenses').upsert(chunk, { onConflict: 'id' }),
+      `upsert municipal license chunk ${start + 1}-${start + chunk.length}`,
+      logger,
+    );
+  }
+
+  return supabaseRows;
 }
 
 export async function refreshListingAggregates(
   supabase,
   options = {},
 ) {
-  const { logger = console, pageSize = PAGE_SIZE } = options;
+  const {
+    logger = console,
+    pageSize = PAGE_SIZE,
+  } = options;
 
   logger.info?.('[metrics] Fetching listings dataset…');
   const listings = await fetchListings(supabase, pageSize, logger);
   logger.info?.(`[metrics] Loaded ${listings.length.toLocaleString()} listing records.`);
 
+  logger.info?.('[metrics] Fetching municipal license roster…');
+  let municipalLicenseRows = [];
+  try {
+    municipalLicenseRows = await refreshMunicipalLicenseTable(supabase, logger);
+  } catch (error) {
+    logger.error?.(
+      `[metrics] Failed to refresh municipal license roster from ArcGIS (${error?.message ?? error}). Falling back to Supabase cache…`,
+    );
+    municipalLicenseRows = await fetchMunicipalLicenses(supabase, pageSize, logger);
+  }
+  if (municipalLicenseRows.length === 0) {
+    logger.warn?.('[metrics] Municipal license roster is empty; downstream aggregates will omit municipal coverage.');
+  }
+  const licensesBySchedule = new Map();
+  for (const row of municipalLicenseRows) {
+    const scheduleNumber = normaliseScheduleNumber(row.schedule_number);
+    if (!scheduleNumber) {
+      continue;
+    }
+    const municipality = normaliseMunicipality(row.municipality);
+    if (!municipality) {
+      continue;
+    }
+    const licenseId = row.municipal_license_id ? String(row.municipal_license_id).trim() : '';
+    if (!licenseId) {
+      continue;
+    }
+    const status = row.status && String(row.status).trim().length > 0 ? String(row.status).trim() : 'Unknown';
+    const normalizedStatusRaw = row.normalized_status ? String(row.normalized_status).trim().toLowerCase() : '';
+    const normalizedStatus = normalizedStatusRaw || 'unknown';
+    const expirationDate = parseDateValue(row.expiration_date);
+    const expirationDateIso = formatDate(expirationDate);
+    const sourceUpdatedAt = row.source_updated_at ? new Date(row.source_updated_at) : null;
+    const sourceUpdatedAtIso =
+      sourceUpdatedAt instanceof Date && !Number.isNaN(sourceUpdatedAt.getTime())
+        ? sourceUpdatedAt.toISOString()
+        : null;
+    const detailUrl = row.detail_url ? String(row.detail_url) : null;
+
+    const entry = {
+      municipality,
+      licenseId,
+      status,
+      normalizedStatus,
+      expirationDate,
+      expirationDateIso,
+      detailUrl,
+      sourceUpdatedAtIso,
+    };
+
+    const bucket = licensesBySchedule.get(scheduleNumber) || [];
+    bucket.push(entry);
+    licensesBySchedule.set(scheduleNumber, bucket);
+  }
+
+  logger.info?.(
+    `[metrics] Loaded ${municipalLicenseRows.length.toLocaleString()} municipal license records across ${licensesBySchedule.size.toLocaleString()} schedules.`,
+  );
+
   const subdivisions = new Map();
   const zones = new Map();
+  const municipalities = new Map();
   const owners = new Map();
   const renewalBuckets = new Map();
   const methodCounts = new Map();
+  const municipalAssignments = [];
   const summary = {
     overdue: { count: 0, windowStart: null, windowEnd: null },
     due_30: { count: 0, windowStart: null, windowEnd: null },
@@ -670,6 +1116,72 @@ export async function refreshListingAggregates(
       isLikelyOrganization(owner.display),
     );
     const listingIsBusiness = Boolean(listing.is_business_owner) || inferredBusinessOwner;
+
+    const scheduleNumber = normaliseScheduleNumber(listing.schedule_number);
+    const licenseCandidates = scheduleNumber ? licensesBySchedule.get(scheduleNumber) || [] : [];
+    const primaryMunicipalLicense = selectPrimaryMunicipalLicense(licenseCandidates);
+    const serialisedMunicipalLicenses = serialiseMunicipalLicenses(licenseCandidates);
+    const existingMunicipalLicenses = normaliseMunicipalLicenseList(listing.municipal_licenses);
+    const existingMunicipalLicensesKey = existingMunicipalLicenses
+      ? normaliseMunicipalAssignmentList(existingMunicipalLicenses)
+      : null;
+    const nextMunicipalLicensesKey = serialisedMunicipalLicenses
+      ? normaliseMunicipalAssignmentList(serialisedMunicipalLicenses)
+      : null;
+
+    if (primaryMunicipalLicense) {
+      const municipalityKey = primaryMunicipalLicense.municipality;
+      const municipalStats = municipalities.get(municipalityKey) || {
+        total: 0,
+        business: 0,
+        individual: 0,
+        licensed: 0,
+      };
+      municipalStats.total += 1;
+      if (listingIsBusiness) {
+        municipalStats.business += 1;
+      } else {
+        municipalStats.individual += 1;
+      }
+      if (isMunicipalStatusActive(primaryMunicipalLicense.normalizedStatus)) {
+        municipalStats.licensed += 1;
+      }
+      municipalities.set(municipalityKey, municipalStats);
+    }
+
+    const targetMunicipality = primaryMunicipalLicense ? primaryMunicipalLicense.municipality : null;
+    const targetLicenseId = primaryMunicipalLicense ? primaryMunicipalLicense.licenseId : null;
+    const targetStatus = primaryMunicipalLicense ? primaryMunicipalLicense.status : null;
+    const targetNormalizedStatus = primaryMunicipalLicense
+      ? primaryMunicipalLicense.normalizedStatus
+      : null;
+    const targetExpiration = primaryMunicipalLicense ? primaryMunicipalLicense.expirationDateIso : null;
+
+    const existingMunicipality = listing.municipal_municipality || null;
+    const existingLicenseId = listing.municipal_license_id || null;
+    const existingStatus = listing.municipal_license_status || null;
+    const existingNormalizedStatus = listing.municipal_license_normalized_status || null;
+    const existingExpiration = formatDate(parseDateValue(listing.municipal_license_expires_on)) || null;
+
+    const shouldUpdateMunicipalAssignment =
+      (existingMunicipality || null) !== (targetMunicipality || null) ||
+      (existingLicenseId || null) !== (targetLicenseId || null) ||
+      (existingStatus || null) !== (targetStatus || null) ||
+      (existingNormalizedStatus || null) !== (targetNormalizedStatus || null) ||
+      (existingExpiration || null) !== (targetExpiration || null) ||
+      existingMunicipalLicensesKey !== nextMunicipalLicensesKey;
+
+    if (shouldUpdateMunicipalAssignment) {
+      municipalAssignments.push({
+        id: listing.id,
+        municipal_municipality: targetMunicipality,
+        municipal_license_id: targetLicenseId,
+        municipal_license_status: targetStatus,
+        municipal_license_normalized_status: targetNormalizedStatus,
+        municipal_license_expires_on: targetExpiration,
+        municipal_licenses: serialisedMunicipalLicenses,
+      });
+    }
 
     if (!listing.is_business_owner && listingIsBusiness && listing.id) {
       businessOwnerCorrections.add(listing.id);
@@ -794,6 +1306,12 @@ export async function refreshListingAggregates(
     await applyBusinessOwnerCorrections(supabase, reclassifiedBusinessIds, logger);
   }
 
+  const municipalAssignmentUpdates = await applyMunicipalLicenseAssignments(
+    supabase,
+    municipalAssignments,
+    logger,
+  );
+
   const subdivisionRows = Array.from(subdivisions.entries())
     .map(([subdivision, stats]) => ({
       subdivision,
@@ -811,6 +1329,16 @@ export async function refreshListingAggregates(
       individualOwners: stats.total - stats.business,
     }))
     .sort((a, b) => b.totalListings - a.totalListings || a.zone.localeCompare(b.zone));
+
+  const municipalityRows = Array.from(municipalities.entries())
+    .map(([municipality, stats]) => ({
+      municipality,
+      totalListings: stats.total,
+      businessOwners: stats.business,
+      individualOwners: stats.individual,
+      licensedListings: stats.licensed,
+    }))
+    .sort((a, b) => b.totalListings - a.totalListings || a.municipality.localeCompare(b.municipality));
 
   const renewalRows = Array.from(renewalBuckets.entries())
     .map(([month, bucket]) => ({
@@ -849,18 +1377,22 @@ export async function refreshListingAggregates(
 
   const refreshedAt = new Date().toISOString();
 
+  await ensureListingMetricsTables(supabase, logger);
+
   logger.info?.('[metrics] Writing subdivision metrics…');
-  await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt);
+  await writeSubdivisionMetrics(supabase, subdivisionRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing zone distribution…');
-  await writeZoneMetrics(supabase, zoneRows, refreshedAt);
+  await writeZoneMetrics(supabase, zoneRows, refreshedAt, logger);
+  logger.info?.('[metrics] Writing municipality distribution…');
+  await writeMunicipalityMetrics(supabase, municipalityRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing renewal timeline…');
-  await writeRenewalTimeline(supabase, renewalRows, refreshedAt);
+  await writeRenewalTimeline(supabase, renewalRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing renewal summary…');
-  await writeRenewalSummary(supabase, summaryRows, refreshedAt);
+  await writeRenewalSummary(supabase, summaryRows, refreshedAt, logger);
   logger.info?.('[metrics] Writing renewal estimation methods…');
-  await writeRenewalMethodSummary(supabase, methodRows, refreshedAt);
+  await writeRenewalMethodSummary(supabase, methodRows, refreshedAt, logger);
   logger.info?.('[metrics] Crowning the Land Baron Leaderboard…');
-  await writeLandBaronLeaderboard(supabase, landBaronRows, refreshedAt);
+  await writeLandBaronLeaderboard(supabase, landBaronRows, refreshedAt, logger);
 
   logger.info?.('[metrics] Aggregates refreshed successfully.');
 
@@ -872,6 +1404,7 @@ export async function refreshListingAggregates(
     listingsProcessed: listings.length,
     subdivisionsWritten: subdivisionRows.length,
     zonesWritten: zoneRows.length,
+    municipalitiesWritten: municipalityRows.length,
     renewalTimelineBuckets: renewalRows.length,
     renewalSummaryBuckets: summaryRows.length,
     renewalMethodBuckets: methodRows.length,
@@ -879,6 +1412,7 @@ export async function refreshListingAggregates(
     totalBusinessOwners,
     totalIndividualOwners,
     businessOwnerReclassifications: reclassifiedBusinessIds.length,
+    municipalAssignmentUpdates,
   };
 }
 
