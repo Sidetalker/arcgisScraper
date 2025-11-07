@@ -296,6 +296,96 @@ function buildNormalisedAddress(line1, line2) {
   return primary;
 }
 
+function normaliseUnit(value) {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  }
+  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function collectUnitTokensFromText(input, tokens) {
+  if (typeof input !== 'string') {
+    return;
+  }
+  const text = input.trim();
+  if (!text) {
+    return;
+  }
+
+  const unitPattern =
+    /\b(?:unit|apt|apartment|suite|ste|lot|trlr|room|bldg|building)\s*([A-Za-z0-9-]+)/gi;
+  let match = unitPattern.exec(text);
+  while (match) {
+    const value = normaliseUnit(match[1] ?? '');
+    if (value) {
+      tokens.add(value);
+    }
+    match = unitPattern.exec(text);
+  }
+
+  const hashPattern = /#\s*([A-Za-z0-9-]+)/gi;
+  match = hashPattern.exec(text);
+  while (match) {
+    const value = normaliseUnit(match[1] ?? '');
+    if (value) {
+      tokens.add(value);
+    }
+    match = hashPattern.exec(text);
+  }
+
+  if (text.length <= 8 && /^[A-Za-z0-9-]+$/.test(text) && !/po\s*box/i.test(text)) {
+    const standalone = normaliseUnit(text);
+    if (standalone) {
+      tokens.add(standalone);
+    }
+  }
+}
+
+function extractUnitHints(...lines) {
+  const tokens = new Set();
+  lines.forEach((line) => collectUnitTokensFromText(line, tokens));
+  return Array.from(tokens);
+}
+
+function stripUnitDesignators(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value
+    .replace(
+      /\b(?:unit|apt|apartment|suite|ste|lot|trlr|room|bldg|building)\s*[A-Za-z0-9-]+/gi,
+      '',
+    )
+    .replace(/#\s*[A-Za-z0-9-]+/gi, '')
+    .trim();
+}
+
+function extractPrimaryAddressLine(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const normalized = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!normalized) {
+    return '';
+  }
+  const [firstLine] = normalized.split('\n');
+  if (!firstLine) {
+    return '';
+  }
+  const [beforeComma] = firstLine.split(',');
+  return beforeComma.trim();
+}
+
+function buildStreetUnitKey(streetKey, unitKey) {
+  if (!streetKey || !unitKey) {
+    return '';
+  }
+  return `${streetKey}|${unitKey}`;
+}
+
 function parseEntriesFromRows({
   rows,
   waitlistType,
@@ -320,6 +410,15 @@ function parseEntriesFromRows({
     const positionValueRaw = numberIndex === null ? '' : sanitiseLine(row[numberIndex]);
     const positionValue = Number.parseInt(positionValueRaw, 10);
     const id = randomUUID();
+    const normalizedLine1 = normaliseAddressPart(addressLine1);
+    const normalizedLine2 = normaliseAddressPart(addressLine2);
+    const normalizedAddress = buildNormalisedAddress(addressLine1, addressLine2);
+    const normalizedLine1StrippedRaw = normaliseAddressPart(stripUnitDesignators(addressLine1));
+    const normalizedLine1Stripped = normalizedLine1StrippedRaw || normalizedLine1;
+    const unitKeys = extractUnitHints(addressLine1, addressLine2);
+    const streetUnitKeys = unitKeys
+      .map((unitKey) => buildStreetUnitKey(normalizedLine1Stripped, unitKey))
+      .filter((key) => key.length > 0);
 
     entries.push({
       id,
@@ -328,9 +427,12 @@ function parseEntriesFromRows({
       position: Number.isNaN(positionValue) ? null : positionValue,
       addressLine1,
       addressLine2: addressLine2 || '',
-      normalizedLine1: normaliseAddressPart(addressLine1),
-      normalizedLine2: normaliseAddressPart(addressLine2),
-      normalizedAddress: buildNormalisedAddress(addressLine1, addressLine2),
+      normalizedLine1,
+      normalizedLine2,
+      normalizedLine1Stripped,
+      normalizedAddress,
+      unitKeys,
+      streetUnitKeys,
       sourceFilename,
       sourceRowNumber: rowIndex + 1,
       raw: {
@@ -369,6 +471,9 @@ async function fetchAllListings(client) {
     'mailing_state',
     'mailing_zip5',
     'mailing_zip9',
+    'unit',
+    'unit_normalized',
+    'physical_address',
   ].join(',');
 
   const listings = [];
@@ -401,8 +506,13 @@ async function fetchAllListings(client) {
 }
 
 function buildListingIndexes(listings) {
-  const exact = new Map();
-  const line1Only = new Map();
+  const indexes = {
+    mailingExact: new Map(),
+    mailingLine1: new Map(),
+    physicalPrimary: new Map(),
+    physicalStreet: new Map(),
+    streetUnit: new Map(),
+  };
 
   const pushToMap = (map, key, listing) => {
     if (!key) {
@@ -415,59 +525,220 @@ function buildListingIndexes(listings) {
   };
 
   listings.forEach((listing) => {
-    const line1 = sanitiseLine(listing.mailing_address_line1);
-    const line2 = sanitiseLine(listing.mailing_address_line2);
-    const normalizedLine1 = normaliseAddressPart(line1);
-    const normalizedLine2 = normaliseAddressPart(line2);
-    if (!normalizedLine1) {
+    const enriched = enrichListingForMatching(listing);
+    if (!enriched) {
       return;
     }
-    const normalizedAddress =
-      normalizedLine2.length > 0 ? `${normalizedLine1}|${normalizedLine2}` : normalizedLine1;
-    pushToMap(exact, normalizedAddress, listing);
-    pushToMap(line1Only, normalizedLine1, listing);
+    pushToMap(indexes.mailingExact, enriched.normalizedMailingAddress, enriched);
+    pushToMap(indexes.mailingLine1, enriched.normalizedMailingLine1, enriched);
+    pushToMap(indexes.physicalPrimary, enriched.physicalPrimary, enriched);
+    pushToMap(indexes.physicalStreet, enriched.physicalStreetKey, enriched);
+    pushToMap(indexes.streetUnit, enriched.streetUnitKey, enriched);
   });
 
-  return { exact, line1Only };
+  return indexes;
+}
+
+function enrichListingForMatching(listing) {
+  const mailingLine1 = sanitiseLine(listing.mailing_address_line1);
+  const mailingLine2 = sanitiseLine(listing.mailing_address_line2);
+  const normalizedMailingLine1 = normaliseAddressPart(mailingLine1);
+  const normalizedMailingAddress =
+    normalizedMailingLine1.length > 0 ? buildNormalisedAddress(mailingLine1, mailingLine2) : '';
+
+  const physicalPrimaryLine = extractPrimaryAddressLine(listing.physical_address ?? '');
+  const physicalPrimary = normaliseAddressPart(physicalPrimaryLine);
+  const physicalStreetRaw = stripUnitDesignators(physicalPrimaryLine);
+  const physicalStreetKey = normaliseAddressPart(physicalStreetRaw) || physicalPrimary;
+
+  const unitNormalized = normaliseUnit(listing.unit_normalized ?? listing.unit ?? '');
+  const streetUnitKey = buildStreetUnitKey(physicalStreetKey, unitNormalized);
+
+  if (
+    !normalizedMailingAddress &&
+    !normalizedMailingLine1 &&
+    !physicalPrimary &&
+    !physicalStreetKey
+  ) {
+    return null;
+  }
+
+  const ownerName = typeof listing.owner_name === 'string' ? listing.owner_name.trim() : '';
+
+  return {
+    id: listing.id,
+    unitNormalized,
+    normalizedMailingAddress,
+    normalizedMailingLine1,
+    physicalPrimary,
+    physicalStreetKey,
+    streetUnitKey,
+    ownerName,
+  };
 }
 
 function matchEntries(entries, listingIndexes) {
   const matches = [];
-  let unmatchedCount = 0;
+  const stats = {
+    total: entries.length,
+    exact: 0,
+    close: 0,
+    missed: 0,
+    lowConfidenceCount: 0,
+    lowConfidenceSamples: [],
+  };
 
   entries.forEach((entry) => {
-    let resolvedMatch = null;
-
-    const exactCandidates = listingIndexes.exact.get(entry.normalizedAddress);
-    if (exactCandidates && exactCandidates.length === 1) {
-      resolvedMatch = {
-        entryId: entry.id,
-        listingId: exactCandidates[0].id,
-        matchType: 'address_line1_line2',
-        matchScore: 1,
-      };
-    }
-
-    if (!resolvedMatch) {
-      const line1Candidates = listingIndexes.line1Only.get(entry.normalizedLine1);
-      if (line1Candidates && line1Candidates.length === 1) {
-        resolvedMatch = {
-          entryId: entry.id,
-          listingId: line1Candidates[0].id,
-          matchType: 'address_line1',
-          matchScore: 0.75,
-        };
+    const { match, lowConfidence } = resolveMatchForEntry(entry, listingIndexes);
+    if (match) {
+      matches.push(match);
+      if (match.matchScore >= 0.99) {
+        stats.exact += 1;
+      } else {
+        stats.close += 1;
       }
+      return;
     }
 
-    if (resolvedMatch) {
-      matches.push(resolvedMatch);
-    } else {
-      unmatchedCount += 1;
+    stats.missed += 1;
+    if (lowConfidence) {
+      stats.lowConfidenceCount += 1;
+      if (stats.lowConfidenceSamples.length < 10) {
+        stats.lowConfidenceSamples.push(lowConfidence);
+      }
     }
   });
 
-  return { matches, unmatchedCount };
+  return { matches, stats };
+}
+
+function resolveMatchForEntry(entry, listingIndexes) {
+  let lowConfidenceCandidate = null;
+
+  const attempts = [
+    {
+      map: listingIndexes.mailingExact,
+      key: entry.normalizedAddress,
+      type: 'mailing_address',
+      score: 1,
+    },
+    {
+      map: listingIndexes.mailingLine1,
+      key: entry.normalizedLine1,
+      type: 'mailing_line1',
+      score: 0.95,
+    },
+  ];
+
+  for (const key of entry.streetUnitKeys ?? []) {
+    attempts.push({
+      map: listingIndexes.streetUnit,
+      key,
+      type: 'physical_street_unit',
+      score: 0.93,
+    });
+  }
+
+  attempts.push(
+    {
+      map: listingIndexes.physicalPrimary,
+      key: entry.normalizedLine1,
+      type: 'physical_primary',
+      score: 0.9,
+    },
+    {
+      map: listingIndexes.physicalStreet,
+      key: entry.normalizedLine1Stripped,
+      type: 'physical_street',
+      score: 0.88,
+    },
+  );
+
+  for (const attempt of attempts) {
+    if (!attempt.key) {
+      continue;
+    }
+    const candidates = attempt.map.get(attempt.key);
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      continue;
+    }
+    const listing = pickCandidateForEntry(entry, candidates);
+    if (listing) {
+      return {
+        match: {
+          entryId: entry.id,
+          listingId: listing.id,
+          matchType: attempt.type,
+          matchScore: attempt.score,
+        },
+        lowConfidence: lowConfidenceCandidate,
+      };
+    }
+
+    if (!lowConfidenceCandidate) {
+      lowConfidenceCandidate = createLowConfidenceSample(entry, attempt, candidates);
+    }
+  }
+
+  return { match: null, lowConfidence: lowConfidenceCandidate };
+}
+
+function createLowConfidenceSample(entry, attempt, candidates) {
+  return {
+    entryId: entry.id,
+    waitlistType: entry.waitlistType,
+    waitlistLabel: entry.waitlistLabel,
+    addressLine1: entry.addressLine1,
+    attemptType: attempt.type,
+    candidateCount: Array.isArray(candidates) ? candidates.length : 0,
+    candidateListingIds: Array.isArray(candidates)
+      ? candidates.slice(0, 5).map((candidate) => candidate.id)
+      : [],
+  };
+}
+
+function pickCandidateForEntry(entry, candidates) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
+  }
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const entryUnitSet = new Set(entry.unitKeys ?? []);
+  if (entryUnitSet.size > 0) {
+    const unitMatches = candidates.filter(
+      (listing) => listing.unitNormalized && entryUnitSet.has(listing.unitNormalized),
+    );
+    if (unitMatches.length === 1) {
+      return unitMatches[0];
+    }
+    if (unitMatches.length > 0) {
+      candidates = unitMatches;
+    }
+  }
+
+  if (entryUnitSet.size === 0) {
+    const noUnitCandidates = candidates.filter((listing) => !listing.unitNormalized);
+    if (noUnitCandidates.length === 1) {
+      return noUnitCandidates[0];
+    }
+    if (noUnitCandidates.length > 0) {
+      candidates = noUnitCandidates;
+    }
+  }
+
+  const ownerNames = new Set(
+    candidates
+      .map((listing) => (typeof listing.ownerName === 'string' ? listing.ownerName : ''))
+      .filter((name) => name.length > 0),
+  );
+  if (ownerNames.size === 1 && candidates.length > 0) {
+    return candidates[0];
+  }
+
+  return null;
 }
 
 function chunkArray(items, size) {
@@ -582,10 +853,24 @@ async function main() {
   console.log(`[match] Loaded ${listings.length.toLocaleString()} listing(s) for matching.`);
 
   const indexes = buildListingIndexes(listings);
-  const { matches, unmatchedCount } = matchEntries(allEntries, indexes);
+  const { matches, stats } = matchEntries(allEntries, indexes);
   console.log(
-    `[match] ${matches.length.toLocaleString()} entries matched (${unmatchedCount.toLocaleString()} unmatched).`,
+    `[match] ${matches.length.toLocaleString()} entries matched (${stats.missed.toLocaleString()} unmatched).`,
   );
+  console.log(
+    `[match] Exact: ${stats.exact.toLocaleString()} • Close: ${stats.close.toLocaleString()} • Low-confidence candidates: ${stats.lowConfidenceCount.toLocaleString()}`,
+  );
+  if (stats.lowConfidenceSamples.length > 0) {
+    console.log('[match] Sample low-confidence entries requiring manual review:');
+    stats.lowConfidenceSamples.forEach((sample) => {
+      const label = sample.waitlistLabel || sample.waitlistType || 'waitlist';
+      const candidateList =
+        sample.candidateListingIds.length > 0 ? sample.candidateListingIds.join(', ') : 'n/a';
+      console.log(
+        `  - ${label} → ${sample.addressLine1} (${sample.attemptType}) had ${sample.candidateCount} candidate(s) [${candidateList}]`,
+      );
+    });
+  }
 
   if (!options.apply) {
     console.log('Dry run complete. Re-run with --apply to persist rows and matches.');
