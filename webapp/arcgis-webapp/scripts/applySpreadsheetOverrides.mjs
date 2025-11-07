@@ -35,6 +35,7 @@ function parseArgs(argv) {
     apply: false,
     allowPartial: false,
     watchlistName: null,
+    diag: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -56,6 +57,10 @@ function parseArgs(argv) {
       }
       case '--allow-partial': {
         options.allowPartial = true;
+        break;
+      }
+      case '--diag': {
+        options.diag = true;
         break;
       }
       case '--watchlist-name': {
@@ -91,17 +96,22 @@ function parseArgs(argv) {
     throw new Error('--watchlist-name cannot be empty.');
   }
 
+  if (options.diag && options.apply) {
+    throw new Error('--diag cannot be combined with --apply.');
+  }
+
   return options;
 }
 
 function printUsage() {
-  console.log(`Usage: node scripts/applySpreadsheetOverrides.mjs --input path/to/file.csv [--apply] [--allow-partial] [--watchlist-name "Name"]
+  console.log(`Usage: node scripts/applySpreadsheetOverrides.mjs --input path/to/file.csv [--apply] [--allow-partial] [--watchlist-name "Name"] [--diag]
 
 Options:
   --input, -i        Path to the CSV export from the spreadsheet (required)
   --apply            Persist overrides to Supabase (omit for a dry-run preview)
   --allow-partial    Allow updates even if some rows failed to match listings
   --watchlist-name   Create a new watchlist with the matched listing IDs
+  --diag             Print diagnostic information and exit (no writes)
   --help, -h         Show this help message`);
 }
 
@@ -186,6 +196,34 @@ function normaliseZipParts(input) {
     return { zip5, zip9: '' };
   }
   return { zip5: digits, zip9: '' };
+}
+
+function normaliseScheduleNumber(value) {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  }
+  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function buildPhysicalAddressKey(value) {
+  return normaliseAddressComponent(value);
+}
+
+function tokeniseString(value) {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return [];
+    }
+    value = String(value);
+  }
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
 }
 
 function normaliseAddressComponent(value) {
@@ -354,6 +392,45 @@ function normaliseUnit(value) {
     return '';
   }
   return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function parseUnitDescriptor(value) {
+  if (typeof value !== 'string') {
+    return { building: '', suffix: '' };
+  }
+  const cleaned = value.trim().toUpperCase();
+  if (!cleaned) {
+    return { building: '', suffix: '' };
+  }
+
+  const jointMatch = cleaned.match(/^(\d+)\s*([A-Z]+)$/);
+  if (jointMatch) {
+    return { building: jointMatch[1], suffix: jointMatch[2] };
+  }
+
+  const reverseMatch = cleaned.match(/^([A-Z]+)\s*(\d+)$/);
+  if (reverseMatch) {
+    return { building: reverseMatch[2], suffix: reverseMatch[1] };
+  }
+
+  const hyphenated = cleaned.match(/^(\d+)-([A-Z]+)$/);
+  if (hyphenated) {
+    return { building: hyphenated[1], suffix: hyphenated[2] };
+  }
+
+  return { building: '', suffix: cleaned };
+}
+
+function extractPhysicalAddressParts(value) {
+  if (typeof value !== 'string') {
+    return { building: '', unit: '' };
+  }
+  const buildingMatch = value.match(/\b(?:BLDG|BUILDING)\s+([A-Za-z0-9]+)/i);
+  const unitMatch = value.match(/\bUNIT\s+([A-Za-z0-9]+)/i);
+  return {
+    building: buildingMatch ? buildingMatch[1].toUpperCase() : '',
+    unit: unitMatch ? unitMatch[1].toUpperCase() : '',
+  };
 }
 
 function addVariantWeight(map, key, weight) {
@@ -615,7 +692,17 @@ function parseSpreadsheetRecords(tableRows) {
       return;
     }
 
-    const [first, second, addressCell = '', cityCell = '', stateCell = '', zipCell = ''] = cells;
+    const [
+      first,
+      second,
+      addressCell = '',
+      cityCell = '',
+      stateCell = '',
+      zipCell = '',
+      subdivisionCell = '',
+      scheduleCell = '',
+      physicalAddressCell = '',
+    ] = cells;
 
     const isHeaderRow = second && second.toLowerCase().startsWith('owner');
     if (isHeaderRow) {
@@ -631,6 +718,7 @@ function parseSpreadsheetRecords(tableRows) {
     }
 
     const unit = first ? first.trim() : '';
+    const unitDescriptor = parseUnitDescriptor(unit);
     if (!unit) {
       console.warn(`Row ${index + 1}: unit column is empty for complex "${currentComplex}".`);
       return;
@@ -654,9 +742,20 @@ function parseSpreadsheetRecords(tableRows) {
       zip9 || zip5,
     );
 
+    const subdivision = typeof subdivisionCell === 'string' ? subdivisionCell.trim() : '';
+    const scheduleNumber = typeof scheduleCell === 'string' ? scheduleCell.trim() : '';
+    const scheduleNumberKey = normaliseScheduleNumber(scheduleNumber);
+    const physicalAddress =
+      typeof physicalAddressCell === 'string' ? physicalAddressCell.trim() : '';
+    const physicalAddressKey = buildPhysicalAddressKey(physicalAddress);
+    const unitTokenSet = new Set(tokeniseString(unit));
+    const physicalTokenSet = new Set(tokeniseString(physicalAddress));
+
     records.push({
       complex: currentComplex.trim(),
       unit,
+      unitBuildingKey: unitDescriptor.building,
+      unitSuffixKey: unitDescriptor.suffix,
       ownerNames,
       ownerName,
       mailingAddress,
@@ -674,6 +773,13 @@ function parseSpreadsheetRecords(tableRows) {
         zip9 || zip5,
       ),
       mailingAddressLine1Key: normaliseAddressComponent(mailingAddressLine1),
+      subdivision,
+      scheduleNumber,
+      scheduleNumberKey,
+      physicalAddress,
+      physicalAddressKey,
+      unitTokenSet,
+      physicalTokenSet,
       sourceRow: index + 1,
     });
   });
@@ -705,6 +811,7 @@ async function fetchAllListings(client) {
           'mailing_state',
           'mailing_zip5',
           'mailing_zip9',
+          'schedule_number',
           'physical_address',
         ].join(', '),
       )
@@ -798,6 +905,11 @@ function buildListingRecords(listings, overridesById) {
     const baseOwnerNames = normaliseOwnerNamesValue(row.owner_names);
     const ownerNamesLower = baseOwnerNames.map((name) => name.toLowerCase());
     const ownerNameLower = baseOwnerName.toLowerCase();
+    const scheduleNumberKey = normaliseScheduleNumber(row.schedule_number ?? '');
+    const physicalAddressKey = buildPhysicalAddressKey(row.physical_address ?? '');
+    const physicalTokenSet = new Set(tokeniseString(row.physical_address ?? ''));
+    const physicalParts = extractPhysicalAddressParts(row.physical_address ?? '');
+    const unitDescriptor = parseUnitDescriptor(row.unit ?? '');
     const mailingAddressKey = buildMailingAddressKey(
       row.mailing_address_line1 ?? '',
       row.mailing_address_line2 ?? '',
@@ -816,8 +928,15 @@ function buildListingRecords(listings, overridesById) {
       unitVariantWeights,
       ownerNamesLower,
       ownerNameLower,
+      scheduleNumberKey,
+      physicalAddressKey,
+      physicalBuildingKey: physicalParts.building,
+      physicalUnitKey: physicalParts.unit,
+      unitBuildingKey: unitDescriptor.building,
+      unitSuffixKey: unitDescriptor.suffix,
       mailingAddressKey,
       mailingAddressLine1Key,
+      physicalTokenSet,
       base: {
         ownerName: baseOwnerName,
         ownerNames: baseOwnerNames,
@@ -828,6 +947,8 @@ function buildListingRecords(listings, overridesById) {
         mailingState: normaliseStringValue(row.mailing_state).toUpperCase(),
         mailingZip5: normaliseStringValue(row.mailing_zip5),
         mailingZip9: normaliseStringValue(row.mailing_zip9),
+        scheduleNumber: normaliseStringValue(row.schedule_number),
+        physicalAddress: normaliseMultilineValue(row.physical_address),
       },
       overrides: cloneOverrides(existingOverrides),
     };
@@ -919,6 +1040,47 @@ function computeMatchScore(listing, sheetRecord, unitWeight, sheetOwnerNamesLowe
     score += 3;
   }
 
+  if (
+    sheetRecord.physicalAddressKey &&
+    listing.physicalAddressKey &&
+    listing.physicalAddressKey === sheetRecord.physicalAddressKey
+  ) {
+    score += 7;
+  }
+
+  if (
+    sheetRecord.scheduleNumberKey &&
+    listing.scheduleNumberKey &&
+    listing.scheduleNumberKey === sheetRecord.scheduleNumberKey
+  ) {
+    score += 12;
+  }
+
+  if (
+    sheetRecord.unitBuildingKey &&
+    listing.physicalBuildingKey &&
+    sheetRecord.unitBuildingKey === listing.physicalBuildingKey
+  ) {
+    score += 4;
+  }
+
+  if (
+    sheetRecord.unitSuffixKey &&
+    listing.physicalUnitKey &&
+    sheetRecord.unitSuffixKey === listing.physicalUnitKey
+  ) {
+    score += 4;
+  }
+
+  if (
+    sheetRecord.unitTokenSet &&
+    sheetRecord.unitTokenSet.size > 0 &&
+    listing.physicalTokenSet &&
+    Array.from(sheetRecord.unitTokenSet).every((token) => listing.physicalTokenSet.has(token))
+  ) {
+    score += 5;
+  }
+
   const sheetComplex = normaliseComplexName(sheetRecord.complex);
   if (sheetComplex && listing.normalizedComplexes.has(sheetComplex)) {
     score += 2;
@@ -950,6 +1112,17 @@ function computeMatchScore(listing, sheetRecord, unitWeight, sheetOwnerNamesLowe
   return score;
 }
 
+function formatCandidateDebug(listing) {
+  const schedule = listing.base.scheduleNumber || 'n/a';
+  const owner = listing.base.ownerName || '—';
+  const physical = listing.base.physicalAddress || '';
+  const building = listing.physicalBuildingKey || 'n/a';
+  const unitKey = listing.physicalUnitKey || listing.unit || '—';
+  return `${listing.complex || listing.subdivision || 'Unknown complex'} • ${
+    listing.unit || '—'
+  } (schedule ${schedule}, owner ${owner}, physical ${physical || 'n/a'}, building ${building}, unit ${unitKey})`;
+}
+
 function computeSupportSignals(
   listing,
   sheetRecord,
@@ -959,6 +1132,11 @@ function computeSupportSignals(
   sheetZip5Key,
   sheetZip9Key,
   sheetCityKey,
+  sheetPhysicalAddressKey,
+  sheetScheduleKey,
+  sheetUnitBuildingKey,
+  sheetUnitSuffixKey,
+  sheetUnitTokenSet,
 ) {
   const ownerOverlap = sheetOwnerNamesLower.some((owner) =>
     listing.ownerNamesLower.includes(owner),
@@ -981,6 +1159,24 @@ function computeSupportSignals(
       sheetRecord.mailingCity &&
         listing.base.mailingCity.toLowerCase() === sheetCityKey,
     );
+  const physicalAddressMatch =
+    Boolean(
+      sheetPhysicalAddressKey &&
+        listing.physicalAddressKey === sheetPhysicalAddressKey,
+    );
+  const scheduleMatch =
+    Boolean(sheetScheduleKey && listing.scheduleNumberKey === sheetScheduleKey);
+  const unitBuildingMatch =
+    Boolean(sheetUnitBuildingKey && listing.physicalBuildingKey === sheetUnitBuildingKey);
+  const unitSuffixMatch =
+    Boolean(sheetUnitSuffixKey && listing.physicalUnitKey === sheetUnitSuffixKey);
+  const unitTokensMatch =
+    Boolean(
+      sheetUnitTokenSet &&
+        sheetUnitTokenSet.size > 0 &&
+        listing.physicalTokenSet &&
+        Array.from(sheetUnitTokenSet).every((token) => listing.physicalTokenSet.has(token)),
+    );
 
   return {
     ownerOverlap,
@@ -989,7 +1185,23 @@ function computeSupportSignals(
     zip5Match,
     zip9Match,
     cityMatch,
-    any: ownerOverlap || addressMatch || line1Match || zip5Match || zip9Match || cityMatch,
+    physicalAddressMatch,
+    scheduleMatch,
+    unitBuildingMatch,
+    unitSuffixMatch,
+    unitTokensMatch,
+    any:
+      ownerOverlap ||
+      addressMatch ||
+      line1Match ||
+      zip5Match ||
+      zip9Match ||
+      cityMatch ||
+      physicalAddressMatch ||
+      scheduleMatch ||
+      unitBuildingMatch ||
+      unitSuffixMatch ||
+      unitTokensMatch,
   };
 }
 
@@ -1018,8 +1230,49 @@ function resolveListing(sheetRecord, listingRecords, listingIndex, complexAliasM
     sheetRecord.mailingZip9 ? normaliseZipForComparison(sheetRecord.mailingZip9) : '';
   const sheetCityKey = (sheetRecord.mailingCity ?? '').toLowerCase();
   const sheetUnitNormalized = normaliseUnit(sheetRecord.unit);
+  const sheetPhysicalAddressKey = sheetRecord.physicalAddressKey;
+  const sheetScheduleKey = sheetRecord.scheduleNumberKey;
+  const sheetUnitBuildingKey = sheetRecord.unitBuildingKey;
+  const sheetUnitSuffixKey = sheetRecord.unitSuffixKey;
+  const sheetUnitTokenSet = sheetRecord.unitTokenSet;
 
   const candidateMap = new Map();
+
+  if (sheetScheduleKey) {
+    const scheduleMatches = listingRecords.filter(
+      (listing) => listing.scheduleNumberKey === sheetScheduleKey,
+    );
+    if (scheduleMatches.length === 1) {
+      const match = scheduleMatches[0];
+      registerComplexAlias(complexKey, match, complexAliasMap);
+      return {
+        status: 'matched',
+        listing: match,
+        autoResolved: true,
+      };
+    }
+    scheduleMatches.forEach((listing) => {
+      addCandidateEntry(candidateMap, listing, 0.5);
+    });
+  }
+
+  if (sheetPhysicalAddressKey) {
+    const physicalMatches = listingRecords.filter(
+      (listing) => listing.physicalAddressKey === sheetPhysicalAddressKey,
+    );
+    if (physicalMatches.length === 1) {
+      const match = physicalMatches[0];
+      registerComplexAlias(complexKey, match, complexAliasMap);
+      return {
+        status: 'matched',
+        listing: match,
+        autoResolved: true,
+      };
+    }
+    physicalMatches.forEach((listing) => {
+      addCandidateEntry(candidateMap, listing, 1);
+    });
+  }
 
   complexVariants.forEach((complexVariant) => {
     sheetUnitVariantWeights.forEach((sheetWeight, unitVariant) => {
@@ -1054,6 +1307,11 @@ function resolveListing(sheetRecord, listingRecords, listingIndex, complexAliasM
         sheetZip5Key,
         sheetZip9Key,
         sheetCityKey,
+        sheetPhysicalAddressKey,
+        sheetScheduleKey,
+        sheetUnitBuildingKey,
+        sheetUnitSuffixKey,
+        sheetUnitTokenSet,
       );
 
       let fallbackWeight = null;
@@ -1123,6 +1381,11 @@ function resolveListing(sheetRecord, listingRecords, listingIndex, complexAliasM
       sheetZip5Key,
       sheetZip9Key,
       sheetCityKey,
+      sheetPhysicalAddressKey,
+      sheetScheduleKey,
+      sheetUnitBuildingKey,
+      sheetUnitSuffixKey,
+      sheetUnitTokenSet,
     );
     if (!signals.any) {
       resolved = null;
@@ -1498,11 +1761,13 @@ async function main() {
   if (ambiguous.length > 0) {
     console.warn(`Ambiguous matches (${ambiguous.length}):`);
     ambiguous.forEach((entry) => {
-      const candidateText = entry.candidates
-        .map((candidate) => `${candidate.complex || candidate.subdivision} • ${candidate.unit}`)
-        .join('; ');
+      const candidateText = entry.candidates.map((candidate) => formatCandidateDebug(candidate)).join('; ');
+      const recordDetails = [
+        `schedule ${entry.record.scheduleNumber || 'n/a'}`,
+        entry.record.physicalAddress ? `physical ${entry.record.physicalAddress}` : null,
+      ].filter(Boolean);
       console.warn(
-        `  • Complex "${entry.record.complex}" unit "${entry.record.unit}" candidates: ${candidateText}`,
+        `  • Complex "${entry.record.complex}" unit "${entry.record.unit}" (${recordDetails.join(', ') || 'no extra data'}) candidates: ${candidateText}`,
       );
     });
   }
@@ -1551,7 +1816,54 @@ async function main() {
     `Planned actions: ${upserts.length} upsert(s), ${deletions.length} deletion(s), ${skipped.length} unchanged listing(s).`,
   );
 
-  if (!options.allowPartial && (unmatched.length > 0 || ambiguous.length > 0)) {
+  if (options.diag) {
+    if (ambiguous.length > 0) {
+      console.log('Ambiguity details:');
+      ambiguous.forEach((entry, index) => {
+        console.log(`--- Ambiguity ${index + 1} ---`);
+        console.log('Spreadsheet row:', {
+          complex: entry.record.complex,
+          unit: entry.record.unit,
+          scheduleNumber: entry.record.scheduleNumber || null,
+          ownerName: entry.record.ownerName || null,
+          mailingAddress: entry.record.mailingAddress || null,
+          physicalAddress: entry.record.physicalAddress || null,
+          subdivision: entry.record.subdivision || null,
+          sourceRow: entry.record.sourceRow,
+        });
+        console.log(
+          'Candidates:',
+          entry.candidates.map((candidate) => ({
+            id: candidate.id,
+            complex: candidate.complex,
+            unit: candidate.unit,
+            subdivision: candidate.subdivision,
+            scheduleNumber: candidate.base.scheduleNumber,
+            ownerName: candidate.base.ownerName,
+            mailingAddress: candidate.base.mailingAddress,
+            physicalAddress: candidate.base.physicalAddress,
+          })),
+        );
+      });
+    }
+    console.log('--- Diagnostic summary ---');
+    console.log(`Rows parsed: ${sheetRecords.length}`);
+    console.log(`Matched listings: ${results.length}`);
+    console.log(`Unmatched rows: ${unmatched.length}`);
+    console.log(`Ambiguous rows: ${ambiguous.length}`);
+    console.log(`Planned upserts: ${upserts.length}`);
+    console.log(`Planned deletions: ${deletions.length}`);
+    console.log(`Unchanged listings: ${skipped.length}`);
+    if (options.watchlistName) {
+      console.log(
+        `Watchlist "${options.watchlistName.trim()}" creation skipped (diagnostic mode).`,
+      );
+    }
+    console.log('Run without --diag (and optionally with --apply) once you are satisfied.');
+    return;
+  }
+
+  if (!options.diag && !options.allowPartial && (unmatched.length > 0 || ambiguous.length > 0)) {
     console.warn(
       'Aborting because some rows were unmatched or ambiguous. Re-run with --allow-partial to apply partial updates.',
     );
@@ -1569,9 +1881,12 @@ async function main() {
   }
 
   if (upserts.length > 0) {
+    const dedupedUpserts = Array.from(
+      new Map(upserts.map((entry) => [entry.listing_id, entry])).values(),
+    );
     const chunkSize = 50;
-    for (let index = 0; index < upserts.length; index += chunkSize) {
-      const chunk = upserts.slice(index, index + chunkSize);
+    for (let index = 0; index < dedupedUpserts.length; index += chunkSize) {
+      const chunk = dedupedUpserts.slice(index, index + chunkSize);
       const payload = chunk.map((entry) => ({
         listing_id: entry.listing_id,
         overrides: entry.overrides,
