@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -78,6 +79,11 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
   const [supabaseConfigured, setSupabaseConfigured] = useState<boolean>(isSupabaseConfigured);
   const [blacklistedOwners, setBlacklistedOwners] = useState<OwnerBlacklistEntry[]>([]);
+  const blacklistedOwnersRef = useRef<OwnerBlacklistEntry[]>([]);
+
+  useEffect(() => {
+    blacklistedOwnersRef.current = blacklistedOwners;
+  }, [blacklistedOwners]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -132,7 +138,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       supabaseUpdatedAt: Date | null,
       owners: OwnerBlacklistEntry[] | null = null,
     ) => {
-      const ownersToPersist = owners ?? blacklistedOwners;
+      const ownersToPersist = owners ?? blacklistedOwnersRef.current;
       try {
         const savedAt = await saveListingsToCache(records, supabaseUpdatedAt, ownersToPersist);
         setLocalCachedAt(savedAt);
@@ -141,12 +147,12 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         console.warn('Unable to persist listings cache to IndexedDB.', storageError);
       }
     },
-    [blacklistedOwners],
+    [],
   );
 
   const applyBlacklistToRecords = useCallback(
     (records: ListingRecord[], owners: OwnerBlacklistEntry[] | null = null) => {
-      const activeOwners = owners ?? blacklistedOwners;
+      const activeOwners = owners ?? blacklistedOwnersRef.current;
       if (activeOwners.length === 0) {
         return records.map((record) =>
           record.isOwnerBlacklisted ? { ...record, isOwnerBlacklisted: false } : record,
@@ -165,7 +171,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         return { ...record, isOwnerBlacklisted: isBlacklisted };
       });
     },
-    [blacklistedOwners],
+    [],
   );
 
   const deriveBlacklistedOwners = useCallback((records: ListingRecord[]): OwnerBlacklistEntry[] => {
@@ -202,6 +208,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       const recordsWithBlacklist = applyBlacklistToRecords(records, sortedOwners);
 
       setListings(recordsWithBlacklist);
+      blacklistedOwnersRef.current = sortedOwners;
       setBlacklistedOwners(sortedOwners);
       if (supabaseUpdatedAt) {
         setCachedAt(supabaseUpdatedAt);
@@ -257,7 +264,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setLoading(false);
     }
-  }, [applyListingSnapshot, persistLocalCache, blacklistedOwners]);
+  }, [applyListingSnapshot, persistLocalCache]);
 
   useEffect(() => {
     void (async () => {
@@ -329,7 +336,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         enrichedRecords,
         syncTimestamp,
         syncTimestamp,
-        blacklistedOwners,
+        blacklistedOwnersRef.current,
       );
       await persistLocalCache(snapshot.records, syncTimestamp, snapshot.owners);
       console.info('Supabase listings were synchronised successfully.', {
@@ -347,7 +354,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setSyncing(false);
     }
-  }, [applyListingSnapshot, persistLocalCache, blacklistedOwners]);
+  }, [applyListingSnapshot, persistLocalCache]);
 
   const updateFavorite = useCallback(
     async (listingId: string, isFavorited: boolean) => {
@@ -535,6 +542,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
             (item) => item.ownerNameNormalized !== entry.ownerNameNormalized,
           );
           nextOwners = [...filtered, entry].sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+          blacklistedOwnersRef.current = nextOwners;
           return nextOwners;
         });
 
@@ -583,6 +591,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
           nextOwners = current
             .filter((item) => item.ownerNameNormalized !== ownerNameNormalized)
             .sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+          blacklistedOwnersRef.current = nextOwners;
           return nextOwners;
         });
 
