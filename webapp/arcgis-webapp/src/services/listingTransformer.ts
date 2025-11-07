@@ -518,6 +518,7 @@ export function toListingRecord(
     physicalAddress: sourceOfTruth.physicalAddress,
     isBusinessOwner: sourceOfTruth.isBusinessOwner,
     isFavorited: false,
+    isOwnerBlacklisted: false,
     hasCustomizations: false,
     latitude,
     longitude,

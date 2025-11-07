@@ -17,8 +17,22 @@ vi.mock('@/services/arcgisClient', async () => {
 });
 
 vi.mock('@/services/listingStorage', () => ({
-  fetchStoredListings: vi.fn(() => Promise.resolve({ records: [], latestUpdatedAt: null })),
+  fetchStoredListings: vi.fn(() =>
+    Promise.resolve({ records: [], latestUpdatedAt: null, blacklistedOwners: [] }),
+  ),
   replaceAllListings: vi.fn(() => Promise.resolve()),
+  updateListingFavorite: vi.fn(() => Promise.resolve({ record: {} as unknown, updatedAt: null })),
+  updateListingDetails: vi.fn(() => Promise.resolve({ record: {} as unknown, updatedAt: null })),
+  removeListingCustomization: vi.fn(() => Promise.resolve({ record: {} as unknown, updatedAt: null })),
+  addOwnerToBlacklist: vi.fn(() =>
+    Promise.resolve({
+      entry: { ownerName: '', ownerNameNormalized: '', createdAt: null, updatedAt: null },
+      updatedAt: null,
+    }),
+  ),
+  removeOwnerFromBlacklist: vi.fn(() =>
+    Promise.resolve({ ownerNameNormalized: '', updatedAt: null }),
+  ),
 }));
 
 vi.mock('@/services/listingLocalCache', () => ({
@@ -67,5 +81,10 @@ describe('App', () => {
     renderApp();
     expect(await screen.findByLabelText(/filters/i)).toBeInTheDocument();
     expect(await screen.findByLabelText(/search listings/i)).toBeInTheDocument();
+  });
+
+  it('renders the Blacklisted navigation tab', async () => {
+    renderApp();
+    expect(await screen.findByRole('link', { name: /blacklisted/i })).toBeInTheDocument();
   });
 });

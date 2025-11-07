@@ -38,6 +38,9 @@ function OwnerDetailPage(): JSX.Element {
     updateListingFavorite,
     updateListingDetails,
     revertListingToOriginal,
+    blacklistedOwners,
+    addOwnerToBlacklist,
+    removeOwnerFromBlacklist,
   } = useListings();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
@@ -46,6 +49,8 @@ function OwnerDetailPage(): JSX.Element {
   const [tableState, setTableState] = useState(createDefaultTableState);
   const favoritesDisabledMessage = 'Connect Supabase to enable shared favorites.';
   const editDisabledMessage = 'Connect Supabase to customize listings.';
+  const blacklistDisabledMessage = 'Connect Supabase to manage the blacklist.';
+  const [isBlacklistPending, setIsBlacklistPending] = useState(false);
 
   const normalizedOwner = useMemo(() => ownerName.trim().toLowerCase(), [ownerName]);
 
@@ -58,6 +63,20 @@ function OwnerDetailPage(): JSX.Element {
       listing.ownerNames.some((name) => name.trim().toLowerCase() === normalizedOwner),
     );
   }, [listings, normalizedOwner]);
+
+  const isOwnerBlacklisted = useMemo(() => {
+    if (!normalizedOwner) {
+      return false;
+    }
+    if (
+      blacklistedOwners.some(
+        (entry) => entry.ownerNameNormalized === normalizedOwner,
+      )
+    ) {
+      return true;
+    }
+    return matchingListings.some((listing) => listing.isOwnerBlacklisted);
+  }, [blacklistedOwners, matchingListings, normalizedOwner]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -194,6 +213,44 @@ function OwnerDetailPage(): JSX.Element {
     [editDisabledMessage, setStatusMessage, supabaseConfigured, revertListingToOriginal],
   );
 
+  const handleBlacklistToggle = useCallback(async () => {
+    if (!normalizedOwner) {
+      setStatusMessage('No owner specified.');
+      return;
+    }
+
+    if (!supabaseConfigured) {
+      setStatusMessage(blacklistDisabledMessage);
+      return;
+    }
+
+    setIsBlacklistPending(true);
+    try {
+      if (isOwnerBlacklisted) {
+        await removeOwnerFromBlacklist(ownerName);
+        setStatusMessage('Owner removed from blacklist.');
+      } else {
+        await addOwnerToBlacklist(ownerName);
+        setStatusMessage('Owner added to blacklist.');
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to update owner blacklist.';
+      setStatusMessage(message);
+    } finally {
+      setIsBlacklistPending(false);
+    }
+  }, [
+    addOwnerToBlacklist,
+    blacklistDisabledMessage,
+    isOwnerBlacklisted,
+    normalizedOwner,
+    ownerName,
+    removeOwnerFromBlacklist,
+    setStatusMessage,
+    supabaseConfigured,
+  ]);
+
   return (
     <>
       <div className="detail-sidebar">
@@ -211,6 +268,45 @@ function OwnerDetailPage(): JSX.Element {
             <dd>{complexCount.toLocaleString()}</dd>
           </div>
         </dl>
+        <div className="detail-sidebar__blacklist">
+          <p
+            className={`detail-sidebar__blacklist-status${
+              isOwnerBlacklisted ? ' detail-sidebar__blacklist-status--active' : ''
+            }`}
+          >
+            {isOwnerBlacklisted
+              ? 'This owner is currently blacklisted. All associated properties appear on the Blacklisted tab.'
+              : 'Add this owner to the blacklist to prevent outreach to any of their properties.'}
+          </p>
+          <button
+            type="button"
+            className={`detail-sidebar__blacklist-button${
+              isOwnerBlacklisted ? ' detail-sidebar__blacklist-button--remove' : ''
+            }`}
+            onClick={() => {
+              void handleBlacklistToggle();
+            }}
+            disabled={!supabaseConfigured || !normalizedOwner || isBlacklistPending}
+            aria-busy={isBlacklistPending}
+            title={
+              !supabaseConfigured
+                ? blacklistDisabledMessage
+                : !normalizedOwner
+                  ? 'Owner name is required.'
+                  : isOwnerBlacklisted
+                    ? 'Remove this owner from the blacklist'
+                    : 'Add this owner to the blacklist'
+            }
+          >
+            {isBlacklistPending
+              ? isOwnerBlacklisted
+                ? 'Removing…'
+                : 'Adding…'
+              : isOwnerBlacklisted
+                ? 'Remove from blacklist'
+                : 'Add to blacklist'}
+          </button>
+        </div>
       </div>
       <div className="detail-table">
         <ListingTable

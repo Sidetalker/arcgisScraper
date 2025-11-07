@@ -336,6 +336,11 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
           ) : (
             '—'
           )}
+          {listing.isOwnerBlacklisted ? (
+            <span className="listing-table__owner-badge" aria-label="Owner is blacklisted">
+              Blacklisted
+            </span>
+          ) : null}
           {owners.length > 1 ? (
             <div className="listing-table__owner-count">{owners.length} owners</div>
           ) : null}
@@ -2202,6 +2207,7 @@ export function ListingTable({
                   'listing-table__row',
                   highlightedListingId === listing.id ? 'listing-table__row--highlight' : '',
                   listing.hasCustomizations ? 'listing-table__row--customized' : '',
+                  listing.isOwnerBlacklisted ? 'listing-table__row--blacklisted' : '',
                   isEditing ? 'listing-table__row--editing' : '',
                 ]
                   .filter(Boolean)

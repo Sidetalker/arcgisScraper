@@ -90,6 +90,7 @@ export interface ListingRecord {
   physicalAddress: string;
   isBusinessOwner: boolean;
   isFavorited: boolean;
+  isOwnerBlacklisted: boolean;
   hasCustomizations: boolean;
   latitude: number | null;
   longitude: number | null;
