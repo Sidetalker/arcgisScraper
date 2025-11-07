@@ -21,14 +21,21 @@ select
   l.*,
   w.waitlist_type,
   w.position as waitlist_position,
-  (b.owner_normalized is not null) as is_owner_blacklisted
+  exists (
+    select 1
+    from public.owner_blacklist as b
+    where b.owner_normalized = trim(lower(l.owner_name))
+      or exists (
+        select 1
+        from unnest(coalesce(l.owner_names, array[]::text[])) as owner_name(value)
+        where b.owner_normalized = trim(lower(value))
+      )
+  ) as is_owner_blacklisted
 from
   public.listings as l
 left join
   public.waitlist_entry_matches as m on l.id = m.listing_id
 left join
-  public.waitlist_entries as w on m.entry_id = w.id
-left join
-  public.owner_blacklist as b on b.owner_normalized = trim(lower(l.owner_name));
+  public.waitlist_entries as w on m.entry_id = w.id;
 
 grant select on public.listings_with_waitlist to anon, authenticated;

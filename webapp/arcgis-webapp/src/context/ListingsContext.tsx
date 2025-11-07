@@ -17,6 +17,7 @@ import {
   removeOwnerFromBlacklist as removeOwnerFromBlacklistEntry,
   replaceAllListings,
   removeListingCustomization,
+  recordMatchesOwnerBlacklist,
   type ListingCustomizationOverrides,
   type OwnerBlacklistEntry,
   updateListingFavorite as updateListingFavoriteFlag,
@@ -152,8 +153,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       );
 
       return records.map((record) => {
-        const normalized = normalizeOwnerNameKey(record.ownerName);
-        const isBlacklisted = normalized ? ownerSet.has(normalized) : false;
+        const isBlacklisted = recordMatchesOwnerBlacklist(record, ownerSet);
         if (record.isOwnerBlacklisted === isBlacklisted) {
           return record;
         }

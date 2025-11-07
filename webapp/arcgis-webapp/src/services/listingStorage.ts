@@ -414,6 +414,29 @@ function normaliseOwnerNameKey(value: Nullable<string>): string {
   return value.trim().toLowerCase();
 }
 
+export function recordMatchesOwnerBlacklist(
+  record: ListingRecord,
+  blacklist: ReadonlySet<string>,
+): boolean {
+  if (blacklist.size === 0) {
+    return false;
+  }
+
+  const normalizedOwner = normaliseOwnerNameKey(record.ownerName);
+  if (normalizedOwner && blacklist.has(normalizedOwner)) {
+    return true;
+  }
+
+  for (const name of record.ownerNames) {
+    const normalized = normaliseOwnerNameKey(name);
+    if (normalized && blacklist.has(normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function formatCityStateZipLine(city: string, state: string, postcode: string): string {
   const cityPart = city.trim();
   const statePart = state.trim();
@@ -910,8 +933,7 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
   );
 
   const finalRecords = mergedRecords.map((record) => {
-    const normalizedOwner = normaliseOwnerNameKey(record.ownerName);
-    const isBlacklisted = normalizedOwner ? blacklistSet.has(normalizedOwner) : false;
+    const isBlacklisted = recordMatchesOwnerBlacklist(record, blacklistSet);
     if (record.isOwnerBlacklisted === isBlacklisted) {
       return record;
     }
