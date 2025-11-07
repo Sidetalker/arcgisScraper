@@ -31,6 +31,7 @@ function makeListing(id: string, complex: string): ListingRecord {
     isBusinessOwner: false,
     isFavorited: false,
     hasCustomizations: false,
+    isOwnerBlacklisted: false,
     latitude: null,
     longitude: null,
     estimatedRenewalDate: null,
