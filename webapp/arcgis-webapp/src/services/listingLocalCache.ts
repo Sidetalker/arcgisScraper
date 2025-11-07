@@ -59,6 +59,7 @@ export async function loadListingsFromCache(): Promise<
     ...record,
     zone: typeof record.zone === 'string' ? record.zone : '',
     hasCustomizations: Boolean(record.hasCustomizations),
+    isOwnerBlacklisted: Boolean(record.isOwnerBlacklisted),
     strLicenseId: record.strLicenseId ?? null,
     strLicenseStatus: record.strLicenseStatus ?? null,
     strLicenseStatusNormalized: record.strLicenseStatusNormalized ?? 'unknown',

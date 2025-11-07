@@ -130,11 +130,13 @@ export interface ListingRow {
   waitlist_type: Nullable<string>;
   waitlist_position: Nullable<number>;
   updated_at?: string;
+  is_owner_blacklisted?: Nullable<boolean>;
 }
 
 export interface StoredListingSet {
   records: ListingRecord[];
   latestUpdatedAt: Date | null;
+  blacklistedOwners: OwnerBlacklistEntry[];
 }
 
 export interface ListingCustomizationOverrides {
@@ -160,6 +162,34 @@ interface ListingCustomizationRow {
   overrides: Record<string, unknown> | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+interface OwnerBlacklistRow {
+  owner_normalized: Nullable<string>;
+  owner_name: Nullable<string>;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface OwnerBlacklistEntry {
+  ownerName: string;
+  ownerNameNormalized: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+function fromOwnerBlacklistRow(row: OwnerBlacklistRow): OwnerBlacklistEntry {
+  const normalized = normaliseOwnerNameKey(row.owner_normalized ?? row.owner_name ?? '');
+  const displayName = typeof row.owner_name === 'string' ? row.owner_name.trim() : '';
+  const createdAt = row.created_at ? new Date(row.created_at) : null;
+  const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
+
+  return {
+    ownerName: displayName || row.owner_name?.toString() || '',
+    ownerNameNormalized: normalized,
+    createdAt: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null,
+    updatedAt: updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null,
+  };
 }
 
 function toListingRow(record: ListingRecord): ListingRow {
@@ -294,6 +324,7 @@ function fromListingRow(row: ListingRow): ListingRecord {
     physicalAddress: sourceOfTruth.physicalAddress,
     isBusinessOwner: sourceOfTruth.isBusinessOwner,
     isFavorited: Boolean(row.is_favorited),
+    isOwnerBlacklisted: Boolean(row.is_owner_blacklisted),
     hasCustomizations: false,
     latitude,
     longitude,
@@ -374,6 +405,13 @@ function normaliseUnitString(value: Nullable<string>): string {
     return String(value).replace(/[^A-Za-z0-9]/g, '').toLowerCase();
   }
   return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function normaliseOwnerNameKey(value: Nullable<string>): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().toLowerCase();
 }
 
 function formatCityStateZipLine(city: string, state: string, postcode: string): string {
@@ -715,6 +753,7 @@ const LISTING_COLUMNS = [
   'str_license_updated_at',
   'waitlist_type',
   'waitlist_position',
+  'is_owner_blacklisted',
   'updated_at',
 ] as const;
 
@@ -723,7 +762,7 @@ async function fetchListingRowById(
   listingId: string,
 ): Promise<ListingRow> {
   const { data, error } = await client
-    .from('listings')
+    .from('listings_with_waitlist')
     .select(LISTING_COLUMNS.join(', '))
     .eq('id', listingId)
     .maybeSingle();
@@ -786,6 +825,21 @@ async function fetchListingCustomizations(
   return map;
 }
 
+async function fetchOwnerBlacklist(client: SupabaseClientInstance): Promise<OwnerBlacklistEntry[]> {
+  const { data, error } = await client
+    .from('owner_blacklist')
+    .select('owner_normalized, owner_name, created_at, updated_at');
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as unknown as OwnerBlacklistRow[];
+  return rows
+    .map((row) => fromOwnerBlacklistRow(row))
+    .filter((entry) => entry.ownerNameNormalized.length > 0);
+}
+
 const PAGE_SIZE = 1000;
 
 export async function fetchStoredListings(): Promise<StoredListingSet> {
@@ -843,7 +897,28 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
     return { ...merged, hasCustomizations: hasDifferences };
   });
 
-  return { records: mergedRecords, latestUpdatedAt: latest };
+  const blacklistedOwners = await fetchOwnerBlacklist(client);
+  blacklistedOwners.forEach((entry) => {
+    if (!entry.updatedAt) {
+      return;
+    }
+    latest = latest && latest > entry.updatedAt ? latest : entry.updatedAt;
+  });
+
+  const blacklistSet = new Set(
+    blacklistedOwners.map((entry) => entry.ownerNameNormalized).filter((value) => value.length > 0),
+  );
+
+  const finalRecords = mergedRecords.map((record) => {
+    const normalizedOwner = normaliseOwnerNameKey(record.ownerName);
+    const isBlacklisted = normalizedOwner ? blacklistSet.has(normalizedOwner) : false;
+    if (record.isOwnerBlacklisted === isBlacklisted) {
+      return record;
+    }
+    return { ...record, isOwnerBlacklisted: isBlacklisted };
+  });
+
+  return { records: finalRecords, latestUpdatedAt: latest, blacklistedOwners };
 }
 
 export async function replaceAllListings(records: ListingRecord[]): Promise<void> {
@@ -899,22 +974,16 @@ export async function updateListingFavorite(
   isFavorited: boolean,
 ): Promise<{ record: ListingRecord; updatedAt: Date | null }> {
   const client = assertSupabaseClient();
-  const { data, error } = await client
+  const { error } = await client
     .from('listings')
     .update({ is_favorited: isFavorited })
-    .eq('id', listingId)
-    .select(LISTING_COLUMNS.join(', '))
-    .single();
+    .eq('id', listingId);
 
   if (error) {
     throw error;
   }
 
-  if (!data) {
-    throw new Error('Listing not found while updating favorite state.');
-  }
-
-  const row = data as unknown as ListingRow;
+  const row = await fetchListingRowById(client, listingId);
   const record = fromListingRow(row);
   const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
   const safeUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null;
@@ -981,4 +1050,66 @@ export async function removeListingCustomization(
 
   const baseRecord = fromListingRow(baseRow);
   return { record: { ...baseRecord, hasCustomizations: false }, updatedAt: new Date() };
+}
+
+export async function addOwnerToBlacklist(
+  ownerName: string,
+): Promise<{ entry: OwnerBlacklistEntry; updatedAt: Date | null }> {
+  const client = assertSupabaseClient();
+  const trimmed = ownerName.trim();
+  const normalized = normaliseOwnerNameKey(trimmed || ownerName);
+
+  if (!normalized) {
+    throw new Error('Owner name must not be empty.');
+  }
+
+  const payload = {
+    owner_normalized: normalized,
+    owner_name: trimmed || ownerName,
+  };
+
+  const { data, error } = await client
+    .from('owner_blacklist')
+    .upsert(payload, { onConflict: 'owner_normalized' })
+    .select('owner_normalized, owner_name, created_at, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const entry = fromOwnerBlacklistRow(data as OwnerBlacklistRow);
+  const updatedAt = entry.updatedAt ?? new Date();
+  return { entry, updatedAt };
+}
+
+export async function removeOwnerFromBlacklist(
+  ownerName: string,
+): Promise<{ ownerNameNormalized: string; updatedAt: Date | null }> {
+  const client = assertSupabaseClient();
+  const trimmed = ownerName.trim();
+  const normalized = normaliseOwnerNameKey(trimmed || ownerName);
+
+  if (!normalized) {
+    throw new Error('Owner name must not be empty.');
+  }
+
+  const { data, error } = await client
+    .from('owner_blacklist')
+    .delete()
+    .eq('owner_normalized', normalized)
+    .select('owner_normalized, owner_name, created_at, updated_at')
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const entry = data ? fromOwnerBlacklistRow(data as OwnerBlacklistRow) : null;
+  const updatedAt = entry?.updatedAt ?? new Date();
+
+  return {
+    ownerNameNormalized: normalized,
+    updatedAt,
+  };
 }

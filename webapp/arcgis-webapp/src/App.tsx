@@ -7,6 +7,7 @@ import './App.css';
 import HomePage from '@/pages/HomePage';
 import ComplexDetailPage from '@/pages/ComplexDetailPage';
 import FavoritesPage from '@/pages/FavoritesPage';
+import BlacklistedPage from '@/pages/BlacklistedPage';
 import ManualEditsPage from '@/pages/ManualEditsPage';
 import OwnerDetailPage from '@/pages/OwnerDetailPage';
 import PasswordModal from '@/components/PasswordModal';
@@ -104,12 +105,23 @@ function Layout(): JSX.Element {
     return listings.filter((listing) => listing.hasCustomizations).length;
   }, [listings]);
 
+  const blacklistedCount = useMemo(() => {
+    return listings.filter((listing) => listing.isOwnerBlacklisted).length;
+  }, [listings]);
+
   const manualEditsLabel = useMemo(() => {
     if (manualEditCount === 0) {
       return 'Manual edits';
     }
     return `Manual edits (${manualEditCount.toLocaleString()})`;
   }, [manualEditCount]);
+
+  const blacklistedLabel = useMemo(() => {
+    if (blacklistedCount === 0) {
+      return 'Blacklisted';
+    }
+    return `Blacklisted (${blacklistedCount.toLocaleString()})`;
+  }, [blacklistedCount]);
 
   return (
     <div className="app">
@@ -184,6 +196,12 @@ function Layout(): JSX.Element {
           Favorites
         </NavLink>
         <NavLink
+          to="/blacklisted"
+          className={({ isActive }) => `app__tab${isActive ? ' app__tab--active' : ''}`}
+        >
+          {blacklistedLabel}
+        </NavLink>
+        <NavLink
           to="/manual-edits"
           className={({ isActive }) => `app__tab${isActive ? ' app__tab--active' : ''}`}
           title="View listings that have been manually edited"
@@ -236,6 +254,7 @@ function App(): JSX.Element {
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/blacklisted" element={<BlacklistedPage />} />
         <Route path="/manual-edits" element={<ManualEditsPage />} />
         <Route path="/watchlists/:watchlistId" element={<WatchlistDetailPage />} />
         <Route path="/complex/:complexId" element={<ComplexDetailPage />} />

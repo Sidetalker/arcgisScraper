@@ -823,6 +823,11 @@
   box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.4);
 }
 
+.listing-table__row--blacklisted {
+  background-color: rgba(250, 204, 21, 0.16) !important;
+  box-shadow: inset 0 0 0 2px rgba(234, 179, 8, 0.35);
+}
+
 .listing-table__owner {
   font-weight: 600;
   color: #0f172a;
@@ -832,6 +837,21 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.listing-table__owner-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  margin-top: 0.5rem;
+  width: fit-content;
 }
 
 .listing-table__owner-count {

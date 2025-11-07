@@ -1102,6 +1102,58 @@
   color: #0f172a;
 }
 
+.detail-sidebar__blacklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.detail-sidebar__blacklist-status {
+  margin: 0;
+  color: #334155;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.detail-sidebar__blacklist-status--active {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.detail-sidebar__blacklist-button {
+  align-self: flex-start;
+  padding: 0.55rem 1.15rem;
+  border-radius: 999px;
+  border: none;
+  background: #1d4ed8;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+
+.detail-sidebar__blacklist-button:hover,
+.detail-sidebar__blacklist-button:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -12px rgba(15, 23, 42, 0.5);
+}
+
+.detail-sidebar__blacklist-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+  transform: none;
+}
+
+.detail-sidebar__blacklist-button--remove {
+  background: #dc2626;
+}
+
 .detail-table {
   display: flex;
   flex-direction: column;

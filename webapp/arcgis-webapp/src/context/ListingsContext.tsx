@@ -12,10 +12,13 @@ import { fetchListings, fetchStrLicenseRoster } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import {
   applyListingOverrides,
+  addOwnerToBlacklist as addOwnerToBlacklistEntry,
   fetchStoredListings,
+  removeOwnerFromBlacklist as removeOwnerFromBlacklistEntry,
   replaceAllListings,
   removeListingCustomization,
   type ListingCustomizationOverrides,
+  type OwnerBlacklistEntry,
   updateListingFavorite as updateListingFavoriteFlag,
   upsertListingCustomization,
 } from '@/services/listingStorage';
@@ -31,6 +34,10 @@ import type { ListingRecord, RegionShape } from '@/types';
 
 const REGION_STORAGE_KEY = 'arcgis-regions:v1';
 
+function normalizeOwnerNameKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export interface ListingsContextValue {
   listings: ListingRecord[];
   loading: boolean;
@@ -41,6 +48,7 @@ export interface ListingsContextValue {
   isLocalCacheStale: boolean;
   source: 'local' | 'supabase' | 'syncing' | 'unknown';
   supabaseConfigured: boolean;
+  blacklistedOwners: OwnerBlacklistEntry[];
   onRegionsChange: (nextRegions: RegionShape[]) => void;
   refresh: () => void;
   syncing: boolean;
@@ -52,6 +60,8 @@ export interface ListingsContextValue {
     overrides: ListingCustomizationOverrides,
   ) => Promise<void>;
   revertListingToOriginal: (listingId: string) => Promise<void>;
+  addOwnerToBlacklist: (ownerName: string) => Promise<void>;
+  removeOwnerFromBlacklist: (ownerName: string) => Promise<void>;
 }
 
 const ListingsContext = createContext<ListingsContextValue | undefined>(undefined);
@@ -66,6 +76,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   const [syncing, setSyncing] = useState(false);
   const [source, setSource] = useState<'local' | 'supabase' | 'syncing' | 'unknown'>('unknown');
   const [supabaseConfigured, setSupabaseConfigured] = useState<boolean>(isSupabaseConfigured);
+  const [blacklistedOwners, setBlacklistedOwners] = useState<OwnerBlacklistEntry[]>([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -127,9 +138,66 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     [],
   );
 
+  const applyBlacklistToRecords = useCallback(
+    (records: ListingRecord[], owners: OwnerBlacklistEntry[] | null = null) => {
+      const activeOwners = owners ?? blacklistedOwners;
+      if (activeOwners.length === 0) {
+        return records.map((record) =>
+          record.isOwnerBlacklisted ? { ...record, isOwnerBlacklisted: false } : record,
+        );
+      }
+
+      const ownerSet = new Set(
+        activeOwners.map((entry) => entry.ownerNameNormalized).filter((value) => value.length > 0),
+      );
+
+      return records.map((record) => {
+        const normalized = normalizeOwnerNameKey(record.ownerName);
+        const isBlacklisted = normalized ? ownerSet.has(normalized) : false;
+        if (record.isOwnerBlacklisted === isBlacklisted) {
+          return record;
+        }
+        return { ...record, isOwnerBlacklisted: isBlacklisted };
+      });
+    },
+    [blacklistedOwners],
+  );
+
+  const deriveBlacklistedOwners = useCallback((records: ListingRecord[]): OwnerBlacklistEntry[] => {
+    const entries = new Map<string, OwnerBlacklistEntry>();
+    records.forEach((record) => {
+      if (!record.isOwnerBlacklisted) {
+        return;
+      }
+      const normalized = normalizeOwnerNameKey(record.ownerName);
+      if (!normalized || entries.has(normalized)) {
+        return;
+      }
+      entries.set(normalized, {
+        ownerName: record.ownerName,
+        ownerNameNormalized: normalized,
+        createdAt: null,
+        updatedAt: null,
+      });
+    });
+
+    return Array.from(entries.values()).sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+  }, []);
+
   const applyListingSnapshot = useCallback(
-    (records: ListingRecord[], supabaseUpdatedAt: Date | null, savedAt?: Date | null) => {
-      setListings(records);
+    (
+      records: ListingRecord[],
+      supabaseUpdatedAt: Date | null,
+      savedAt?: Date | null,
+      owners?: OwnerBlacklistEntry[] | null,
+    ) => {
+      const effectiveOwners = owners
+        ? owners.slice().sort((a, b) => a.ownerName.localeCompare(b.ownerName))
+        : deriveBlacklistedOwners(records);
+      const recordsWithBlacklist = applyBlacklistToRecords(records, effectiveOwners);
+
+      setListings(recordsWithBlacklist);
+      setBlacklistedOwners(effectiveOwners);
       if (supabaseUpdatedAt) {
         setCachedAt(supabaseUpdatedAt);
       }
@@ -139,8 +207,9 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       if (!savedAt) {
         setSource('supabase');
       }
+      return recordsWithBlacklist;
     },
-    [],
+    [applyBlacklistToRecords, deriveBlacklistedOwners],
   );
 
   const hydrateFromLocalCache = useCallback(async () => {
@@ -150,7 +219,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         return false;
       }
 
-      applyListingSnapshot(cached.records, cached.supabaseUpdatedAt, cached.savedAt);
+      applyListingSnapshot(cached.records, cached.supabaseUpdatedAt, cached.savedAt, null);
       return true;
     } catch (error) {
       console.warn('Unable to restore listings from IndexedDB.', error);
@@ -163,10 +232,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     setSource('supabase');
     setError(null);
     try {
-      const { records, latestUpdatedAt } = await fetchStoredListings();
+      const { records, latestUpdatedAt, blacklistedOwners: owners } = await fetchStoredListings();
       setSupabaseConfigured(true);
-      applyListingSnapshot(records, latestUpdatedAt ?? null, null);
-      await persistLocalCache(records, latestUpdatedAt ?? null);
+      const withBlacklist = applyListingSnapshot(records, latestUpdatedAt ?? null, null, owners);
+      await persistLocalCache(withBlacklist, latestUpdatedAt ?? null);
     } catch (loadError) {
       console.error('Failed to fetch listings from Supabase.', loadError);
       const message =
@@ -183,7 +252,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setLoading(false);
     }
-  }, [applyListingSnapshot, persistLocalCache]);
+  }, [applyListingSnapshot, persistLocalCache, blacklistedOwners]);
 
   useEffect(() => {
     void (async () => {
@@ -205,7 +274,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     setError(null);
     try {
       await clearListingsCache();
-      applyListingSnapshot([], null, null);
+      applyListingSnapshot([], null, null, []);
       setCachedAt(null);
       setLocalCachedAt(null);
       setSource('unknown');
@@ -251,8 +320,13 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
 
       await replaceAllListings(enrichedRecords);
       const syncTimestamp = new Date();
-      applyListingSnapshot(enrichedRecords, syncTimestamp, syncTimestamp);
-      await persistLocalCache(enrichedRecords, syncTimestamp);
+      const withBlacklist = applyListingSnapshot(
+        enrichedRecords,
+        syncTimestamp,
+        syncTimestamp,
+        blacklistedOwners,
+      );
+      await persistLocalCache(withBlacklist, syncTimestamp);
       console.info('Supabase listings were synchronised successfully.', {
         listingCount: enrichedRecords.length,
         licenseRosterCount: licenseFeatureSet.features?.length ?? 0,
@@ -268,23 +342,27 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     } finally {
       setSyncing(false);
     }
-  }, [applyListingSnapshot, persistLocalCache]);
+  }, [applyListingSnapshot, persistLocalCache, blacklistedOwners]);
 
   const updateFavorite = useCallback(
     async (listingId: string, isFavorited: boolean) => {
       setListings((current) =>
-        current.map((listing) =>
-          listing.id === listingId ? { ...listing, isFavorited } : listing,
+        applyBlacklistToRecords(
+          current.map((listing) =>
+            listing.id === listingId ? { ...listing, isFavorited } : listing,
+          ),
         ),
       );
 
       try {
         const { record, updatedAt } = await updateListingFavoriteFlag(listingId, isFavorited);
         setListings((current) => {
-          const nextListings = current.map((listing) =>
-            listing.id === listingId
-              ? { ...listing, isFavorited: record.isFavorited }
-              : listing,
+          const nextListings = applyBlacklistToRecords(
+            current.map((listing) =>
+              listing.id === listingId
+                ? { ...listing, isFavorited: record.isFavorited }
+                : listing,
+            ),
           );
           void persistLocalCache(nextListings, updatedAt ?? cachedAt);
           return nextListings;
@@ -302,8 +380,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       } catch (error) {
         console.error('Failed to update favorite state in Supabase.', error);
         setListings((current) =>
-          current.map((listing) =>
-            listing.id === listingId ? { ...listing, isFavorited: !isFavorited } : listing,
+          applyBlacklistToRecords(
+            current.map((listing) =>
+              listing.id === listingId ? { ...listing, isFavorited: !isFavorited } : listing,
+            ),
           ),
         );
         if (
@@ -315,7 +395,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         throw error instanceof Error ? error : new Error('Failed to update favorite state.');
       }
     },
-    [persistLocalCache, cachedAt],
+    [applyBlacklistToRecords, persistLocalCache, cachedAt],
   );
 
   const updateDetails = useCallback(
@@ -326,9 +406,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         if (!previousListing) {
           return current;
         }
-        return current.map((listing) =>
+        const updated = current.map((listing) =>
           listing.id === listingId ? applyListingOverrides(listing, overrides) : listing,
         );
+        return applyBlacklistToRecords(updated);
       });
 
       if (!previousListing) {
@@ -338,8 +419,8 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       try {
         const { record, updatedAt } = await upsertListingCustomization(listingId, overrides);
         setListings((current) => {
-          const nextListings = current.map((listing) =>
-            listing.id === listingId ? record : listing,
+          const nextListings = applyBlacklistToRecords(
+            current.map((listing) => (listing.id === listingId ? record : listing)),
           );
           void persistLocalCache(nextListings, updatedAt ?? cachedAt);
           return nextListings;
@@ -357,8 +438,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       } catch (error) {
         console.error('Failed to save listing customizations in Supabase.', error);
         setListings((current) =>
-          current.map((listing) =>
-            listing.id === listingId && previousListing ? previousListing : listing,
+          applyBlacklistToRecords(
+            current.map((listing) =>
+              listing.id === listingId && previousListing ? previousListing : listing,
+            ),
           ),
         );
         if (
@@ -370,7 +453,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         throw error instanceof Error ? error : new Error('Failed to save listing changes.');
       }
     },
-    [persistLocalCache, cachedAt],
+    [applyBlacklistToRecords, persistLocalCache, cachedAt],
   );
 
   const revertListing = useCallback(
@@ -381,9 +464,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         if (!previousListing) {
           return current;
         }
-        return current.map((listing) =>
+        const updated = current.map((listing) =>
           listing.id === listingId ? { ...listing, hasCustomizations: false } : listing,
         );
+        return applyBlacklistToRecords(updated);
       });
 
       if (!previousListing) {
@@ -393,8 +477,8 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       try {
         const { record, updatedAt } = await removeListingCustomization(listingId);
         setListings((current) => {
-          const nextListings = current.map((listing) =>
-            listing.id === listingId ? record : listing,
+          const nextListings = applyBlacklistToRecords(
+            current.map((listing) => (listing.id === listingId ? record : listing)),
           );
           void persistLocalCache(nextListings, updatedAt ?? cachedAt);
           return nextListings;
@@ -412,8 +496,10 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       } catch (error) {
         console.error('Failed to revert listing customizations in Supabase.', error);
         setListings((current) =>
-          current.map((listing) =>
-            listing.id === listingId && previousListing ? previousListing : listing,
+          applyBlacklistToRecords(
+            current.map((listing) =>
+              listing.id === listingId && previousListing ? previousListing : listing,
+            ),
           ),
         );
         if (
@@ -425,7 +511,105 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         throw error instanceof Error ? error : new Error('Failed to revert listing changes.');
       }
     },
-    [persistLocalCache, cachedAt],
+    [applyBlacklistToRecords, persistLocalCache, cachedAt],
+  );
+
+  const addBlacklistEntry = useCallback(
+    async (ownerName: string) => {
+      const trimmed = ownerName.trim();
+      const normalized = normalizeOwnerNameKey(trimmed);
+      if (!normalized) {
+        throw new Error('Owner name must not be empty.');
+      }
+
+      try {
+        const { entry, updatedAt } = await addOwnerToBlacklistEntry(trimmed);
+        let nextOwners: OwnerBlacklistEntry[] = [];
+        setBlacklistedOwners((current) => {
+          const filtered = current.filter(
+            (item) => item.ownerNameNormalized !== entry.ownerNameNormalized,
+          );
+          nextOwners = [...filtered, entry].sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+          return nextOwners;
+        });
+
+        const changeTimestamp = entry.updatedAt ?? updatedAt ?? new Date();
+        setListings((current) => {
+          const nextListings = applyBlacklistToRecords(current, nextOwners);
+          void persistLocalCache(nextListings, changeTimestamp);
+          return nextListings;
+        });
+
+        setCachedAt((previous) => {
+          if (!changeTimestamp) {
+            return previous;
+          }
+          if (!previous || changeTimestamp > previous) {
+            return changeTimestamp;
+          }
+          return previous;
+        });
+        setSupabaseConfigured(true);
+      } catch (error) {
+        console.error('Failed to add owner to blacklist in Supabase.', error);
+        if (
+          error instanceof Error &&
+          error.message.includes('Supabase client is not initialised')
+        ) {
+          setSupabaseConfigured(false);
+        }
+        throw error instanceof Error ? error : new Error('Failed to update owner blacklist.');
+      }
+    },
+    [applyBlacklistToRecords, cachedAt, persistLocalCache],
+  );
+
+  const removeBlacklistEntry = useCallback(
+    async (ownerName: string) => {
+      const normalized = normalizeOwnerNameKey(ownerName);
+      if (!normalized) {
+        throw new Error('Owner name must not be empty.');
+      }
+
+      try {
+        const { ownerNameNormalized, updatedAt } = await removeOwnerFromBlacklistEntry(ownerName);
+        let nextOwners: OwnerBlacklistEntry[] = [];
+        setBlacklistedOwners((current) => {
+          nextOwners = current
+            .filter((item) => item.ownerNameNormalized !== ownerNameNormalized)
+            .sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+          return nextOwners;
+        });
+
+        const changeTimestamp = updatedAt ?? new Date();
+        setListings((current) => {
+          const nextListings = applyBlacklistToRecords(current, nextOwners);
+          void persistLocalCache(nextListings, changeTimestamp);
+          return nextListings;
+        });
+
+        setCachedAt((previous) => {
+          if (!changeTimestamp) {
+            return previous;
+          }
+          if (!previous || changeTimestamp > previous) {
+            return changeTimestamp;
+          }
+          return previous;
+        });
+        setSupabaseConfigured(true);
+      } catch (error) {
+        console.error('Failed to remove owner from blacklist in Supabase.', error);
+        if (
+          error instanceof Error &&
+          error.message.includes('Supabase client is not initialised')
+        ) {
+          setSupabaseConfigured(false);
+        }
+        throw error instanceof Error ? error : new Error('Failed to update owner blacklist.');
+      }
+    },
+    [applyBlacklistToRecords, cachedAt, persistLocalCache],
   );
 
   const isLocalCacheStale = useMemo(() => {
@@ -446,6 +630,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       isLocalCacheStale,
       source,
       supabaseConfigured,
+      blacklistedOwners,
       onRegionsChange: handleRegionsChange,
       refresh,
       syncing,
@@ -454,6 +639,8 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       updateListingDetails: updateDetails,
       revertListingToOriginal: revertListing,
       clearCacheAndReload,
+      addOwnerToBlacklist: addBlacklistEntry,
+      removeOwnerFromBlacklist: removeBlacklistEntry,
     }),
     [
       cachedAt,
@@ -473,6 +660,9 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       updateFavorite,
       updateDetails,
       revertListing,
+      blacklistedOwners,
+      addBlacklistEntry,
+      removeBlacklistEntry,
     ],
   );
 

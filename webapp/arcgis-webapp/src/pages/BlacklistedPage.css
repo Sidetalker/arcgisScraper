@@ -1,0 +1,21 @@
+.blacklisted-page {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.blacklisted-page__filters,
+.blacklisted-page__table {
+  width: 100%;
+}
+
+.blacklisted-page__filters .filters {
+  width: 100%;
+}
+
+.blacklisted-page__table {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
