@@ -219,6 +219,7 @@ function FavoritesPage(): JSX.Element {
           favoriteDisabledReason={favoritesDisabledMessage}
           canEditListings={supabaseConfigured}
           editDisabledReason={editDisabledMessage}
+          commentLinkPath="/favorites"
         />
       </section>
     </div>

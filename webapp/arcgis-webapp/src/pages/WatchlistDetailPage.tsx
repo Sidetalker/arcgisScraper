@@ -429,6 +429,7 @@ function WatchlistDetailPage(): JSX.Element {
           selectionLabel={selectedWatchlist ? `${selectedWatchlist.name} membership` : undefined}
           canEditListings={supabaseConfigured}
           editDisabledReason={editDisabledMessage}
+          commentLinkPath={watchlistId ? `/watchlists/${watchlistId}` : '/'}
         />
       </section>
     </div>
