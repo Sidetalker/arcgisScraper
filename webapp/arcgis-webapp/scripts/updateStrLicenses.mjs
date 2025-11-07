@@ -3,10 +3,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
-import statusMappings from '../shared/strLicenseStatus.json' assert { type: 'json' };
+
+const require = createRequire(import.meta.url);
+const statusMappings = require('../shared/strLicenseStatus.json');
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -228,6 +231,8 @@ if (!SUPABASE_SERVICE_ROLE_KEY) {
   );
   process.exit(1);
 }
+
+console.info(`Connecting to Supabase project at ${SUPABASE_URL}`);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
