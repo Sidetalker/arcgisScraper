@@ -28,6 +28,86 @@
   overflow: hidden;
 }
 
+.region-map__map--fullscreen {
+  height: 100vh;
+  width: 100vw;
+  border-radius: 0;
+}
+
+.region-map--fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  border-radius: 0;
+  gap: 0;
+  background-color: #0f172a;
+  box-shadow: none;
+  z-index: 1200;
+}
+
+.region-map--fullscreen > div:first-child,
+.region-map--fullscreen .region-map__selection-wrapper {
+  display: none;
+}
+
+.region-map--fullscreen .leaflet-container {
+  border-radius: 0;
+}
+
+.region-map--fullscreen .leaflet-control-container .leaflet-bottom,
+.region-map--fullscreen .leaflet-control-container .leaflet-top {
+  margin: 1.25rem;
+}
+
+body.region-map--fullscreen-active {
+  overflow: hidden;
+}
+
+.region-map__fullscreen-control {
+  display: flex;
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 16px 30px -20px rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.region-map__fullscreen-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.55rem 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.region-map__fullscreen-button:hover,
+.region-map__fullscreen-button:focus {
+  background: rgba(59, 130, 246, 0.25);
+  color: #f8fafc;
+}
+
+.region-map__fullscreen-button:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.7);
+}
+
+.region-map__fullscreen-button--active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(37, 99, 235, 0.85));
+  color: #f8fafc;
+}
+
+.region-map__fullscreen-button--active:hover,
+.region-map__fullscreen-button--active:focus {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.98), rgba(37, 99, 235, 0.98));
+}
+
 .region-map__toolbar {
   display: flex;
   flex-direction: column;

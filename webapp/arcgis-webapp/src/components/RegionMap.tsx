@@ -1664,6 +1664,71 @@ type ZoningDistrictHighlightsProps = {
   enabled: boolean;
 };
 
+type FullscreenControlProps = {
+  isFullscreen: boolean;
+  onToggle: () => void;
+};
+
+function FullscreenControl({ isFullscreen, onToggle }: FullscreenControlProps): null {
+  const map = useMap();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const control = new L.Control({ position: 'bottomleft' });
+    control.onAdd = () => {
+      const container = L.DomUtil.create(
+        'div',
+        'leaflet-bar region-map__fullscreen-control',
+      ) as HTMLDivElement;
+
+      const button = L.DomUtil.create(
+        'button',
+        'region-map__fullscreen-button',
+        container,
+      ) as HTMLButtonElement;
+
+      button.type = 'button';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggle();
+      });
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      buttonRef.current = button;
+      return container;
+    };
+
+    control.addTo(map);
+
+    return () => {
+      buttonRef.current = null;
+      control.remove();
+    };
+  }, [map, onToggle]);
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button) {
+      return;
+    }
+
+    const label = isFullscreen ? 'Exit full screen' : 'Full screen';
+    const title = isFullscreen
+      ? 'Exit the full screen map view'
+      : 'Expand the map to full screen';
+
+    button.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', title);
+    button.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+    button.classList.toggle('region-map__fullscreen-button--active', isFullscreen);
+  }, [isFullscreen]);
+
+  return null;
+}
+
 type ZoneBlurLayer = {
   summary: ZoningDistrictSummary;
   group: L.FeatureGroup<L.CircleMarker>;
@@ -1938,6 +2003,8 @@ function RegionMap({
   const [showZoneOverlay, setShowZoneOverlay] = useState(true);
   const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const mapRef = useRef<L.Map | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -2076,13 +2143,74 @@ function RegionMap({
     setHoveredZone(zone);
   }, []);
 
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
   const zoneDetailHighlight = hoveredZone && !hoveredListingId ? hoveredZone : null;
 
   const currentLayerConfig = MAP_LAYERS[currentLayer];
 
+  useEffect(() => {
+    const body = document.body;
+    if (!body) {
+      return;
+    }
+
+    const className = 'region-map--fullscreen-active';
+    if (isFullscreen) {
+      body.classList.add(className);
+    } else {
+      body.classList.remove(className);
+    }
+
+    return () => {
+      body.classList.remove(className);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const mapInstance = mapRef.current;
+    if (!mapInstance) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      mapInstance.invalidateSize();
+    }, isFullscreen ? 320 : 150);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    return () => {
+      mapRef.current = null;
+    };
+  }, []);
+
   return (
     <section
-      className="region-map"
+      className={`region-map${isFullscreen ? ' region-map--fullscreen' : ''}`}
       aria-label="Draw regions to filter listings"
       title="Draw polygons or circles to focus the ArcGIS search on specific areas"
     >
@@ -2101,10 +2229,13 @@ function RegionMap({
         />
       </div>
       <MapContainer
-        className="region-map__map"
+        className={`region-map__map${isFullscreen ? ' region-map__map--fullscreen' : ''}`}
         center={mapCenter}
         zoom={DEFAULT_ZOOM}
         scrollWheelZoom
+        whenCreated={(instance) => {
+          mapRef.current = instance;
+        }}
       >
         <TileLayer 
           url={currentLayerConfig.url} 
@@ -2139,6 +2270,7 @@ function RegionMap({
           onZoneHover={handleZoneHover}
           enabled={showZoneOverlay}
         />
+        <FullscreenControl isFullscreen={isFullscreen} onToggle={handleToggleFullscreen} />
       </MapContainer>
     </section>
   );
