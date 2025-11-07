@@ -30,6 +30,10 @@ create table if not exists public.listings (
   estimated_renewal_category text default 'missing',
   estimated_renewal_month_key text,
   nearest_ev_station_distance_meters double precision,
+  str_license_id text,
+  str_license_status text,
+  str_license_status_normalized text default 'unknown',
+  str_license_updated_at timestamptz,
   raw jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -55,6 +59,9 @@ create index if not exists listings_estimated_renewal_month_key_idx
 
 create index if not exists listings_estimated_renewal_category_idx
   on public.listings (estimated_renewal_category);
+
+create index if not exists listings_str_license_status_normalized_idx
+  on public.listings (str_license_status_normalized);
 
 -- Disable row level security so anon clients can read/write listings directly.
 alter table public.listings disable row level security;

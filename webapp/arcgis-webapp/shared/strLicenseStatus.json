@@ -1,0 +1,20 @@
+[
+  { "match": "APPROVED", "status": "active" },
+  { "match": "ACTIVE", "status": "active" },
+  { "match": "ISSUED", "status": "active" },
+  { "match": "CURRENT", "status": "active" },
+  { "match": "GOOD STANDING", "status": "active" },
+  { "match": "IN GOOD STANDING", "status": "active" },
+  { "match": "RENEWED", "status": "active" },
+  { "match": "PAID", "status": "active" },
+  { "match": "PENDING", "status": "pending" },
+  { "match": "UNDER REVIEW", "status": "pending" },
+  { "match": "IN PROCESS", "status": "pending" },
+  { "match": "EXPIRED", "status": "expired" },
+  { "match": "INACTIVE", "status": "inactive" },
+  { "match": "SUSPENDED", "status": "inactive" },
+  { "match": "REVOKED", "status": "revoked" },
+  { "match": "DENIED", "status": "revoked" },
+  { "match": "CANCELLED", "status": "revoked" },
+  { "match": "CANCELED", "status": "revoked" }
+]

@@ -12,6 +12,7 @@ import {
   type RenewalEstimate,
 } from '@/services/renewalEstimator';
 import { assertSupabaseClient } from '@/services/supabaseClient';
+import { normaliseStrLicenseStatus } from '@/services/strLicenseUtils';
 
 type Nullable<T> = T | null;
 type SupabaseClientInstance = ReturnType<typeof assertSupabaseClient>;
@@ -64,6 +65,35 @@ function formatDateColumn(value: Date | null): string | null {
   return value.toISOString().slice(0, 10);
 }
 
+function formatTimestampColumn(value: Date | null): string | null {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return null;
+  }
+  return value.toISOString();
+}
+
+function parseTimestampColumn(value: Nullable<unknown>): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const fromEpoch = new Date(value);
+    return Number.isNaN(fromEpoch.getTime()) ? null : fromEpoch;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
 export interface ListingRow {
   id: string;
   complex: Nullable<string>;
@@ -93,6 +123,10 @@ export interface ListingRow {
   estimated_renewal_category: Nullable<string>;
   estimated_renewal_month_key: Nullable<string>;
   raw: Nullable<Record<string, unknown>>;
+  str_license_id: Nullable<string>;
+  str_license_status: Nullable<string>;
+  str_license_status_normalized: Nullable<string>;
+  str_license_updated_at: Nullable<string>;
   updated_at?: string;
 }
 
@@ -157,6 +191,10 @@ function toListingRow(record: ListingRecord): ListingRow {
     estimated_renewal_category: record.estimatedRenewalCategory ?? 'missing',
     estimated_renewal_month_key: normaliseMonthKey(record.estimatedRenewalMonthKey) ?? null,
     raw: (record.raw as Record<string, unknown>) ?? null,
+    str_license_id: record.strLicenseId ?? null,
+    str_license_status: record.strLicenseStatus ?? null,
+    str_license_status_normalized: record.strLicenseStatusNormalized ?? 'unknown',
+    str_license_updated_at: formatTimestampColumn(record.strLicenseUpdatedAt),
   };
 }
 
@@ -202,6 +240,13 @@ function fromListingRow(row: ListingRow): ListingRecord {
   const ownerNames = Array.isArray(row.owner_names)
     ? row.owner_names.filter((value): value is string => typeof value === 'string')
     : [];
+
+  const strLicenseId = typeof row.str_license_id === 'string' ? row.str_license_id : null;
+  const strLicenseStatus = typeof row.str_license_status === 'string' ? row.str_license_status : null;
+  const strLicenseStatusNormalized = normaliseStrLicenseStatus(
+    row.str_license_status_normalized ?? strLicenseStatus ?? null,
+  );
+  const strLicenseUpdatedAt = parseTimestampColumn(row.str_license_updated_at);
 
   const unitNormalized = normaliseUnitString(row.unit_normalized ?? row.unit ?? '');
 
@@ -253,6 +298,10 @@ function fromListingRow(row: ListingRow): ListingRecord {
     estimatedRenewalReference,
     estimatedRenewalCategory: safeCategory,
     estimatedRenewalMonthKey: safeMonthKey,
+    strLicenseId,
+    strLicenseStatus,
+    strLicenseStatusNormalized,
+    strLicenseUpdatedAt,
     raw: rawAttributes,
     sourceOfTruth,
   };
@@ -654,6 +703,10 @@ const LISTING_COLUMNS = [
   'estimated_renewal_category',
   'estimated_renewal_month_key',
   'raw',
+  'str_license_id',
+  'str_license_status',
+  'str_license_status_normalized',
+  'str_license_updated_at',
   'updated_at',
 ] as const;
 
