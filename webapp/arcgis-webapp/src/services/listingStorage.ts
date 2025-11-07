@@ -742,15 +742,33 @@ async function fetchListingRowById(
 async function fetchListingCustomizations(
   client: SupabaseClientInstance,
 ): Promise<Map<string, { overrides: ListingCustomizationOverrides; updatedAt: Date | null }>> {
-  const { data, error } = await client
-    .from('listing_customizations')
-    .select('listing_id, overrides, updated_at');
+  const rows: ListingCustomizationRow[] = [];
+  let from = 0;
+  let hasMore = true;
 
-  if (error) {
-    throw error;
+  while (hasMore) {
+    const to = from + PAGE_SIZE - 1;
+    const { data, error } = await client
+      .from('listing_customizations')
+      .select('listing_id, overrides, updated_at')
+      .order('listing_id', { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    const batch = (data ?? []) as unknown as ListingCustomizationRow[];
+    rows.push(...batch);
+
+    if (batch.length < PAGE_SIZE) {
+      hasMore = false;
+      continue;
+    }
+
+    from += PAGE_SIZE;
   }
 
-  const rows = (data ?? []) as unknown as ListingCustomizationRow[];
   const map = new Map<string, { overrides: ListingCustomizationOverrides; updatedAt: Date | null }>();
 
   rows.forEach((row) => {
