@@ -1987,6 +1987,20 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover, enable
   return null;
 }
 
+type MapInstanceTrackerProps = {
+  onReady: (map: L.Map) => void;
+};
+
+function MapInstanceTracker({ onReady }: MapInstanceTrackerProps): null {
+  const map = useMap();
+
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+
+  return null;
+}
+
 function RegionMap({
   regions,
   onRegionsChange,
@@ -2005,6 +2019,9 @@ function RegionMap({
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
+  const handleMapReady = useCallback((map: L.Map) => {
+    mapRef.current = map;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2233,15 +2250,13 @@ function RegionMap({
         center={mapCenter}
         zoom={DEFAULT_ZOOM}
         scrollWheelZoom
-        whenCreated={(instance) => {
-          mapRef.current = instance;
-        }}
       >
-        <TileLayer 
-          url={currentLayerConfig.url} 
+        <TileLayer
+          url={currentLayerConfig.url}
           attribution={currentLayerConfig.attribution}
           maxZoom={currentLayerConfig.maxZoom}
         />
+        <MapInstanceTracker onReady={handleMapReady} />
         <SummitCountyOverlay />
         <DrawManager
           regions={regions}
