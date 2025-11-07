@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import {
   type ListingTableColumnFilters,
@@ -27,6 +27,8 @@ import {
 } from '@/utils/listingColumnFilters';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingRecord, ListingSourceOfTruth } from '@/types';
+import ListingComments from '@/components/ListingComments';
+import { fetchListingCommentCounts } from '@/services/listingComments';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -61,6 +63,7 @@ interface ListingTableProps {
   canChangeSelection?: boolean;
   selectionDisabledReason?: string;
   selectionLabel?: string;
+  commentLinkPath?: string;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -429,10 +432,49 @@ export function ListingTable({
   canChangeSelection,
   selectionDisabledReason,
   selectionLabel,
+  commentLinkPath,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const element = scrollContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const setCommentViewportWidth = () => {
+      element.style.setProperty(
+        '--listing-table-comment-viewport-width',
+        `${element.clientWidth}px`,
+      );
+    };
+
+    setCommentViewportWidth();
+
+    let resizeObserver: ResizeObserver | null = null;
+
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(() => {
+        setCommentViewportWidth();
+      });
+      resizeObserver.observe(element);
+    }
+
+    window.addEventListener('resize', setCommentViewportWidth);
+
+    return () => {
+      window.removeEventListener('resize', setCommentViewportWidth);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
@@ -456,6 +498,21 @@ export function ListingTable({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
+  const [expandedCommentListingIds, setExpandedCommentListingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [listingCommentCounts, setListingCommentCounts] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  const location = useLocation();
+  const commentLinkBasePath = commentLinkPath ?? location.pathname;
+  const [pendingCommentTarget, setPendingCommentTarget] = useState<
+    { listingId: string; commentId: string } | null
+  >(null);
+  const [commentHighlightTarget, setCommentHighlightTarget] = useState<
+    { listingId: string; commentId: string } | null
+  >(null);
+  const pendingCommentPageRef = useRef<number | null>(null);
   const favoriteDisabledMessage =
     favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
   const watchlistDisabledMessage =
@@ -476,6 +533,47 @@ export function ListingTable({
     }
     return new Set<string>(selectedListingIds);
   }, [selectedListingIds]);
+
+  const urlCommentTarget = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const listingParam = params.get('listing');
+    const commentParam = params.get('comment');
+    if (!listingParam || !commentParam) {
+      return null;
+    }
+    return { listingId: listingParam, commentId: commentParam } as const;
+  }, [location.search]);
+
+  useEffect(() => {
+    setPendingCommentTarget(urlCommentTarget);
+    if (!urlCommentTarget) {
+      setCommentHighlightTarget(null);
+    }
+  }, [urlCommentTarget]);
+  useEffect(() => {
+    setExpandedCommentListingIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      const validIds = new Set(listings.map((listing) => listing.id));
+      let changed = false;
+      current.forEach((id) => {
+        if (!validIds.has(id)) {
+          changed = true;
+        }
+      });
+      if (!changed) {
+        return current;
+      }
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (validIds.has(id)) {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [listings]);
   const createDraftFromListing = useCallback((listing: ListingRecord): ListingEditDraft => {
     return {
       complex: listing.complex,
@@ -517,6 +615,17 @@ export function ListingTable({
     },
     [canEditListings, createDraftFromListing, editingListingId],
   );
+  const handleToggleComments = useCallback((listingId: string) => {
+    setExpandedCommentListingIds((current) => {
+      const next = new Set(current);
+      if (next.has(listingId)) {
+        next.delete(listingId);
+      } else {
+        next.add(listingId);
+      }
+      return next;
+    });
+  }, []);
   const handleDraftInputChange = useCallback(
     (field: keyof ListingEditDraft) =>
       (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -905,9 +1014,60 @@ export function ListingTable({
   const requestedPage = Number.isFinite(currentPage) ? Math.floor(currentPage) : 1;
   const safePage = clampPage(requestedPage);
   const startIndex = (safePage - 1) * effectivePageSize;
-  const endIndex = Math.min(startIndex + effectivePageSize, sortedListings.length);
-  const pageListings = sortedListings.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
+  const pageListings = useMemo(
+    () => filteredListings.slice(startIndex, endIndex),
+    [filteredListings, startIndex, endIndex],
+  );
   const columnCount = Math.max(1, visibleColumns.length + 2);
+  const pageListingIds = useMemo(
+    () => pageListings.map((listing) => listing.id),
+    [pageListings],
+  );
+
+  useEffect(() => {
+    if (pageListingIds.length === 0) {
+      return;
+    }
+
+    let active = true;
+
+    const load = async () => {
+      try {
+        const counts = await fetchListingCommentCounts(pageListingIds);
+        if (!active) {
+          return;
+        }
+
+        setListingCommentCounts((current) => {
+          const next = new Map(current);
+          pageListingIds.forEach((id) => next.delete(id));
+          for (const [listingId, count] of Object.entries(counts)) {
+            if (count > 0) {
+              next.set(listingId, count);
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        console.error('Failed to load comment counts for visible listings.', error);
+        setListingCommentCounts((current) => {
+          if (current.size === 0) {
+            return current;
+          }
+          const next = new Map(current);
+          pageListingIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [pageListingIds]);
 
   const handleSelectionToggle = useCallback(
     (listingId: string) => (event: ChangeEvent<HTMLInputElement>) => {
@@ -944,6 +1104,21 @@ export function ListingTable({
       }
     },
     [effectiveSelectionMode, onFavoriteChange, onSelectionChange],
+  );
+
+  const handleListingCommentSummary = useCallback(
+    (summary: { listingId: string; count: number; hasComments: boolean }) => {
+      setListingCommentCounts((current) => {
+        const next = new Map(current);
+        if (summary.count > 0) {
+          next.set(summary.listingId, summary.count);
+        } else {
+          next.delete(summary.listingId);
+        }
+        return next;
+      });
+    },
+    [],
   );
 
   useEffect(() => {
@@ -1467,6 +1642,84 @@ export function ListingTable({
   };
 
   useEffect(() => {
+    if (!pendingCommentTarget) {
+      pendingCommentPageRef.current = null;
+      return;
+    }
+
+    const { listingId, commentId } = pendingCommentTarget;
+    const filteredIndex = filteredListings.findIndex((listing) => listing.id === listingId);
+    if (filteredIndex === -1) {
+      setCommentHighlightTarget((current) => {
+        if (current && current.listingId === listingId) {
+          return null;
+        }
+        return current;
+      });
+      return;
+    }
+
+    const targetPage = Math.floor(filteredIndex / effectivePageSize) + 1;
+    if (targetPage !== safePage) {
+      if (pendingCommentPageRef.current !== targetPage) {
+        pendingCommentPageRef.current = targetPage;
+        onPageChange(targetPage);
+      }
+      return;
+    }
+
+    pendingCommentPageRef.current = null;
+
+    setExpandedCommentListingIds((current) => {
+      if (current.has(listingId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(listingId);
+      return next;
+    });
+
+    setCommentHighlightTarget((current) => {
+      if (current && current.listingId === listingId && current.commentId === commentId) {
+        return current;
+      }
+      return { listingId, commentId };
+    });
+
+    const clearPendingCommentTarget = () => {
+      setPendingCommentTarget((current) => {
+        if (!current) {
+          return current;
+        }
+
+        if (current.listingId !== listingId || current.commentId !== commentId) {
+          return current;
+        }
+
+        return null;
+      });
+    };
+
+    const row = rowRefs.current.get(listingId);
+    if (row && typeof row.scrollIntoView === 'function') {
+      if (
+        typeof window !== 'undefined' &&
+        typeof window.requestAnimationFrame === 'function'
+      ) {
+        window.requestAnimationFrame(() => {
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          clearPendingCommentTarget();
+        });
+      } else {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        clearPendingCommentTarget();
+      }
+    } else {
+      clearPendingCommentTarget();
+    }
+  }, [pendingCommentTarget, filteredListings, effectivePageSize, safePage, onPageChange]);
+
+  useEffect(() => {
     if (!highlightedListingId) {
       return;
     }
@@ -1891,6 +2144,12 @@ export function ListingTable({
                 const editAriaLabel = listing.hasCustomizations
                   ? `Edit listing ${listingDescriptor} (customized)`
                   : `Edit listing ${listingDescriptor}`;
+                const isCommentOpen = expandedCommentListingIds.has(listing.id);
+                const commentSectionId = `listing-${listing.id}-comments`;
+                const commentToggleLabel = isCommentOpen ? 'Hide comments' : 'Show comments';
+                const commentButtonTitle = `${commentToggleLabel} for ${listingDescriptor}`;
+                const storedCommentCount = listingCommentCounts.get(listing.id) ?? 0;
+                const hasStoredComments = storedCommentCount > 0;
 
                 return (
                   <Fragment key={listing.id}>
@@ -1918,7 +2177,7 @@ export function ListingTable({
                         <div className="listing-table__detail-actions">
                           <button
                             type="button"
-                            className="listing-table__icon-button listing-table__edit-button"
+                            className="listing-table__icon-button listing-table__icon-button--edit"
                             onClick={() => handleStartEdit(listing)}
                             disabled={!canEditListings || savingEdit || isRevertPending}
                             title={editButtonTitle}
@@ -1942,7 +2201,7 @@ export function ListingTable({
                               href={listing.publicDetailUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="listing-table__detail-link"
+                              className="listing-table__icon-button listing-table__icon-button--detail"
                               aria-label="Open listing details in a new tab"
                             >
                               <svg
@@ -1959,6 +2218,31 @@ export function ListingTable({
                           ) : (
                             <span className="listing-table__detail-placeholder" aria-hidden="true">—</span>
                           )}
+                          <button
+                            type="button"
+                            className="listing-table__icon-button listing-table__icon-button--comment"
+                            onClick={() => handleToggleComments(listing.id)}
+                            title={commentButtonTitle}
+                            aria-label={commentButtonTitle}
+                            aria-expanded={isCommentOpen}
+                            aria-controls={commentSectionId}
+                            data-open={isCommentOpen ? 'true' : undefined}
+                            data-has-comments={hasStoredComments ? 'true' : undefined}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path
+                                d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H9.56l-3.83 3.09A.75.75 0 0 1 4 18.5Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="visually-hidden">{commentButtonTitle}</span>
+                          {hasStoredComments ? (
+                            <span className="visually-hidden">Listing has comments</span>
+                          ) : null}
+                          </button>
                         </div>
                       </td>
                       {visibleColumnDefinitions.map((definition) => (
@@ -2010,6 +2294,26 @@ export function ListingTable({
                             {editError ? (
                               <p className="listing-table__edit-error" role="alert">{editError}</p>
                             ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {isCommentOpen ? (
+                      <tr className="listing-table__comment-row">
+                        <td colSpan={columnCount} className="listing-table__comment-cell">
+                          <div className="listing-table__comment-container">
+                            <ListingComments
+                              listingId={listing.id}
+                              sectionId={commentSectionId}
+                              heading={listingDescriptor}
+                              sharePath={commentLinkBasePath}
+                              highlightCommentId={
+                                commentHighlightTarget?.listingId === listing.id
+                                  ? commentHighlightTarget.commentId
+                                  : null
+                              }
+                              onCommentSummaryChange={handleListingCommentSummary}
+                            />
                           </div>
                         </td>
                       </tr>

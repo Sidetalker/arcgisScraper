@@ -236,6 +236,7 @@ function OwnerDetailPage(): JSX.Element {
           favoriteDisabledReason={favoritesDisabledMessage}
           canEditListings={supabaseConfigured}
           editDisabledReason={editDisabledMessage}
+          commentLinkPath="/"
         />
       </div>
     </>
