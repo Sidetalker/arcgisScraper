@@ -112,6 +112,16 @@ function WatchlistDetailPage(): JSX.Element {
     [],
   );
 
+  const handleSortChange = useCallback(
+    (nextSort: ListingTableState['sort']) => {
+      setTableState((previous) => ({
+        ...previous,
+        sort: nextSort ? { ...nextSort } : null,
+      }));
+    },
+    [],
+  );
+
   const handleFavoriteChange = useCallback(
     async (listingId: string, isFavorited: boolean) => {
       if (!supabaseConfigured) {
@@ -401,9 +411,11 @@ function WatchlistDetailPage(): JSX.Element {
           columnOrder={tableState.columnOrder}
           hiddenColumns={tableState.hiddenColumns}
           columnFilters={tableState.columnFilters}
+          sort={tableState.sort}
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onSortChange={handleSortChange}
           onFavoriteChange={handleFavoriteChange}
           onListingEdit={handleListingEdit}
           onListingRevert={handleListingRevert}
@@ -417,6 +429,7 @@ function WatchlistDetailPage(): JSX.Element {
           selectionLabel={selectedWatchlist ? `${selectedWatchlist.name} membership` : undefined}
           canEditListings={supabaseConfigured}
           editDisabledReason={editDisabledMessage}
+          commentLinkPath={watchlistId ? `/watchlists/${watchlistId}` : '/'}
         />
       </section>
     </div>

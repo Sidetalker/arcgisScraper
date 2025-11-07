@@ -13,11 +13,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import {
   type ListingTableColumnFilters,
   type ListingTableColumnKey,
+  type ListingTableSort,
 } from '@/constants/listingTable';
 import {
   filterListingsByColumnFilters,
@@ -26,6 +27,8 @@ import {
 } from '@/utils/listingColumnFilters';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
 import type { ListingRecord, ListingSourceOfTruth } from '@/types';
+import ListingComments from '@/components/ListingComments';
+import { fetchListingCommentCounts } from '@/services/listingComments';
 
 interface ListingTableProps {
   listings: ListingRecord[];
@@ -39,9 +42,11 @@ interface ListingTableProps {
   columnOrder: ListingTableColumnKey[];
   hiddenColumns: ListingTableColumnKey[];
   columnFilters: ListingTableColumnFilters;
+  sort: ListingTableSort | null;
   onColumnOrderChange: (order: ListingTableColumnKey[]) => void;
   onHiddenColumnsChange: (hidden: ListingTableColumnKey[]) => void;
   onColumnFiltersChange: (filters: ListingTableColumnFilters) => void;
+  onSortChange: (sort: ListingTableSort | null) => void;
   onFavoriteChange: (listingId: string, isFavorited: boolean) => Promise<void> | void;
   canToggleFavorites: boolean;
   favoriteDisabledReason?: string;
@@ -58,6 +63,7 @@ interface ListingTableProps {
   canChangeSelection?: boolean;
   selectionDisabledReason?: string;
   selectionLabel?: string;
+  commentLinkPath?: string;
 }
 
 type ColumnKey = ListingTableColumnKey;
@@ -85,6 +91,7 @@ function getSourceOfTruthText(listing: ListingRecord, columnKey: ColumnKey): str
   const source: ListingSourceOfTruth = listing.sourceOfTruth ?? {
     complex: listing.complex,
     unit: listing.unit,
+    unitNormalized: listing.unitNormalized,
     ownerName: listing.ownerName,
     ownerNames: [...listing.ownerNames],
     mailingAddress: listing.mailingAddress,
@@ -138,6 +145,7 @@ interface ColumnDefinition {
   render: (listing: ListingRecord) => ReactNode;
   getFilterValue: (listing: ListingRecord) => string;
   getExportValue: (listing: ListingRecord) => string;
+  getSortValue: (listing: ListingRecord) => string;
   filterType?: 'text' | 'boolean';
 }
 
@@ -271,6 +279,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
       ),
     getFilterValue: (listing) => normalizeText(listing.complex),
     getExportValue: (listing) => normalizeText(listing.complex),
+    getSortValue: (listing) => normalizeText(listing.complex),
   },
   {
     key: 'unit',
@@ -278,6 +287,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.unit || '—',
     getFilterValue: (listing) => normalizeText(listing.unit),
     getExportValue: (listing) => normalizeText(listing.unit),
+    getSortValue: (listing) => normalizeText(listing.unit),
   },
   {
     key: 'owners',
@@ -309,6 +319,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     },
     getFilterValue: (listing) => normalizeText(listing.ownerNames.join(' ')),
     getExportValue: (listing) => toUniqueOwners(listing).join('; '),
+    getSortValue: (listing) => normalizeText(toUniqueOwners(listing).join(' ')),
   },
   {
     key: 'business',
@@ -316,6 +327,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
     getFilterValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
     getExportValue: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
+    getSortValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
     filterType: 'boolean',
   },
   {
@@ -335,6 +347,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     },
     getFilterValue: (listing) => normalizeText(listing.mailingAddress),
     getExportValue: (listing) => normalizeText(listing.mailingAddress?.replace(/\n/g, ', ') ?? ''),
+    getSortValue: (listing) => normalizeText(listing.mailingAddress),
   },
   {
     key: 'mailingCity',
@@ -342,6 +355,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.mailingCity || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingCity),
     getExportValue: (listing) => normalizeText(listing.mailingCity),
+    getSortValue: (listing) => normalizeText(listing.mailingCity),
   },
   {
     key: 'mailingState',
@@ -349,6 +363,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.mailingState || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingState),
     getExportValue: (listing) => normalizeText(listing.mailingState),
+    getSortValue: (listing) => normalizeText(listing.mailingState),
   },
   {
     key: 'mailingZip',
@@ -357,6 +372,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     getFilterValue: (listing) => normalizeText(listing.mailingZip9 || listing.mailingZip5),
     getExportValue: (listing) =>
       normalizeText(listing.mailingZip9 || listing.mailingZip5 || ''),
+    getSortValue: (listing) => normalizeText(listing.mailingZip9 || listing.mailingZip5),
   },
   {
     key: 'subdivision',
@@ -364,6 +380,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.subdivision || '—',
     getFilterValue: (listing) => normalizeText(listing.subdivision),
     getExportValue: (listing) => normalizeText(listing.subdivision),
+    getSortValue: (listing) => normalizeText(listing.subdivision),
   },
   {
     key: 'scheduleNumber',
@@ -371,6 +388,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.scheduleNumber || '—',
     getFilterValue: (listing) => normalizeText(listing.scheduleNumber),
     getExportValue: (listing) => normalizeText(listing.scheduleNumber),
+    getSortValue: (listing) => normalizeText(listing.scheduleNumber),
   },
   {
     key: 'physicalAddress',
@@ -378,6 +396,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.physicalAddress || '—',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),
     getExportValue: (listing) => normalizeText(listing.physicalAddress),
+    getSortValue: (listing) => normalizeText(listing.physicalAddress),
   },
 ];
 
@@ -395,9 +414,11 @@ export function ListingTable({
   columnOrder,
   hiddenColumns,
   columnFilters,
+  sort,
   onColumnOrderChange,
   onHiddenColumnsChange,
   onColumnFiltersChange,
+  onSortChange,
   onFavoriteChange,
   canToggleFavorites,
   favoriteDisabledReason,
@@ -411,10 +432,49 @@ export function ListingTable({
   canChangeSelection,
   selectionDisabledReason,
   selectionLabel,
+  commentLinkPath,
 }: ListingTableProps) {
   const [dragTarget, setDragTarget] = useState<ColumnKey | null>(null);
   const dragSource = useRef<ColumnKey | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const element = scrollContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const setCommentViewportWidth = () => {
+      element.style.setProperty(
+        '--listing-table-comment-viewport-width',
+        `${element.clientWidth}px`,
+      );
+    };
+
+    setCommentViewportWidth();
+
+    let resizeObserver: ResizeObserver | null = null;
+
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(() => {
+        setCommentViewportWidth();
+      });
+      resizeObserver.observe(element);
+    }
+
+    window.addEventListener('resize', setCommentViewportWidth);
+
+    return () => {
+      window.removeEventListener('resize', setCommentViewportWidth);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const autoScrollIntervalRef = useRef<number | null>(null);
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
@@ -438,6 +498,21 @@ export function ListingTable({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [pendingRevertIds, setPendingRevertIds] = useState<Set<string>>(() => new Set());
+  const [expandedCommentListingIds, setExpandedCommentListingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [listingCommentCounts, setListingCommentCounts] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  const location = useLocation();
+  const commentLinkBasePath = commentLinkPath ?? location.pathname;
+  const [pendingCommentTarget, setPendingCommentTarget] = useState<
+    { listingId: string; commentId: string } | null
+  >(null);
+  const [commentHighlightTarget, setCommentHighlightTarget] = useState<
+    { listingId: string; commentId: string } | null
+  >(null);
+  const pendingCommentPageRef = useRef<number | null>(null);
   const favoriteDisabledMessage =
     favoriteDisabledReason ?? 'Supabase is not configured. Favorites are read-only.';
   const watchlistDisabledMessage =
@@ -458,6 +533,47 @@ export function ListingTable({
     }
     return new Set<string>(selectedListingIds);
   }, [selectedListingIds]);
+
+  const urlCommentTarget = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const listingParam = params.get('listing');
+    const commentParam = params.get('comment');
+    if (!listingParam || !commentParam) {
+      return null;
+    }
+    return { listingId: listingParam, commentId: commentParam } as const;
+  }, [location.search]);
+
+  useEffect(() => {
+    setPendingCommentTarget(urlCommentTarget);
+    if (!urlCommentTarget) {
+      setCommentHighlightTarget(null);
+    }
+  }, [urlCommentTarget]);
+  useEffect(() => {
+    setExpandedCommentListingIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      const validIds = new Set(listings.map((listing) => listing.id));
+      let changed = false;
+      current.forEach((id) => {
+        if (!validIds.has(id)) {
+          changed = true;
+        }
+      });
+      if (!changed) {
+        return current;
+      }
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (validIds.has(id)) {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [listings]);
   const createDraftFromListing = useCallback((listing: ListingRecord): ListingEditDraft => {
     return {
       complex: listing.complex,
@@ -499,6 +615,17 @@ export function ListingTable({
     },
     [canEditListings, createDraftFromListing, editingListingId],
   );
+  const handleToggleComments = useCallback((listingId: string) => {
+    setExpandedCommentListingIds((current) => {
+      const next = new Set(current);
+      if (next.has(listingId)) {
+        next.delete(listingId);
+      } else {
+        next.add(listingId);
+      }
+      return next;
+    });
+  }, []);
   const handleDraftInputChange = useCallback(
     (field: keyof ListingEditDraft) =>
       (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -704,6 +831,10 @@ export function ListingTable({
       COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]),
     );
   }, []);
+  const collator = useMemo(
+    () => new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }),
+    [],
+  );
   const renderEditableCell = (
     columnKey: ColumnKey,
     listing: ListingRecord,
@@ -853,18 +984,90 @@ export function ListingTable({
     return filterListingsByColumnFilters(listings, columnFilters);
   }, [columnFilters, listings]);
 
-  const fallbackPageSize = filteredListings.length > 0 ? filteredListings.length : 1;
+  const sortedListings = useMemo(() => {
+    if (!sort) {
+      return filteredListings;
+    }
+
+    const definition = columnDefinitionMap.get(sort.columnKey);
+    if (!definition) {
+      return filteredListings;
+    }
+
+    const sortable = [...filteredListings];
+    sortable.sort((a, b) => {
+      const valueA = definition.getSortValue(a);
+      const valueB = definition.getSortValue(b);
+      const comparison = collator.compare(valueA, valueB);
+      return sort.direction === 'desc' ? -comparison : comparison;
+    });
+
+    return sortable;
+  }, [collator, columnDefinitionMap, filteredListings, sort]);
+
+  const fallbackPageSize = sortedListings.length > 0 ? sortedListings.length : 1;
   const resolvedPageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : fallbackPageSize;
   const effectivePageSize = Math.min(Math.max(resolvedPageSize, 1), MAX_PAGE_SIZE);
-  const totalPages = Math.max(1, Math.ceil(filteredListings.length / effectivePageSize) || 1);
+  const totalPages = Math.max(1, Math.ceil(sortedListings.length / effectivePageSize) || 1);
   const clampPage = (value: number) => Math.min(Math.max(value, 1), totalPages);
   const requestedPage = Number.isFinite(currentPage) ? Math.floor(currentPage) : 1;
   const safePage = clampPage(requestedPage);
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
-  const pageListings = filteredListings.slice(startIndex, endIndex);
+  const pageListings = useMemo(
+    () => filteredListings.slice(startIndex, endIndex),
+    [filteredListings, startIndex, endIndex],
+  );
   const columnCount = Math.max(1, visibleColumns.length + 2);
+  const pageListingIds = useMemo(
+    () => pageListings.map((listing) => listing.id),
+    [pageListings],
+  );
+
+  useEffect(() => {
+    if (pageListingIds.length === 0) {
+      return;
+    }
+
+    let active = true;
+
+    const load = async () => {
+      try {
+        const counts = await fetchListingCommentCounts(pageListingIds);
+        if (!active) {
+          return;
+        }
+
+        setListingCommentCounts((current) => {
+          const next = new Map(current);
+          pageListingIds.forEach((id) => next.delete(id));
+          for (const [listingId, count] of Object.entries(counts)) {
+            if (count > 0) {
+              next.set(listingId, count);
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        console.error('Failed to load comment counts for visible listings.', error);
+        setListingCommentCounts((current) => {
+          if (current.size === 0) {
+            return current;
+          }
+          const next = new Map(current);
+          pageListingIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [pageListingIds]);
 
   const handleSelectionToggle = useCallback(
     (listingId: string) => (event: ChangeEvent<HTMLInputElement>) => {
@@ -903,6 +1106,21 @@ export function ListingTable({
     [effectiveSelectionMode, onFavoriteChange, onSelectionChange],
   );
 
+  const handleListingCommentSummary = useCallback(
+    (summary: { listingId: string; count: number; hasComments: boolean }) => {
+      setListingCommentCounts((current) => {
+        const next = new Map(current);
+        if (summary.count > 0) {
+          next.set(summary.listingId, summary.count);
+        } else {
+          next.delete(summary.listingId);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     const element = scrollContainerRef.current;
     if (!element) {
@@ -918,7 +1136,7 @@ export function ListingTable({
       window.removeEventListener('resize', handleScroll);
       stopAutoScroll();
     };
-  }, [handleScroll, updateScrollIndicators, visibleColumns.length, filteredListings.length, stopAutoScroll]);
+  }, [handleScroll, updateScrollIndicators, visibleColumns.length, sortedListings.length, stopAutoScroll]);
 
   useEffect(() => {
     return () => {
@@ -1137,6 +1355,27 @@ export function ListingTable({
       }
     },
     [handleHideColumn, handleUnhideColumn],
+  );
+
+  const handleSortToggle = useCallback(
+    (columnKey: ColumnKey) => {
+      const isActive = sort?.columnKey === columnKey;
+      let nextSort: ListingTableSort | null;
+
+      if (!isActive) {
+        nextSort = { columnKey, direction: 'asc' };
+      } else if (sort?.direction === 'asc') {
+        nextSort = { columnKey, direction: 'desc' };
+      } else if (sort?.direction === 'desc') {
+        nextSort = null;
+      } else {
+        nextSort = { columnKey, direction: 'asc' };
+      }
+
+      onSortChange(nextSort);
+      onPageChange(1);
+    },
+    [onPageChange, onSortChange, sort],
   );
 
   const handleColumnPanelDragStart = useCallback(
@@ -1403,6 +1642,84 @@ export function ListingTable({
   };
 
   useEffect(() => {
+    if (!pendingCommentTarget) {
+      pendingCommentPageRef.current = null;
+      return;
+    }
+
+    const { listingId, commentId } = pendingCommentTarget;
+    const filteredIndex = filteredListings.findIndex((listing) => listing.id === listingId);
+    if (filteredIndex === -1) {
+      setCommentHighlightTarget((current) => {
+        if (current && current.listingId === listingId) {
+          return null;
+        }
+        return current;
+      });
+      return;
+    }
+
+    const targetPage = Math.floor(filteredIndex / effectivePageSize) + 1;
+    if (targetPage !== safePage) {
+      if (pendingCommentPageRef.current !== targetPage) {
+        pendingCommentPageRef.current = targetPage;
+        onPageChange(targetPage);
+      }
+      return;
+    }
+
+    pendingCommentPageRef.current = null;
+
+    setExpandedCommentListingIds((current) => {
+      if (current.has(listingId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(listingId);
+      return next;
+    });
+
+    setCommentHighlightTarget((current) => {
+      if (current && current.listingId === listingId && current.commentId === commentId) {
+        return current;
+      }
+      return { listingId, commentId };
+    });
+
+    const clearPendingCommentTarget = () => {
+      setPendingCommentTarget((current) => {
+        if (!current) {
+          return current;
+        }
+
+        if (current.listingId !== listingId || current.commentId !== commentId) {
+          return current;
+        }
+
+        return null;
+      });
+    };
+
+    const row = rowRefs.current.get(listingId);
+    if (row && typeof row.scrollIntoView === 'function') {
+      if (
+        typeof window !== 'undefined' &&
+        typeof window.requestAnimationFrame === 'function'
+      ) {
+        window.requestAnimationFrame(() => {
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          clearPendingCommentTarget();
+        });
+      } else {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        clearPendingCommentTarget();
+      }
+    } else {
+      clearPendingCommentTarget();
+    }
+  }, [pendingCommentTarget, filteredListings, effectivePageSize, safePage, onPageChange]);
+
+  useEffect(() => {
     if (!highlightedListingId) {
       return;
     }
@@ -1431,11 +1748,11 @@ export function ListingTable({
   }, [columnDefinitionMap, columnOrder, hiddenColumns]);
 
   const totalListingsCount = listings.length;
-  const filteredListingsCount = filteredListings.length;
+  const displayedListingsCount = sortedListings.length;
   const summaryText = isLoading
     ? 'Loading listings from ArcGIS…'
-    : `Showing ${filteredListingsCount.toLocaleString()} matching listings${
-        filteredListingsCount !== totalListingsCount
+    : `Showing ${displayedListingsCount.toLocaleString()} matching listings${
+        displayedListingsCount !== totalListingsCount
           ? ` (filtered from ${totalListingsCount.toLocaleString()})`
           : ''
       }`;
@@ -1459,7 +1776,7 @@ export function ListingTable({
 
     const rows: string[][] = [
       exportColumnDefinitions.map((definition) => definition.label),
-      ...filteredListings.map((listing) =>
+      ...sortedListings.map((listing) =>
         exportColumnDefinitions.map((definition) => definition.getExportValue(listing)),
       ),
     ];
@@ -1495,7 +1812,7 @@ export function ListingTable({
     window.setTimeout(() => {
       window.URL.revokeObjectURL(url);
     }, 0);
-  }, [columnDefinitionMap, columnOrder, filteredListings, hiddenColumns]);
+  }, [columnDefinitionMap, columnOrder, hiddenColumns, sortedListings]);
 
   return (
     <section className="listing-table">
@@ -1509,8 +1826,8 @@ export function ListingTable({
             Page {safePage} of {totalPages}
           </span>
           <span>
-            {filteredListingsCount > 0
-              ? `Displaying ${startIndex + 1}-${endIndex} of ${filteredListingsCount.toLocaleString()}`
+            {displayedListingsCount > 0
+              ? `Displaying ${startIndex + 1}-${endIndex} of ${displayedListingsCount.toLocaleString()}`
               : 'No rows to display'}
           </span>
         </div>
@@ -1553,7 +1870,7 @@ export function ListingTable({
                 type="button"
                 className="listing-table__export-button"
                 onClick={handleExportCsv}
-                disabled={filteredListingsCount === 0}
+                disabled={displayedListingsCount === 0}
               >
                 Export CSV
               </button>
@@ -1625,7 +1942,7 @@ export function ListingTable({
                     type="button"
                     className="listing-table__export-button listing-table__export-button--secondary"
                     onClick={handleExportCsv}
-                    disabled={filteredListingsCount === 0}
+                    disabled={displayedListingsCount === 0}
                   >
                     Download CSV
                   </button>
@@ -1655,40 +1972,72 @@ export function ListingTable({
                 <th scope="col" className="listing-table__details-header">
                   <span className="visually-hidden">Listing details</span>
                 </th>
-                {visibleColumnDefinitions.map((definition) => (
-                  <th
-                    key={definition.key}
-                  scope="col"
-                  onDragOver={handleDragOver(definition.key)}
-                  onDrop={handleDrop(definition.key)}
-                  onDragLeave={handleDragLeave(definition.key)}
-                  data-drop-target={dragTarget === definition.key}
-                >
-                  <div className="listing-table__column-header">
-                    <button
-                      type="button"
-                      className="listing-table__drag-handle"
-                      draggable
-                      onDragStart={handleDragStart(definition.key)}
-                      onDragEnd={handleDragEnd}
-                      aria-label={`Drag to reorder the ${definition.label} column`}
+                {visibleColumnDefinitions.map((definition) => {
+                  const isSorted = sort?.columnKey === definition.key;
+                  const sortDirection = isSorted ? sort?.direction ?? 'asc' : null;
+                  const ariaSort: 'ascending' | 'descending' | 'none' = isSorted
+                    ? sortDirection === 'desc'
+                      ? 'descending'
+                      : 'ascending'
+                    : 'none';
+
+                  return (
+                    <th
+                      key={definition.key}
+                      scope="col"
+                      onDragOver={handleDragOver(definition.key)}
+                      onDrop={handleDrop(definition.key)}
+                      onDragLeave={handleDragLeave(definition.key)}
+                      data-drop-target={dragTarget === definition.key}
+                      data-sorted={isSorted}
+                      data-sort-direction={isSorted ? sortDirection : undefined}
+                      aria-sort={ariaSort}
                     >
-                      <span aria-hidden="true">⋮⋮</span>
-                    </button>
-                    <span className="listing-table__column-title">{definition.label}</span>
-                    <button
-                      type="button"
-                      className="listing-table__hide-button"
-                      onClick={() => handleHideColumn(definition.key)}
-                      disabled={shouldDisableHide}
-                      aria-label={`Hide the ${definition.label} column`}
-                    >
-                      Hide
-                    </button>
-                  </div>
-                </th>
-              ))}
-            </tr>
+                      <div className="listing-table__column-header">
+                        <button
+                          type="button"
+                          className="listing-table__drag-handle"
+                          draggable
+                          onDragStart={handleDragStart(definition.key)}
+                          onDragEnd={handleDragEnd}
+                          aria-label={`Drag to reorder the ${definition.label} column`}
+                        >
+                          <span aria-hidden="true">⋮⋮</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="listing-table__sort-button"
+                          onClick={() => handleSortToggle(definition.key)}
+                          data-sorted={isSorted}
+                          aria-label={`Sort by ${definition.label}`}
+                        >
+                          <span className="listing-table__column-title">{definition.label}</span>
+                          <span
+                            className="listing-table__sort-indicator"
+                            data-direction={isSorted ? sortDirection : 'none'}
+                            aria-hidden="true"
+                          >
+                            {isSorted
+                              ? sortDirection === 'desc'
+                                ? '▼'
+                                : '▲'
+                              : '↕'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="listing-table__hide-button"
+                          onClick={() => handleHideColumn(definition.key)}
+                          disabled={shouldDisableHide}
+                          aria-label={`Hide the ${definition.label} column`}
+                        >
+                          Hide
+                        </button>
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
             <tr className="listing-table__filters">
               <th aria-hidden="true" />
               <th aria-hidden="true" />
@@ -1795,6 +2144,12 @@ export function ListingTable({
                 const editAriaLabel = listing.hasCustomizations
                   ? `Edit listing ${listingDescriptor} (customized)`
                   : `Edit listing ${listingDescriptor}`;
+                const isCommentOpen = expandedCommentListingIds.has(listing.id);
+                const commentSectionId = `listing-${listing.id}-comments`;
+                const commentToggleLabel = isCommentOpen ? 'Hide comments' : 'Show comments';
+                const commentButtonTitle = `${commentToggleLabel} for ${listingDescriptor}`;
+                const storedCommentCount = listingCommentCounts.get(listing.id) ?? 0;
+                const hasStoredComments = storedCommentCount > 0;
 
                 return (
                   <Fragment key={listing.id}>
@@ -1822,7 +2177,7 @@ export function ListingTable({
                         <div className="listing-table__detail-actions">
                           <button
                             type="button"
-                            className="listing-table__icon-button listing-table__edit-button"
+                            className="listing-table__icon-button listing-table__icon-button--edit"
                             onClick={() => handleStartEdit(listing)}
                             disabled={!canEditListings || savingEdit || isRevertPending}
                             title={editButtonTitle}
@@ -1846,7 +2201,7 @@ export function ListingTable({
                               href={listing.publicDetailUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="listing-table__detail-link"
+                              className="listing-table__icon-button listing-table__icon-button--detail"
                               aria-label="Open listing details in a new tab"
                             >
                               <svg
@@ -1863,6 +2218,31 @@ export function ListingTable({
                           ) : (
                             <span className="listing-table__detail-placeholder" aria-hidden="true">—</span>
                           )}
+                          <button
+                            type="button"
+                            className="listing-table__icon-button listing-table__icon-button--comment"
+                            onClick={() => handleToggleComments(listing.id)}
+                            title={commentButtonTitle}
+                            aria-label={commentButtonTitle}
+                            aria-expanded={isCommentOpen}
+                            aria-controls={commentSectionId}
+                            data-open={isCommentOpen ? 'true' : undefined}
+                            data-has-comments={hasStoredComments ? 'true' : undefined}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path
+                                d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H9.56l-3.83 3.09A.75.75 0 0 1 4 18.5Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="visually-hidden">{commentButtonTitle}</span>
+                          {hasStoredComments ? (
+                            <span className="visually-hidden">Listing has comments</span>
+                          ) : null}
+                          </button>
                         </div>
                       </td>
                       {visibleColumnDefinitions.map((definition) => (
@@ -1914,6 +2294,26 @@ export function ListingTable({
                             {editError ? (
                               <p className="listing-table__edit-error" role="alert">{editError}</p>
                             ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {isCommentOpen ? (
+                      <tr className="listing-table__comment-row">
+                        <td colSpan={columnCount} className="listing-table__comment-cell">
+                          <div className="listing-table__comment-container">
+                            <ListingComments
+                              listingId={listing.id}
+                              sectionId={commentSectionId}
+                              heading={listingDescriptor}
+                              sharePath={commentLinkBasePath}
+                              highlightCommentId={
+                                commentHighlightTarget?.listingId === listing.id
+                                  ? commentHighlightTarget.commentId
+                                  : null
+                              }
+                              onCommentSummaryChange={handleListingCommentSummary}
+                            />
                           </div>
                         </td>
                       </tr>
