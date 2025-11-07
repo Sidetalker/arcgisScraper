@@ -127,16 +127,21 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
   }, []);
 
   const persistLocalCache = useCallback(
-    async (records: ListingRecord[], supabaseUpdatedAt: Date | null) => {
+    async (
+      records: ListingRecord[],
+      supabaseUpdatedAt: Date | null,
+      owners: OwnerBlacklistEntry[] | null = null,
+    ) => {
+      const ownersToPersist = owners ?? blacklistedOwners;
       try {
-        const savedAt = await saveListingsToCache(records, supabaseUpdatedAt);
+        const savedAt = await saveListingsToCache(records, supabaseUpdatedAt, ownersToPersist);
         setLocalCachedAt(savedAt);
         setSource('local');
       } catch (storageError) {
         console.warn('Unable to persist listings cache to IndexedDB.', storageError);
       }
     },
-    [],
+    [blacklistedOwners],
   );
 
   const applyBlacklistToRecords = useCallback(
@@ -190,14 +195,14 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       supabaseUpdatedAt: Date | null,
       savedAt?: Date | null,
       owners?: OwnerBlacklistEntry[] | null,
-    ) => {
-      const effectiveOwners = owners
-        ? owners.slice().sort((a, b) => a.ownerName.localeCompare(b.ownerName))
-        : deriveBlacklistedOwners(records);
-      const recordsWithBlacklist = applyBlacklistToRecords(records, effectiveOwners);
+    ): { records: ListingRecord[]; owners: OwnerBlacklistEntry[] } => {
+      const sortedOwners = (owners ?? deriveBlacklistedOwners(records))
+        .slice()
+        .sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+      const recordsWithBlacklist = applyBlacklistToRecords(records, sortedOwners);
 
       setListings(recordsWithBlacklist);
-      setBlacklistedOwners(effectiveOwners);
+      setBlacklistedOwners(sortedOwners);
       if (supabaseUpdatedAt) {
         setCachedAt(supabaseUpdatedAt);
       }
@@ -207,7 +212,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
       if (!savedAt) {
         setSource('supabase');
       }
-      return recordsWithBlacklist;
+      return { records: recordsWithBlacklist, owners: sortedOwners };
     },
     [applyBlacklistToRecords, deriveBlacklistedOwners],
   );
@@ -219,7 +224,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         return false;
       }
 
-      applyListingSnapshot(cached.records, cached.supabaseUpdatedAt, cached.savedAt, null);
+      applyListingSnapshot(cached.records, cached.supabaseUpdatedAt, cached.savedAt, cached.owners);
       return true;
     } catch (error) {
       console.warn('Unable to restore listings from IndexedDB.', error);
@@ -234,8 +239,8 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
     try {
       const { records, latestUpdatedAt, blacklistedOwners: owners } = await fetchStoredListings();
       setSupabaseConfigured(true);
-      const withBlacklist = applyListingSnapshot(records, latestUpdatedAt ?? null, null, owners);
-      await persistLocalCache(withBlacklist, latestUpdatedAt ?? null);
+      const snapshot = applyListingSnapshot(records, latestUpdatedAt ?? null, null, owners);
+      await persistLocalCache(snapshot.records, latestUpdatedAt ?? null, snapshot.owners);
     } catch (loadError) {
       console.error('Failed to fetch listings from Supabase.', loadError);
       const message =
@@ -320,13 +325,13 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
 
       await replaceAllListings(enrichedRecords);
       const syncTimestamp = new Date();
-      const withBlacklist = applyListingSnapshot(
+      const snapshot = applyListingSnapshot(
         enrichedRecords,
         syncTimestamp,
         syncTimestamp,
         blacklistedOwners,
       );
-      await persistLocalCache(withBlacklist, syncTimestamp);
+      await persistLocalCache(snapshot.records, syncTimestamp, snapshot.owners);
       console.info('Supabase listings were synchronised successfully.', {
         listingCount: enrichedRecords.length,
         licenseRosterCount: licenseFeatureSet.features?.length ?? 0,
@@ -536,7 +541,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         const changeTimestamp = entry.updatedAt ?? updatedAt ?? new Date();
         setListings((current) => {
           const nextListings = applyBlacklistToRecords(current, nextOwners);
-          void persistLocalCache(nextListings, changeTimestamp);
+          void persistLocalCache(nextListings, changeTimestamp, nextOwners);
           return nextListings;
         });
 
@@ -584,7 +589,7 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         const changeTimestamp = updatedAt ?? new Date();
         setListings((current) => {
           const nextListings = applyBlacklistToRecords(current, nextOwners);
-          void persistLocalCache(nextListings, changeTimestamp);
+          void persistLocalCache(nextListings, changeTimestamp, nextOwners);
           return nextListings;
         });
 
