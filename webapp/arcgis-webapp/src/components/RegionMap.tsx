@@ -291,6 +291,29 @@ const LAYER_ICONS: Record<MapLayerType, string> = {
   `,
 };
 
+const LAYER_VISIBILITY_ICONS = {
+  showAll: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.5 11a2.5 2.5 0 1 1 5 0c0 2.2-2.5 5-2.5 5s-2.5-2.8-2.5-5z" />
+      <path d="M12.5 8.5a2 2 0 1 1 4 0c0 1.8-2 4.1-2 4.1s-2-2.3-2-4.1z" />
+      <path d="M10.5 16.5h6" />
+    </svg>
+  `,
+  zoneOverlay: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="5" y="5" width="10" height="10" rx="2" />
+      <path d="M9 19h8a2 2 0 0 0 2-2v-8" />
+      <path d="M19 9 14 4" />
+    </svg>
+  `,
+  summitBoundary: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.5 6.5 11 4l7 2.5 1 7.5-5.5 6L6 17z" />
+      <path d="M9.5 14.5 12 12l3 1.5" />
+    </svg>
+  `,
+} as const;
+
 function getNextLayer(currentLayer: MapLayerType): MapLayerType {
   const currentIndex = LAYER_ORDER.indexOf(currentLayer);
   const nextIndex = (currentIndex + 1) % LAYER_ORDER.length;
@@ -1032,12 +1055,6 @@ ListingSelectionPanel.displayName = 'ListingSelectionPanel';
 type DrawManagerProps = {
   regions: RegionShape[];
   onRegionsChange: (regions: RegionShape[]) => void;
-  showAllProperties: boolean;
-  onToggleShowAll: () => void;
-  showZoneOverlay: boolean;
-  onToggleZoneOverlay: () => void;
-  currentLayer: MapLayerType;
-  onLayerChange: (layer: MapLayerType) => void;
 };
 
 type MapToolbarProps = {
@@ -1047,12 +1064,6 @@ type MapToolbarProps = {
   onFitRegions: () => void;
   hasRegions: boolean;
   activeTool: 'polygon' | 'circle' | null;
-  showAllProperties: boolean;
-  onToggleShowAll: () => void;
-  showZoneOverlay: boolean;
-  onToggleZoneOverlay: () => void;
-  currentLayer: MapLayerType;
-  onLayerChange: (layer: MapLayerType) => void;
 };
 
 function MapToolbar({
@@ -1062,12 +1073,6 @@ function MapToolbar({
   onFitRegions,
   hasRegions,
   activeTool,
-  showAllProperties,
-  onToggleShowAll,
-  showZoneOverlay,
-  onToggleZoneOverlay,
-  currentLayer,
-  onLayerChange,
 }: MapToolbarProps): null {
   const map = useMap();
   const buttonRefs = useRef<
@@ -1076,9 +1081,6 @@ function MapToolbar({
         fitButton?: HTMLButtonElement;
         polygonButton?: HTMLButtonElement;
         circleButton?: HTMLButtonElement;
-        toggleAllButton?: HTMLButtonElement;
-        toggleZoneButton?: HTMLButtonElement;
-        layerButtons?: Record<MapLayerType, HTMLButtonElement>;
       }
     | null
   >(null);
@@ -1150,77 +1152,6 @@ function MapToolbar({
         }
       });
 
-      const toggleAllButton = L.DomUtil.create(
-        'button',
-        'region-map__toolbar-button',
-        container,
-      ) as HTMLButtonElement;
-      toggleAllButton.type = 'button';
-      toggleAllButton.title = 'Show all properties or only those within regions';
-      toggleAllButton.textContent = 'Show all properties';
-      toggleAllButton.dataset.action = 'toggle-all';
-      toggleAllButton.setAttribute('aria-pressed', 'false');
-      toggleAllButton.addEventListener('click', (event) => {
-        event.preventDefault();
-        onToggleShowAll();
-      });
-
-      const toggleZoneButton = L.DomUtil.create(
-        'button',
-        'region-map__toolbar-button',
-        container,
-      ) as HTMLButtonElement;
-      toggleZoneButton.type = 'button';
-      toggleZoneButton.title = 'Toggle zone overlay';
-      toggleZoneButton.textContent = 'Zone overlay';
-      toggleZoneButton.dataset.action = 'toggle-zone';
-      toggleZoneButton.setAttribute('aria-pressed', 'true');
-      toggleZoneButton.addEventListener('click', (event) => {
-        event.preventDefault();
-        onToggleZoneOverlay();
-      });
-
-      const layerToggleGroup = L.DomUtil.create(
-        'div',
-        'region-map__layer-toggle',
-        container,
-      ) as HTMLDivElement;
-      layerToggleGroup.setAttribute('role', 'group');
-      layerToggleGroup.setAttribute('aria-label', 'Base map layer');
-
-      const layerButtons: Record<MapLayerType, HTMLButtonElement> = {} as Record<
-        MapLayerType,
-        HTMLButtonElement
-      >;
-      LAYER_ORDER.forEach((layerKey) => {
-        const button = L.DomUtil.create(
-          'button',
-          'region-map__layer-button',
-          layerToggleGroup,
-        ) as HTMLButtonElement;
-        button.type = 'button';
-        button.title = MAP_LAYERS[layerKey].name;
-        button.setAttribute('aria-label', MAP_LAYERS[layerKey].name);
-        button.setAttribute('data-layer', layerKey);
-        button.setAttribute('aria-pressed', 'false');
-        button.addEventListener('click', (event) => {
-          event.preventDefault();
-          onLayerChange(layerKey);
-        });
-
-        const content = document.createElement('span');
-        content.className = 'region-map__layer-button-content';
-
-        const iconWrapper = document.createElement('span');
-        iconWrapper.className = 'region-map__layer-button-icon';
-        iconWrapper.innerHTML = LAYER_ICONS[layerKey];
-
-        content.append(iconWrapper);
-        button.appendChild(content);
-
-        layerButtons[layerKey] = button;
-      });
-
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
 
@@ -1235,9 +1166,6 @@ function MapToolbar({
         fitButton,
         polygonButton,
         circleButton,
-        toggleAllButton,
-        toggleZoneButton,
-        layerButtons,
       };
 
       return container;
@@ -1249,7 +1177,7 @@ function MapToolbar({
       buttonRefs.current = null;
       toolbarControl.remove();
     };
-  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions, onToggleShowAll, onToggleZoneOverlay, onLayerChange]);
+  }, [map, onClearRegions, onDrawCircle, onDrawPolygon, onFitRegions]);
 
   useEffect(() => {
     const refs = buttonRefs.current;
@@ -1271,26 +1199,6 @@ function MapToolbar({
 
   useEffect(() => {
     const refs = buttonRefs.current;
-    if (!refs || !refs.toggleAllButton) {
-      return;
-    }
-
-    refs.toggleAllButton.classList.toggle('region-map__toolbar-button--active', showAllProperties);
-    refs.toggleAllButton.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
-  }, [showAllProperties]);
-
-  useEffect(() => {
-    const refs = buttonRefs.current;
-    if (!refs || !refs.toggleZoneButton) {
-      return;
-    }
-
-    refs.toggleZoneButton.classList.toggle('region-map__toolbar-button--active', showZoneOverlay);
-    refs.toggleZoneButton.setAttribute('aria-pressed', showZoneOverlay ? 'true' : 'false');
-  }, [showZoneOverlay]);
-
-  useEffect(() => {
-    const refs = buttonRefs.current;
     if (!refs) {
       return;
     }
@@ -1307,36 +1215,12 @@ function MapToolbar({
     toggleActiveState(refs.circleButton, activeTool === 'circle');
   }, [activeTool]);
 
-  useEffect(() => {
-    const refs = buttonRefs.current;
-    if (!refs || !refs.layerButtons) {
-      return;
-    }
-
-    LAYER_ORDER.forEach((layerKey) => {
-      const button = refs.layerButtons?.[layerKey];
-      if (!button) {
-        return;
-      }
-
-      const isActive = layerKey === currentLayer;
-      button.classList.toggle('region-map__layer-button--active', isActive);
-      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    });
-  }, [currentLayer]);
-
   return null;
 }
 
 function DrawManager({
   regions,
   onRegionsChange,
-  showAllProperties,
-  onToggleShowAll,
-  showZoneOverlay,
-  onToggleZoneOverlay,
-  currentLayer,
-  onLayerChange,
 }: DrawManagerProps): JSX.Element {
   const map = useMap();
   const featureGroupRef = useRef<L.FeatureGroup | null>(null);
@@ -1551,12 +1435,6 @@ function DrawManager({
       onFitRegions={fitRegions}
       hasRegions={regions.length > 0}
       activeTool={activeTool}
-      showAllProperties={showAllProperties}
-      onToggleShowAll={onToggleShowAll}
-      showZoneOverlay={showZoneOverlay}
-      onToggleZoneOverlay={onToggleZoneOverlay}
-      currentLayer={currentLayer}
-      onLayerChange={onLayerChange}
     />
   );
 }
@@ -1663,6 +1541,302 @@ type ZoningDistrictHighlightsProps = {
   onZoneHover?: (zone: ZoningDistrictSummary | null) => void;
   enabled: boolean;
 };
+
+type LayerVisibilityControlProps = {
+  showAllProperties: boolean;
+  onToggleShowAll: () => void;
+  showZoneOverlay: boolean;
+  onToggleZoneOverlay: () => void;
+  showSummitCountyBoundary: boolean;
+  onToggleSummitCountyBoundary: () => void;
+  currentLayer: MapLayerType;
+  onLayerChange: (layer: MapLayerType) => void;
+};
+
+function LayerVisibilityControl({
+  showAllProperties,
+  onToggleShowAll,
+  showZoneOverlay,
+  onToggleZoneOverlay,
+  showSummitCountyBoundary,
+  onToggleSummitCountyBoundary,
+  currentLayer,
+  onLayerChange,
+}: LayerVisibilityControlProps): null {
+  const map = useMap();
+  const buttonRefs = useRef<
+    | {
+        showAllButton?: HTMLButtonElement;
+        zoneButton?: HTMLButtonElement;
+        summitButton?: HTMLButtonElement;
+        layerButtons?: Record<MapLayerType, HTMLButtonElement>;
+      }
+    | null
+  >(null);
+
+  useEffect(() => {
+    const control = new L.Control({ position: 'bottomright' });
+    control.onAdd = () => {
+      const container = L.DomUtil.create(
+        'div',
+        'leaflet-bar region-map__layers-control',
+      ) as HTMLDivElement;
+      container.setAttribute('role', 'group');
+      container.setAttribute('aria-label', 'Map display options');
+
+      const visibilityGroup = L.DomUtil.create(
+        'div',
+        'region-map__layers-visibility-group',
+        container,
+      ) as HTMLDivElement;
+
+      const createToggleButton = (
+        icon: string,
+        title: string,
+        ariaLabel: string,
+        onClick: () => void,
+      ) => {
+        const button = L.DomUtil.create(
+          'button',
+          'region-map__layers-toggle-button',
+          visibilityGroup,
+        ) as HTMLButtonElement;
+        button.type = 'button';
+        button.title = title;
+        button.setAttribute('aria-label', ariaLabel);
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          onClick();
+        });
+
+        const iconWrapper = document.createElement('span');
+        iconWrapper.className = 'region-map__layers-toggle-button-icon';
+        iconWrapper.innerHTML = icon;
+        button.appendChild(iconWrapper);
+
+        return button;
+      };
+
+      const showAllButton = createToggleButton(
+        LAYER_VISIBILITY_ICONS.showAll,
+        'Toggle showing all properties',
+        'Toggle showing all properties',
+        onToggleShowAll,
+      );
+
+      const zoneButton = createToggleButton(
+        LAYER_VISIBILITY_ICONS.zoneOverlay,
+        'Toggle zone overlay',
+        'Toggle zone overlay',
+        onToggleZoneOverlay,
+      );
+
+      const summitButton = createToggleButton(
+        LAYER_VISIBILITY_ICONS.summitBoundary,
+        'Toggle Summit County border',
+        'Toggle Summit County border',
+        onToggleSummitCountyBoundary,
+      );
+
+      const layerToggleGroup = L.DomUtil.create(
+        'div',
+        'region-map__layer-toggle',
+        container,
+      ) as HTMLDivElement;
+      layerToggleGroup.setAttribute('role', 'group');
+      layerToggleGroup.setAttribute('aria-label', 'Base map layer');
+
+      const layerButtons: Record<MapLayerType, HTMLButtonElement> = {} as Record<
+        MapLayerType,
+        HTMLButtonElement
+      >;
+
+      LAYER_ORDER.forEach((layerKey) => {
+        const button = L.DomUtil.create(
+          'button',
+          'region-map__layer-button',
+          layerToggleGroup,
+        ) as HTMLButtonElement;
+        button.type = 'button';
+        button.title = MAP_LAYERS[layerKey].name;
+        button.setAttribute('aria-label', MAP_LAYERS[layerKey].name);
+        button.setAttribute('data-layer', layerKey);
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          onLayerChange(layerKey);
+        });
+
+        const content = document.createElement('span');
+        content.className = 'region-map__layer-button-content';
+
+        const iconWrapper = document.createElement('span');
+        iconWrapper.className = 'region-map__layer-button-icon';
+        iconWrapper.innerHTML = LAYER_ICONS[layerKey];
+
+        content.append(iconWrapper);
+        button.appendChild(content);
+
+        layerButtons[layerKey] = button;
+      });
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      buttonRefs.current = {
+        showAllButton,
+        zoneButton,
+        summitButton,
+        layerButtons,
+      };
+
+      return container;
+    };
+
+    control.addTo(map);
+
+    return () => {
+      buttonRefs.current = null;
+      control.remove();
+    };
+  }, [map, onLayerChange, onToggleShowAll, onToggleSummitCountyBoundary, onToggleZoneOverlay]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs?.showAllButton) {
+      return;
+    }
+
+    const button = refs.showAllButton;
+    button.classList.toggle('region-map__layers-toggle-button--active', showAllProperties);
+    button.setAttribute('aria-pressed', showAllProperties ? 'true' : 'false');
+    button.setAttribute(
+      'title',
+      showAllProperties ? 'Showing every property' : 'Restrict to drawn regions',
+    );
+  }, [showAllProperties]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs?.zoneButton) {
+      return;
+    }
+
+    const button = refs.zoneButton;
+    button.classList.toggle('region-map__layers-toggle-button--active', showZoneOverlay);
+    button.setAttribute('aria-pressed', showZoneOverlay ? 'true' : 'false');
+    button.setAttribute(
+      'title',
+      showZoneOverlay ? 'Zone overlay visible' : 'Zone overlay hidden',
+    );
+  }, [showZoneOverlay]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs?.summitButton) {
+      return;
+    }
+
+    const button = refs.summitButton;
+    button.classList.toggle(
+      'region-map__layers-toggle-button--active',
+      showSummitCountyBoundary,
+    );
+    button.setAttribute('aria-pressed', showSummitCountyBoundary ? 'true' : 'false');
+    button.setAttribute(
+      'title',
+      showSummitCountyBoundary
+        ? 'Summit County border visible'
+        : 'Summit County border hidden',
+    );
+  }, [showSummitCountyBoundary]);
+
+  useEffect(() => {
+    const refs = buttonRefs.current;
+    if (!refs?.layerButtons) {
+      return;
+    }
+
+    LAYER_ORDER.forEach((layerKey) => {
+      const button = refs.layerButtons?.[layerKey];
+      if (!button) {
+        return;
+      }
+
+      const isActive = layerKey === currentLayer;
+      button.classList.toggle('region-map__layer-button--active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  }, [currentLayer]);
+
+  return null;
+}
+
+type FullscreenControlProps = {
+  isFullscreen: boolean;
+  onToggle: () => void;
+};
+
+function FullscreenControl({ isFullscreen, onToggle }: FullscreenControlProps): null {
+  const map = useMap();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const control = new L.Control({ position: 'bottomleft' });
+    control.onAdd = () => {
+      const container = L.DomUtil.create(
+        'div',
+        'leaflet-bar region-map__fullscreen-control',
+      ) as HTMLDivElement;
+
+      const button = L.DomUtil.create(
+        'button',
+        'region-map__fullscreen-button',
+        container,
+      ) as HTMLButtonElement;
+
+      button.type = 'button';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        onToggle();
+      });
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      buttonRef.current = button;
+      return container;
+    };
+
+    control.addTo(map);
+
+    return () => {
+      buttonRef.current = null;
+      control.remove();
+    };
+  }, [map, onToggle]);
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button) {
+      return;
+    }
+
+    const label = isFullscreen ? 'Exit full screen' : 'Full screen';
+    const title = isFullscreen
+      ? 'Exit the full screen map view'
+      : 'Expand the map to full screen';
+
+    button.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', title);
+    button.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+    button.classList.toggle('region-map__fullscreen-button--active', isFullscreen);
+  }, [isFullscreen]);
+
+  return null;
+}
 
 type ZoneBlurLayer = {
   summary: ZoningDistrictSummary;
@@ -1922,6 +2096,20 @@ function ZoningDistrictHighlights({ listings, zoneSummaries, onZoneHover, enable
   return null;
 }
 
+type MapInstanceTrackerProps = {
+  onReady: (map: L.Map) => void;
+};
+
+function MapInstanceTracker({ onReady }: MapInstanceTrackerProps): null {
+  const map = useMap();
+
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+
+  return null;
+}
+
 function RegionMap({
   regions,
   onRegionsChange,
@@ -1936,8 +2124,14 @@ function RegionMap({
   const [hoveredListingId, setHoveredListingId] = useState<string | null>(null);
   const [showAllProperties, setShowAllProperties] = useState(false);
   const [showZoneOverlay, setShowZoneOverlay] = useState(true);
+  const [showSummitCountyBoundary, setShowSummitCountyBoundary] = useState(true);
   const [currentLayer, setCurrentLayer] = useState<MapLayerType>('map');
   const [zoneMetrics, setZoneMetrics] = useState<ZoneMetric[] | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const mapRef = useRef<L.Map | null>(null);
+  const handleMapReady = useCallback((map: L.Map) => {
+    mapRef.current = map;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2065,6 +2259,10 @@ function RegionMap({
     setShowZoneOverlay((prev) => !prev);
   }, []);
 
+  const handleToggleSummitCountyBoundary = useCallback(() => {
+    setShowSummitCountyBoundary((prev) => !prev);
+  }, []);
+
   const handleLayerChange = useCallback((layer: MapLayerType) => {
     setCurrentLayer(layer);
   }, []);
@@ -2076,13 +2274,74 @@ function RegionMap({
     setHoveredZone(zone);
   }, []);
 
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
   const zoneDetailHighlight = hoveredZone && !hoveredListingId ? hoveredZone : null;
 
   const currentLayerConfig = MAP_LAYERS[currentLayer];
 
+  useEffect(() => {
+    const body = document.body;
+    if (!body) {
+      return;
+    }
+
+    const className = 'region-map--fullscreen-active';
+    if (isFullscreen) {
+      body.classList.add(className);
+    } else {
+      body.classList.remove(className);
+    }
+
+    return () => {
+      body.classList.remove(className);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const mapInstance = mapRef.current;
+    if (!mapInstance) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      mapInstance.invalidateSize();
+    }, isFullscreen ? 320 : 150);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    return () => {
+      mapRef.current = null;
+    };
+  }, []);
+
   return (
     <section
-      className="region-map"
+      className={`region-map${isFullscreen ? ' region-map--fullscreen' : ''}`}
       aria-label="Draw regions to filter listings"
       title="Draw polygons or circles to focus the ArcGIS search on specific areas"
     >
@@ -2101,27 +2360,19 @@ function RegionMap({
         />
       </div>
       <MapContainer
-        className="region-map__map"
+        className={`region-map__map${isFullscreen ? ' region-map__map--fullscreen' : ''}`}
         center={mapCenter}
         zoom={DEFAULT_ZOOM}
         scrollWheelZoom
       >
-        <TileLayer 
-          url={currentLayerConfig.url} 
+        <TileLayer
+          url={currentLayerConfig.url}
           attribution={currentLayerConfig.attribution}
           maxZoom={currentLayerConfig.maxZoom}
         />
-        <SummitCountyOverlay />
-        <DrawManager
-          regions={regions}
-          onRegionsChange={onRegionsChange}
-          showAllProperties={showAllProperties}
-          onToggleShowAll={handleToggleShowAll}
-          showZoneOverlay={showZoneOverlay}
-          onToggleZoneOverlay={handleToggleZoneOverlay}
-          currentLayer={currentLayer}
-          onLayerChange={handleLayerChange}
-        />
+        <MapInstanceTracker onReady={handleMapReady} />
+        {showSummitCountyBoundary ? <SummitCountyOverlay /> : null}
+        <DrawManager regions={regions} onRegionsChange={onRegionsChange} />
         {displayedListings.length ? (
           <ListingMarkers
             listings={displayedListings}
@@ -2139,6 +2390,17 @@ function RegionMap({
           onZoneHover={handleZoneHover}
           enabled={showZoneOverlay}
         />
+        <LayerVisibilityControl
+          showAllProperties={showAllProperties}
+          onToggleShowAll={handleToggleShowAll}
+          showZoneOverlay={showZoneOverlay}
+          onToggleZoneOverlay={handleToggleZoneOverlay}
+          showSummitCountyBoundary={showSummitCountyBoundary}
+          onToggleSummitCountyBoundary={handleToggleSummitCountyBoundary}
+          currentLayer={currentLayer}
+          onLayerChange={handleLayerChange}
+        />
+        <FullscreenControl isFullscreen={isFullscreen} onToggle={handleToggleFullscreen} />
       </MapContainer>
     </section>
   );
