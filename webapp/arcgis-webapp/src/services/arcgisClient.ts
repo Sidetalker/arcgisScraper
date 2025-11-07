@@ -5,10 +5,20 @@ import {
   ArcgisQueryFilters,
   EnvelopeGeometry,
   FetchListingsParams,
+  FetchStrLicenseRosterParams,
+  ListingAttributes,
   ListingFeatureSet,
   QueryGeometry,
   SearchEnvelopeOptions,
 } from '@/types';
+import {
+  STR_LICENSE_ID_FIELD,
+  STR_LICENSE_LAYER_URL,
+  STR_LICENSE_SCHEDULE_FIELD,
+  STR_LICENSE_STATUS_FIELD,
+  STR_LICENSE_UPDATED_AT_FIELD,
+  type StrLicenseAttributes,
+} from '@/services/strLicenseUtils';
 
 const DEFAULT_LAYER_URL =
   'https://services6.arcgis.com/dmNYNuTJZDtkcRJq/arcgis/rest/services/PrISM_APParcelPts_View_Layer_for_Query/FeatureServer/0';
@@ -301,7 +311,7 @@ function buildQueryParams({
   return params;
 }
 
-async function queryFeatures(
+async function queryFeatures<A = Record<string, unknown>>(
   layerUrl: string,
   referer: string,
   {
@@ -319,10 +329,12 @@ async function queryFeatures(
     maxRecords?: number;
     signal?: AbortSignal;
   },
-): Promise<ListingFeatureSet> {
+): Promise<ArcgisFeatureSet<A>> {
   let offset = 0;
-  const collected: ArcgisFeatureSet['features'] = [];
-  let template: Omit<ListingFeatureSet, 'features'> & { features?: ListingFeatureSet['features'] } | undefined;
+  const collected: ArcgisFeatureSet<A>['features'] = [];
+  let template:
+    | (Omit<ArcgisFeatureSet<A>, 'features'> & { features?: ArcgisFeatureSet<A>['features'] })
+    | undefined;
 
   let hasMorePages = true;
   while (hasMorePages) {
@@ -332,7 +344,7 @@ async function queryFeatures(
       offset,
       pageSize,
     });
-    const page = (await fetchJson(`${layerUrl}/query`, params, { referer, signal })) as ListingFeatureSet;
+    const page = (await fetchJson(`${layerUrl}/query`, params, { referer, signal })) as ArcgisFeatureSet<A>;
 
     const featureCount = page.features?.length ?? 0;
     console.info('[ArcGIS] Received feature page', {
@@ -375,7 +387,7 @@ async function queryFeatures(
   return {
     ...(template ?? {}),
     features: collected,
-  } as ListingFeatureSet;
+  } as ArcgisFeatureSet<A>;
 }
 
 function createCacheKey(args: FetchListingsParams & { token?: string }): string {
@@ -462,7 +474,7 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
       layerUrl,
       pageSize,
     });
-    const result = await queryFeatures(layerUrl, referer, {
+    const result = await queryFeatures<ListingAttributes>(layerUrl, referer, {
       filters,
       geometry,
       pageSize,
@@ -496,6 +508,43 @@ export async function fetchListings(params: FetchListingsParams = {}): Promise<L
   return promise;
 }
 
+export async function fetchStrLicenseRoster(
+  params: FetchStrLicenseRosterParams = {},
+): Promise<ArcgisFeatureSet<StrLicenseAttributes>> {
+  const {
+    filters,
+    authentication = {},
+    layerUrl = STR_LICENSE_LAYER_URL,
+    portalUrl = DEFAULT_PORTAL_URL,
+    referer = DEFAULT_REFERER,
+    signal,
+  } = params;
+
+  const token = await generateToken(authentication, portalUrl, referer, signal);
+  const defaultOutFields = [
+    STR_LICENSE_SCHEDULE_FIELD,
+    STR_LICENSE_ID_FIELD,
+    STR_LICENSE_STATUS_FIELD,
+    STR_LICENSE_UPDATED_AT_FIELD,
+  ];
+  const outFields = filters?.outFields && filters.outFields.length > 0 ? filters.outFields : defaultOutFields;
+  const preparedFilters: ArcgisQueryFilters = {
+    ...(filters ?? {}),
+    outFields,
+    returnGeometry: filters?.returnGeometry ?? false,
+  };
+
+  const pageSize = await resolvePageSize(layerUrl, referer, token, preparedFilters, signal);
+
+  return queryFeatures<StrLicenseAttributes>(layerUrl, referer, {
+    filters: preparedFilters,
+    pageSize,
+    token,
+    maxRecords: preparedFilters.maxRecords,
+    signal,
+  });
+}
+
 export function clearArcgisCaches(): void {
   layerInfoCache.clear();
   requestCache.clear();
@@ -505,4 +554,5 @@ export const ArcgisDefaults = {
   layerUrl: DEFAULT_LAYER_URL,
   portalUrl: DEFAULT_PORTAL_URL,
   referer: DEFAULT_REFERER,
+  strLicenseLayerUrl: STR_LICENSE_LAYER_URL,
 };

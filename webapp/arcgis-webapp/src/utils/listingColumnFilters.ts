@@ -93,6 +93,14 @@ const COLUMN_FILTER_DEFINITIONS: Record<
     key: 'scheduleNumber',
     getFilterValue: (listing) => normalizeText(listing.scheduleNumber),
   },
+  strLicenseId: {
+    key: 'strLicenseId',
+    getFilterValue: (listing) => normalizeText(listing.strLicenseId),
+  },
+  strLicenseStatus: {
+    key: 'strLicenseStatus',
+    getFilterValue: (listing) => listing.strLicenseStatusNormalized,
+  },
   physicalAddress: {
     key: 'physicalAddress',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),

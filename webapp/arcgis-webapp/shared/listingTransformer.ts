@@ -482,6 +482,10 @@ export function toListingRecord(
     isBusinessOwner,
     latitude,
     longitude,
+    strLicenseId: null,
+    strLicenseStatus: null,
+    strLicenseStatusNormalized: 'unknown',
+    strLicenseUpdatedAt: null,
     raw: attributes,
   };
 }

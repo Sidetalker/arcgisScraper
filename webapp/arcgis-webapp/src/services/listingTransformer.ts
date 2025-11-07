@@ -526,6 +526,10 @@ export function toListingRecord(
     estimatedRenewalReference,
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
+    strLicenseId: null,
+    strLicenseStatus: null,
+    strLicenseStatusNormalized: 'unknown',
+    strLicenseUpdatedAt: null,
     raw: attributes,
     sourceOfTruth,
   };
@@ -574,6 +578,13 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     const listingZone = (listing.zone ?? '').toLowerCase();
     const zoneMatch = filters.zones.some((value) => listingZone === value.toLowerCase());
     if (!zoneMatch) {
+      return false;
+    }
+  }
+
+  if (filters.strLicenseStatuses.length > 0) {
+    const status = listing.strLicenseStatusNormalized ?? 'unknown';
+    if (!filters.strLicenseStatuses.some((value) => value === status)) {
       return false;
     }
   }

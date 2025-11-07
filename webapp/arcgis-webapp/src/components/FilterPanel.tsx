@@ -2,7 +2,25 @@ import './FilterPanel.css';
 
 import { ChangeEvent, useMemo, useState } from 'react';
 
-import type { ListingFilters } from '@/types';
+import type { ListingFilters, StrLicenseStatus } from '@/types';
+
+const STATUS_OPTION_LABELS: Record<StrLicenseStatus, string> = {
+  active: 'Active',
+  pending: 'Pending',
+  expired: 'Expired',
+  inactive: 'Inactive',
+  revoked: 'Revoked',
+  unknown: 'Unknown',
+};
+
+const STATUS_OPTIONS: StrLicenseStatus[] = [
+  'active',
+  'pending',
+  'expired',
+  'inactive',
+  'revoked',
+  'unknown',
+];
 
 interface FilterPanelProps {
   filters: ListingFilters;
@@ -43,6 +61,30 @@ export function FilterPanel({
     } else if (name === 'owner') {
       onChange({ ...filters, owner: value });
     }
+  };
+
+  const handleStatusToggle = (status: StrLicenseStatus) => (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const { checked } = event.target;
+    const current = filters.strLicenseStatuses;
+
+    if (checked) {
+      if (current.includes(status)) {
+        return;
+      }
+      onChange({ ...filters, strLicenseStatuses: [...current, status] });
+      return;
+    }
+
+    if (!current.includes(status)) {
+      return;
+    }
+
+    onChange({
+      ...filters,
+      strLicenseStatuses: current.filter((value) => value !== status),
+    });
   };
 
   const handleReset = () => {
@@ -345,6 +387,33 @@ export function FilterPanel({
           disabled={disabled}
           title="Only show listings whose owner names contain this text"
         />
+      </div>
+
+      <div className="filters__group">
+        <span className="filters__group-label">License status</span>
+        <div className="filters__checkbox-group" role="group" aria-label="Filter by license status">
+          {STATUS_OPTIONS.map((status) => {
+            const active = filters.strLicenseStatuses.includes(status);
+            return (
+              <label
+                key={status}
+                className="filters__checkbox-option"
+                data-checked={active ? 'true' : 'false'}
+                data-disabled={disabled ? 'true' : 'false'}
+              >
+                <input
+                  type="checkbox"
+                  name={`status-${status}`}
+                  value={status}
+                  checked={active}
+                  onChange={handleStatusToggle(status)}
+                  disabled={disabled}
+                />
+                <span className="filters__checkbox-label">{STATUS_OPTION_LABELS[status]}</span>
+              </label>
+            );
+          })}
+        </div>
       </div>
 
     </aside>
