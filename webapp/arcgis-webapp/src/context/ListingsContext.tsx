@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 
-import { fetchListings } from '@/services/arcgisClient';
+import { fetchListings, fetchStrLicenseRoster } from '@/services/arcgisClient';
 import { clearListingsCache, loadListingsFromCache, saveListingsToCache } from '@/services/listingLocalCache';
 import {
   applyListingOverrides,
@@ -20,6 +20,7 @@ import {
   upsertListingCustomization,
 } from '@/services/listingStorage';
 import { toListingRecord } from '@/services/listingTransformer';
+import { enrichListingsWithLicenseData } from '@/services/strLicenseUtils';
 import {
   cloneRegionShape,
   normaliseRegionList,
@@ -245,12 +246,16 @@ export function ListingsProvider({ children }: { children: ReactNode }): JSX.Ele
         records.push(record);
       });
 
-      await replaceAllListings(records);
+      const licenseFeatureSet = await fetchStrLicenseRoster();
+      const enrichedRecords = enrichListingsWithLicenseData(records, licenseFeatureSet);
+
+      await replaceAllListings(enrichedRecords);
       const syncTimestamp = new Date();
-      applyListingSnapshot(records, syncTimestamp, syncTimestamp);
-      await persistLocalCache(records, syncTimestamp);
+      applyListingSnapshot(enrichedRecords, syncTimestamp, syncTimestamp);
+      await persistLocalCache(enrichedRecords, syncTimestamp);
       console.info('Supabase listings were synchronised successfully.', {
-        listingCount: records.length,
+        listingCount: enrichedRecords.length,
+        licenseRosterCount: licenseFeatureSet.features?.length ?? 0,
       });
     } catch (syncError) {
       console.error('Failed to sync listings from ArcGIS into Supabase.', syncError);

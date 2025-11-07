@@ -5,6 +5,8 @@ export interface ArcgisFeature<A = Record<string, unknown>, G = Record<string, u
 
 export type ListingAttributes = Record<string, string | number | boolean | null>;
 
+export type StrLicenseStatus = 'active' | 'pending' | 'expired' | 'inactive' | 'revoked' | 'unknown';
+
 export interface ListingRecord {
   id: string;
   complex: string;
@@ -26,6 +28,10 @@ export interface ListingRecord {
   isBusinessOwner: boolean;
   latitude: number | null;
   longitude: number | null;
+  strLicenseId: string | null;
+  strLicenseStatus: string | null;
+  strLicenseStatusNormalized: StrLicenseStatus;
+  strLicenseUpdatedAt: Date | null;
   raw: ListingAttributes;
 }
 

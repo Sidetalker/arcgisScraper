@@ -44,6 +44,8 @@ export interface ArcgisFeatureSet<A = Record<string, unknown>, G = QueryGeometry
 
 export type ListingAttributes = Record<string, string | number | boolean | null>;
 
+export type StrLicenseStatus = 'active' | 'pending' | 'expired' | 'inactive' | 'revoked' | 'unknown';
+
 export type ListingFeatureSet = ArcgisFeatureSet<ListingAttributes>;
 
 export type RenewalCategory = 'overdue' | 'due_30' | 'due_60' | 'due_90' | 'future' | 'missing';
@@ -96,6 +98,10 @@ export interface ListingRecord {
   estimatedRenewalReference: Date | null;
   estimatedRenewalCategory: RenewalCategory;
   estimatedRenewalMonthKey: string | null;
+  strLicenseId: string | null;
+  strLicenseStatus: string | null;
+  strLicenseStatusNormalized: StrLicenseStatus;
+  strLicenseUpdatedAt: Date | null;
   raw: ListingAttributes;
   sourceOfTruth: ListingSourceOfTruth | null;
 }
@@ -177,6 +183,15 @@ export interface FetchListingsParams {
   referer?: string;
   signal?: AbortSignal;
   useCache?: boolean;
+}
+
+export interface FetchStrLicenseRosterParams {
+  filters?: ArcgisQueryFilters;
+  authentication?: ArcgisAuthentication;
+  layerUrl?: string;
+  portalUrl?: string;
+  referer?: string;
+  signal?: AbortSignal;
 }
 
 export interface SearchEnvelopeOptions {

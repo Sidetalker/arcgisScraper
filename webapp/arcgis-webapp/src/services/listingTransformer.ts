@@ -526,6 +526,10 @@ export function toListingRecord(
     estimatedRenewalReference,
     estimatedRenewalCategory,
     estimatedRenewalMonthKey,
+    strLicenseId: null,
+    strLicenseStatus: null,
+    strLicenseStatusNormalized: 'unknown',
+    strLicenseUpdatedAt: null,
     raw: attributes,
     sourceOfTruth,
   };

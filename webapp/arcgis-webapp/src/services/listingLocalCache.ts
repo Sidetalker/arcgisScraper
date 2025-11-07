@@ -59,6 +59,20 @@ export async function loadListingsFromCache(): Promise<
     ...record,
     zone: typeof record.zone === 'string' ? record.zone : '',
     hasCustomizations: Boolean(record.hasCustomizations),
+    strLicenseId: record.strLicenseId ?? null,
+    strLicenseStatus: record.strLicenseStatus ?? null,
+    strLicenseStatusNormalized: record.strLicenseStatusNormalized ?? 'unknown',
+    strLicenseUpdatedAt: (() => {
+      const value = record.strLicenseUpdatedAt;
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+      }
+      if (typeof value === 'string') {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      return null;
+    })(),
     raw: {},
     sourceOfTruth: record.sourceOfTruth ?? null,
   }));
