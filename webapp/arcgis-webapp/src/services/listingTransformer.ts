@@ -530,6 +530,8 @@ export function toListingRecord(
     strLicenseStatus: null,
     strLicenseStatusNormalized: 'unknown',
     strLicenseUpdatedAt: null,
+    waitlistType: null,
+    waitlistPosition: null,
     raw: attributes,
     sourceOfTruth,
   };
@@ -622,6 +624,13 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
       (value) => value.toLowerCase() === monthKey.toLowerCase(),
     );
     if (!monthMatch) {
+      return false;
+    }
+  }
+
+  if (filters.onWaitlist) {
+    // Listing must have a waitlistType to pass this filter.
+    if (!listing.waitlistType) {
       return false;
     }
   }

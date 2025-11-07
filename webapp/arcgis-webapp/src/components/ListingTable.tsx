@@ -439,6 +439,36 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     getExportValue: (listing) => normalizeText(listing.physicalAddress),
     getSortValue: (listing) => normalizeText(listing.physicalAddress),
   },
+  {
+    key: 'waitlist',
+    label: 'Waitlist',
+    render: (listing) => {
+      if (!listing.waitlistType) {
+        return '—';
+      }
+      const label = listing.waitlistType === 'upper_blue_basin' ? 'Upper Blue' : 'Lower Blue';
+      return listing.waitlistPosition
+        ? `${label} #${listing.waitlistPosition}`
+        : label;
+    },
+    getFilterValue: (listing) => (listing.waitlistType ? 'yes' : 'no'),
+    getExportValue: (listing) => {
+      if (!listing.waitlistType) {
+        return '';
+      }
+      const label = listing.waitlistType === 'upper_blue_basin' ? 'Upper Blue' : 'Lower Blue';
+      return listing.waitlistPosition
+        ? `${label} #${listing.waitlistPosition}`
+        : label;
+    },
+    getSortValue: (listing) => {
+      if (!listing.waitlistType) {
+        return 'zzzz';
+      }
+      return `${listing.waitlistType}-${listing.waitlistPosition?.toString().padStart(5, '0') ?? ''}`;
+    },
+    filterType: 'boolean',
+  },
 ];
 
 const MAX_PAGE_SIZE = 1000;
@@ -1055,10 +1085,11 @@ export function ListingTable({
   const requestedPage = Number.isFinite(currentPage) ? Math.floor(currentPage) : 1;
   const safePage = clampPage(requestedPage);
   const startIndex = (safePage - 1) * effectivePageSize;
-  const endIndex = Math.min(startIndex + effectivePageSize, filteredListings.length);
+  // Use the sortedListings for pagination so user-visible order reflects active sorting.
+  const endIndex = Math.min(startIndex + effectivePageSize, sortedListings.length);
   const pageListings = useMemo(
-    () => filteredListings.slice(startIndex, endIndex),
-    [filteredListings, startIndex, endIndex],
+    () => sortedListings.slice(startIndex, endIndex),
+    [sortedListings, startIndex, endIndex],
   );
   const columnCount = Math.max(1, visibleColumns.length + 2);
   const pageListingIds = useMemo(
@@ -1689,7 +1720,8 @@ export function ListingTable({
     }
 
     const { listingId, commentId } = pendingCommentTarget;
-    const filteredIndex = filteredListings.findIndex((listing) => listing.id === listingId);
+  // Determine page based on sortedListings so deep-link comment navigation aligns with displayed order.
+  const filteredIndex = sortedListings.findIndex((listing) => listing.id === listingId);
     if (filteredIndex === -1) {
       setCommentHighlightTarget((current) => {
         if (current && current.listingId === listingId) {

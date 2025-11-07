@@ -1,9 +1,10 @@
 import './FilterPanel.css';
 
-import { ChangeEvent, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import type { ListingFilters, StrLicenseStatus } from '@/types';
 
+// License status labels retained for table rendering; filter pane should only expose a subset.
 const STATUS_OPTION_LABELS: Record<StrLicenseStatus, string> = {
   active: 'Active',
   pending: 'Pending',
@@ -13,14 +14,8 @@ const STATUS_OPTION_LABELS: Record<StrLicenseStatus, string> = {
   unknown: 'Unknown',
 };
 
-const STATUS_OPTIONS: StrLicenseStatus[] = [
-  'active',
-  'pending',
-  'expired',
-  'inactive',
-  'revoked',
-  'unknown',
-];
+// Only show Active and Pending per requirement — removed: Expired, Inactive, Revoked, Unknown.
+const STATUS_OPTIONS: StrLicenseStatus[] = ['active', 'pending'];
 
 interface FilterPanelProps {
   filters: ListingFilters;
@@ -85,6 +80,10 @@ export function FilterPanel({
       ...filters,
       strLicenseStatuses: current.filter((value) => value !== status),
     });
+  };
+
+  const handleOnWaitlistToggle = (event: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...filters, onWaitlist: event.target.checked });
   };
 
   const handleReset = () => {
@@ -176,6 +175,14 @@ export function FilterPanel({
       setIsDeletingWatchlist(false);
     }
   };
+
+  // Clean any previously persisted disallowed statuses so user isn't stuck with hidden active filters.
+  useEffect(() => {
+    const cleaned = filters.strLicenseStatuses.filter((s) => STATUS_OPTIONS.includes(s));
+    if (cleaned.length !== filters.strLicenseStatuses.length) {
+      onChange({ ...filters, strLicenseStatuses: cleaned });
+    }
+  }, [filters, onChange]);
 
   return (
     <aside className="filters" aria-label="Filters">
@@ -390,7 +397,7 @@ export function FilterPanel({
       </div>
 
       <div className="filters__group">
-        <span className="filters__group-label">License status</span>
+        <span className="filters__group-label">STR license status</span>
         <div className="filters__checkbox-group" role="group" aria-label="Filter by license status">
           {STATUS_OPTIONS.map((status) => {
             const active = filters.strLicenseStatuses.includes(status);
@@ -416,6 +423,25 @@ export function FilterPanel({
         </div>
       </div>
 
+      <div className="filters__group">
+        <span className="filters__group-label">Waitlist</span>
+        <div className="filters__checkbox-group" role="group" aria-label="Filter by waitlist status">
+          <label
+            className="filters__checkbox-option"
+            data-checked={filters.onWaitlist ? 'true' : 'false'}
+            data-disabled={disabled ? 'true' : 'false'}
+          >
+            <input
+              type="checkbox"
+              name="on-waitlist"
+              checked={filters.onWaitlist}
+              onChange={handleOnWaitlistToggle}
+              disabled={disabled}
+            />
+            <span className="filters__checkbox-label">On a waitlist</span>
+          </label>
+        </div>
+      </div>
     </aside>
   );
 }

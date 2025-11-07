@@ -130,6 +130,7 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
     strLicenseStatuses: normaliseStatusList(filters?.strLicenseStatuses),
+    onWaitlist: typeof filters?.onWaitlist === 'boolean' ? filters.onWaitlist : false,
   };
 }
 
@@ -158,7 +159,8 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
     stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
     stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
     stringSetsEqual(a.renewalMonths, b.renewalMonths) &&
-    stringSetsEqual(a.strLicenseStatuses, b.strLicenseStatuses)
+    stringSetsEqual(a.strLicenseStatuses, b.strLicenseStatuses) &&
+    a.onWaitlist === b.onWaitlist
   );
 }
 

@@ -12,4 +12,5 @@ export const DEFAULT_FILTERS: ListingFilters = {
   renewalMethods: [],
   renewalMonths: [],
   strLicenseStatuses: [],
+  onWaitlist: false,
 };

@@ -12,6 +12,7 @@ export const LISTING_TABLE_COLUMN_KEYS = [
   'strLicenseId',
   'strLicenseStatus',
   'physicalAddress',
+  'waitlist',
 ] as const;
 
 export type ListingTableColumnKey = (typeof LISTING_TABLE_COLUMN_KEYS)[number];

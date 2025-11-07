@@ -102,6 +102,8 @@ export interface ListingRecord {
   strLicenseStatus: string | null;
   strLicenseStatusNormalized: StrLicenseStatus;
   strLicenseUpdatedAt: Date | null;
+  waitlistType: string | null;
+  waitlistPosition: number | null;
   raw: ListingAttributes;
   sourceOfTruth: ListingSourceOfTruth | null;
 }
@@ -116,6 +118,7 @@ export interface ListingFilters {
   renewalMethods: string[];
   renewalMonths: string[];
   strLicenseStatuses: StrLicenseStatus[];
+  onWaitlist: boolean;
 }
 
 export interface RegionPoint {

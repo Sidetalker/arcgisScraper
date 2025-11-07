@@ -103,6 +103,7 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     renewalMethods: [],
     renewalMonths: [],
     strLicenseStatuses: [],
+    onWaitlist: false,
   };
 
   if (!filters || typeof filters !== 'object') {
@@ -119,6 +120,7 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     renewalMethods: normaliseStringArray(filters.renewalMethods),
     renewalMonths: normaliseStringArray(filters.renewalMonths),
     strLicenseStatuses: normaliseStatusArray(filters.strLicenseStatuses),
+    onWaitlist: typeof filters.onWaitlist === 'boolean' ? filters.onWaitlist : false,
   };
 }
 

@@ -127,6 +127,8 @@ export interface ListingRow {
   str_license_status: Nullable<string>;
   str_license_status_normalized: Nullable<string>;
   str_license_updated_at: Nullable<string>;
+  waitlist_type: Nullable<string>;
+  waitlist_position: Nullable<number>;
   updated_at?: string;
 }
 
@@ -195,6 +197,8 @@ function toListingRow(record: ListingRecord): ListingRow {
     str_license_status: record.strLicenseStatus ?? null,
     str_license_status_normalized: record.strLicenseStatusNormalized ?? 'unknown',
     str_license_updated_at: formatTimestampColumn(record.strLicenseUpdatedAt),
+    waitlist_type: record.waitlistType ?? null,
+    waitlist_position: record.waitlistPosition ?? null,
   };
 }
 
@@ -302,6 +306,8 @@ function fromListingRow(row: ListingRow): ListingRecord {
     strLicenseStatus,
     strLicenseStatusNormalized,
     strLicenseUpdatedAt,
+    waitlistType: row.waitlist_type ?? null,
+    waitlistPosition: row.waitlist_position ?? null,
     raw: rawAttributes,
     sourceOfTruth,
   };
@@ -707,6 +713,8 @@ const LISTING_COLUMNS = [
   'str_license_status',
   'str_license_status_normalized',
   'str_license_updated_at',
+  'waitlist_type',
+  'waitlist_position',
   'updated_at',
 ] as const;
 
@@ -772,7 +780,7 @@ export async function fetchStoredListings(): Promise<StoredListingSet> {
   while (hasMore) {
     const to = from + PAGE_SIZE - 1;
     const { data, error } = await client
-      .from('listings')
+      .from('listings_with_waitlist')
       .select(LISTING_COLUMNS.join(', '))
       .order('schedule_number', { ascending: true })
       .range(from, to);

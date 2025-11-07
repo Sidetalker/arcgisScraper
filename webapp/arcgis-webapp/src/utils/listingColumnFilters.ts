@@ -105,6 +105,11 @@ const COLUMN_FILTER_DEFINITIONS: Record<
     key: 'physicalAddress',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),
   },
+  waitlist: {
+    key: 'waitlist',
+    filterType: 'boolean',
+    getFilterValue: (listing) => (listing.waitlistType ? 'yes' : 'no'),
+  },
 };
 
 export function filterListingsByColumnFilters(

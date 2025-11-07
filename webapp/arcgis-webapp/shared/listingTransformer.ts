@@ -347,7 +347,106 @@ function buildDetailUrl(detailId: string): string {
     return '';
   }
   const encoded = encodeURIComponent(detailId);
-  return `https://gis.summitcountyco.gov/map/DetailData.aspx?Schno=${encoded}`;
+  return `  // ...existing code...
+  export function applyFilters(listing: ListingRecord, filters: ListingFilters): boolean {
+    const search = filters.searchTerm.trim().toLowerCase();
+    if (search) {
+      const haystack = [
+        listing.complex,
+        listing.unit,
+        listing.ownerName,
+        listing.physicalAddress,
+        listing.scheduleNumber,
+        listing.subdivision,
+        listing.zone,
+        listing.mailingAddress,
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(search)) {
+        return false;
+      }
+    }
+  
+    if (filters.complex.trim()) {
+      const complexQuery = filters.complex.trim().toLowerCase();
+      if (!listing.complex.toLowerCase().includes(complexQuery)) {
+        return false;
+      }
+    }
+  
+    if (filters.owner.trim()) {
+      const ownerQuery = filters.owner.trim().toLowerCase();
+      const ownerMatches =
+        listing.ownerNames.some((name) => name.toLowerCase().includes(ownerQuery)) ||
+        listing.ownerName.toLowerCase().includes(ownerQuery);
+      if (!ownerMatches) {
+        return false;
+      }
+    }
+  
+    // NEW: Require a waitlist membership when the checkbox is active.
+    if (filters.onWaitlist) {
+      if (!listing.waitlistType) {
+        return false;
+      }
+    }
+  
+    if (filters.zones.length > 0) {
+      const listingZone = (listing.zone ?? '').toLowerCase();
+      const zoneMatch = filters.zones.some((value) => listingZone === value.toLowerCase());
+      if (!zoneMatch) {
+        return false;
+      }
+    }
+  
+    if (filters.strLicenseStatuses.length > 0) {
+      const status = listing.strLicenseStatusNormalized ?? 'unknown';
+      if (!filters.strLicenseStatuses.some((value) => value === status)) {
+        return false;
+      }
+    }
+  
+    if (filters.subdivisions.length > 0) {
+      const listingSubdivision = (listing.subdivision ?? '').toLowerCase();
+      const subdivisionMatch = filters.subdivisions.some(
+        (value) => listingSubdivision === value.toLowerCase(),
+      );
+      if (!subdivisionMatch) {
+        return false;
+      }
+    }
+  
+    if (filters.renewalCategories.length > 0) {
+      const category = listing.estimatedRenewalCategory ?? 'missing';
+      if (!filters.renewalCategories.some((value) => value === category)) {
+        return false;
+      }
+    }
+  
+    if (filters.renewalMethods.length > 0) {
+      const method = listing.estimatedRenewalMethod ?? 'missing';
+      if (!filters.renewalMethods.some((value) => value === method)) {
+        return false;
+      }
+    }
+  
+    if (filters.renewalMonths.length > 0) {
+      const monthKey = listing.estimatedRenewalMonthKey;
+      if (!monthKey) {
+        return false;
+      }
+      const monthMatch = filters.renewalMonths.some(
+        (value) => value.toLowerCase() === monthKey.toLowerCase(),
+      );
+      if (!monthMatch) {
+        return false;
+      }
+    }
+  
+    return true;
+  }
+  // ...existing code....summitcountyco.gov/map/DetailData.aspx?Schno=${encoded}`;
 }
 
 function normaliseCoordinate(value: unknown): number | null {
@@ -524,6 +623,11 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     if (!ownerMatches) {
       return false;
     }
+  }
+
+  // NEW: Waitlist filter (shared variant).
+  if (filters.onWaitlist && !listing.waitlistType) {
+    return false;
   }
 
   return true;

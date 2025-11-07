@@ -30,6 +30,107 @@ const WAITLIST_VARIANTS = {
   },
 };
 
+const STREET_ALIAS_MAP = new Map([
+  ['road', 'rd'],
+  ['rd', 'rd'],
+  ['drive', 'dr'],
+  ['dr', 'dr'],
+  ['street', 'st'],
+  ['st', 'st'],
+  ['avenue', 'ave'],
+  ['ave', 'ave'],
+  ['boulevard', 'blvd'],
+  ['blvd', 'blvd'],
+  ['lane', 'ln'],
+  ['ln', 'ln'],
+  ['court', 'ct'],
+  ['ct', 'ct'],
+  ['circle', 'cir'],
+  ['cir', 'cir'],
+  ['parkway', 'pkwy'],
+  ['pkwy', 'pkwy'],
+  ['trail', 'trl'],
+  ['trl', 'trl'],
+  ['terrace', 'ter'],
+  ['ter', 'ter'],
+  ['place', 'pl'],
+  ['pl', 'pl'],
+  ['highway', 'hwy'],
+  ['hwy', 'hwy'],
+  ['mountain', 'mtn'],
+  ['mtn', 'mtn'],
+  ['mount', 'mt'],
+  ['mt', 'mt'],
+  ['driveway', 'drwy'],
+  ['north', 'n'],
+  ['south', 's'],
+  ['east', 'e'],
+  ['west', 'w'],
+  ['northeast', 'ne'],
+  ['northwest', 'nw'],
+  ['southeast', 'se'],
+  ['southwest', 'sw'],
+]);
+
+const STREET_IGNORE_TOKENS = new Set([
+  'unit',
+  'apt',
+  'apartment',
+  'suite',
+  'ste',
+  'lot',
+  'trlr',
+  'room',
+  'bldg',
+  'building',
+  'po',
+  'box',
+  'county',
+]);
+
+const STREET_SUFFIX_TOKENS = new Set([
+  'rd',
+  'dr',
+  'st',
+  'ave',
+  'blvd',
+  'ln',
+  'ct',
+  'cir',
+  'pkwy',
+  'trl',
+  'ter',
+  'pl',
+  'hwy',
+  'mtn',
+  'mt',
+  'drwy',
+  'way',
+  'loop',
+  'parkway',
+]);
+
+const STREET_DIRECTION_TOKENS = new Set([
+  'n',
+  's',
+  'e',
+  'w',
+  'ne',
+  'nw',
+  'se',
+  'sw',
+]);
+
+function expandStreetAbbreviations(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return value ?? '';
+  }
+  return value.replace(/\bcr\b/gi, 'county road').replace(/\bco\s+rd\b/gi, 'county road');
+}
+const TYPO_CORRECTIONS = new Map([
+  ['mooinstone', 'moonstone'],
+]);
+
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -262,6 +363,47 @@ function resolveColumnIndexes(headerRow) {
     columns.get('addr line 2') ??
     null;
 
+  let resolvedAddressLine2Index = addressLine2Index;
+  if (resolvedAddressLine2Index === null) {
+    const unitLikeIndex =
+      columns.get('unit') ??
+      columns.get('unit number') ??
+      columns.get('unit #') ??
+      columns.get('unit no') ??
+      columns.get('building') ??
+      columns.get('bldg') ??
+      null;
+    if (unitLikeIndex !== null && unitLikeIndex !== undefined) {
+      resolvedAddressLine2Index = unitLikeIndex;
+    }
+  }
+  if (resolvedAddressLine2Index === null) {
+    const unlabeledIndex = headerRow.findIndex((value, index) => {
+      if (index === numberIndex || index === addressLine1Index) {
+        return false;
+      }
+      if (typeof value !== 'string') {
+        return true;
+      }
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return true;
+      }
+      return /^unnamed[:\s]*\d*$/i.test(trimmed);
+    });
+    if (unlabeledIndex !== -1) {
+      resolvedAddressLine2Index = unlabeledIndex;
+    }
+  }
+
+  if (resolvedAddressLine2Index === null && headerRow.length >= 4 && addressLine1Index !== 3 && numberIndex !== 3) {
+    const rawValue = headerRow[3];
+    const value = typeof rawValue === 'string' ? rawValue.trim() : '';
+    if (rawValue === undefined || value.length === 0 || /^unnamed[:\s]*\d*$/i.test(value)) {
+      resolvedAddressLine2Index = 3;
+    }
+  }
+
   if (addressLine1Index === null) {
     throw new Error('Missing "Address Line 1" column.');
   }
@@ -269,22 +411,79 @@ function resolveColumnIndexes(headerRow) {
   return {
     numberIndex,
     addressLine1Index,
-    addressLine2Index,
+    addressLine2Index: resolvedAddressLine2Index,
   };
+}
+
+function normaliseQuotes(value) {
+  if (typeof value !== 'string') {
+    return value ?? '';
+  }
+  return value
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"');
 }
 
 function sanitiseLine(value) {
   if (!value) {
     return '';
   }
-  return value.trim();
+  let sanitised = normaliseQuotes(String(value).trim());
+  if (
+    (sanitised.startsWith('"') && sanitised.endsWith('"')) ||
+    (sanitised.startsWith("'") && sanitised.endsWith("'"))
+  ) {
+    sanitised = sanitised.slice(1, -1).trim();
+  }
+  return sanitised;
+}
+
+function findOverflowAddressLine(row, skipIndexes) {
+  for (let index = 0; index < row.length; index += 1) {
+    if (skipIndexes.has(index)) {
+      continue;
+    }
+    const rawValue = row[index];
+    if (rawValue === undefined || rawValue === null) {
+      continue;
+    }
+    const value = sanitiseLine(rawValue);
+    if (!value) {
+      continue;
+    }
+    if (/(unit|bldg|building|apt|suite|#)/i.test(value)) {
+      return value;
+    }
+  }
+  return '';
 }
 
 function normaliseAddressPart(value) {
   if (!value) {
     return '';
   }
-  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const expanded = expandStreetAbbreviations(value);
+  const withoutParens = stripParentheticalSegments(expanded);
+  return withoutParens
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => {
+      if (STREET_IGNORE_TOKENS.has(token)) {
+        return '';
+      }
+      let normalized = STREET_ALIAS_MAP.get(token) ?? token;
+      if (/^[0-9]+$/.test(normalized)) {
+        const numericValue = Number.parseInt(normalized, 10);
+        if (!Number.isNaN(numericValue)) {
+          normalized = String(numericValue);
+        }
+      }
+      return normalized;
+    })
+    .filter(Boolean)
+    .join('');
 }
 
 function buildNormalisedAddress(line1, line2) {
@@ -301,9 +500,16 @@ function normaliseUnit(value) {
     if (value === null || value === undefined) {
       return '';
     }
-    return String(value).replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+    value = String(value);
   }
-  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  const sanitized = value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  if (/^[0-9]+$/.test(sanitized)) {
+    const numericValue = Number.parseInt(sanitized, 10);
+    if (!Number.isNaN(numericValue)) {
+      return String(numericValue);
+    }
+  }
+  return sanitized;
 }
 
 function collectUnitTokensFromText(input, tokens) {
@@ -315,29 +521,59 @@ function collectUnitTokensFromText(input, tokens) {
     return;
   }
 
+  const normalizedText = text.replace(/\bunti\b/gi, 'unit');
+
   const unitPattern =
     /\b(?:unit|apt|apartment|suite|ste|lot|trlr|room|bldg|building)\s*([A-Za-z0-9-]+)/gi;
-  let match = unitPattern.exec(text);
+  let match = unitPattern.exec(normalizedText);
   while (match) {
     const value = normaliseUnit(match[1] ?? '');
     if (value) {
       tokens.add(value);
     }
-    match = unitPattern.exec(text);
+    match = unitPattern.exec(normalizedText);
   }
 
   const hashPattern = /#\s*([A-Za-z0-9-]+)/gi;
-  match = hashPattern.exec(text);
+  match = hashPattern.exec(normalizedText);
   while (match) {
     const value = normaliseUnit(match[1] ?? '');
     if (value) {
       tokens.add(value);
     }
-    match = hashPattern.exec(text);
+    match = hashPattern.exec(normalizedText);
   }
 
-  if (text.length <= 8 && /^[A-Za-z0-9-]+$/.test(text) && !/po\s*box/i.test(text)) {
-    const standalone = normaliseUnit(text);
+  const letterNumberPattern = /\b([A-Za-z]{1,4})\s*([0-9]{1,4})\b/g;
+  match = letterNumberPattern.exec(normalizedText);
+  while (match) {
+    const letters = normaliseUnit(match[1] ?? '');
+    const digits = normaliseUnit(match[2] ?? '');
+    if (letters && digits) {
+      tokens.add(`${letters}${digits}`);
+      tokens.add(digits);
+    } else if (digits) {
+      tokens.add(digits);
+    }
+    match = letterNumberPattern.exec(normalizedText);
+  }
+
+  const digitsOnlyPattern = /\b([0-9]{1,4})\b/g;
+  match = digitsOnlyPattern.exec(normalizedText);
+  while (match) {
+    const digits = normaliseUnit(match[1] ?? '');
+    if (digits) {
+      tokens.add(digits);
+    }
+    match = digitsOnlyPattern.exec(normalizedText);
+  }
+
+  if (
+    normalizedText.length <= 8 &&
+    /^[A-Za-z0-9-]+$/.test(normalizedText) &&
+    !/po\s*box/i.test(normalizedText)
+  ) {
+    const standalone = normaliseUnit(normalizedText);
     if (standalone) {
       tokens.add(standalone);
     }
@@ -348,6 +584,18 @@ function extractUnitHints(...lines) {
   const tokens = new Set();
   lines.forEach((line) => collectUnitTokensFromText(line, tokens));
   return Array.from(tokens);
+}
+
+function ensureEntryUnitHints(entry) {
+  const hints = new Set(entry.unitKeys ?? []);
+  if (typeof entry.addressLine1 === 'string' || typeof entry.addressLine2 === 'string') {
+    extractUnitHints(entry.addressLine1 ?? '', entry.addressLine2 ?? '').forEach((hint) => {
+      if (hint) {
+        hints.add(hint);
+      }
+    });
+  }
+  return Array.from(hints);
 }
 
 function stripUnitDesignators(value) {
@@ -386,6 +634,171 @@ function buildStreetUnitKey(streetKey, unitKey) {
   return `${streetKey}|${unitKey}`;
 }
 
+function stripParentheticalSegments(value) {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    value = String(value);
+  }
+  return value.replace(/\([^)]*\)/g, ' ');
+}
+
+function normaliseStreetValue(value) {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    value = String(value);
+  }
+  const expanded = expandStreetAbbreviations(value);
+  const withoutParens = stripParentheticalSegments(expanded);
+  const preliminary = withoutParens
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => {
+      if (STREET_IGNORE_TOKENS.has(token)) {
+        return '';
+      }
+      let normalized = STREET_ALIAS_MAP.get(token) ?? token;
+      if (/^[0-9]+$/.test(normalized)) {
+        const numericValue = Number.parseInt(normalized, 10);
+        if (!Number.isNaN(numericValue)) {
+          normalized = String(numericValue);
+        }
+      }
+      return normalized;
+    })
+    .filter(Boolean);
+
+  const tokens = [];
+  let numericSeen = false;
+  preliminary.forEach((token) => {
+    if (!token) {
+      return;
+    }
+    const isNumeric = /^[0-9]+$/.test(token);
+    if (STREET_DIRECTION_TOKENS.has(token) && numericSeen) {
+      return;
+    }
+    tokens.push(token);
+    if (isNumeric) {
+      numericSeen = true;
+    }
+  });
+
+  while (tokens.length > 0 && STREET_DIRECTION_TOKENS.has(tokens[0])) {
+    tokens.shift();
+  }
+
+  if (tokens.length > 1) {
+    const last = tokens[tokens.length - 1];
+    if (STREET_SUFFIX_TOKENS.has(last)) {
+      tokens.pop();
+    }
+  }
+
+  return tokens.join('');
+}
+
+function extractComplexHintTokens(value) {
+  if (typeof value !== 'string') {
+    return [];
+  }
+  const beforeComma = value.split(',')[0] ?? value;
+  const beforeUnit = beforeComma.split(/unit|apt|suite|ste/i)[0];
+  return tokeniseString(beforeUnit).filter((token) => token.length > 1);
+}
+
+function getStreetSuffixToken(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return '';
+  }
+  const expanded = expandStreetAbbreviations(value);
+  const withoutParens = stripParentheticalSegments(expanded);
+  const tokens = withoutParens
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => STREET_ALIAS_MAP.get(token) ?? token);
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index];
+    if (STREET_SUFFIX_TOKENS.has(token)) {
+      return token;
+    }
+  }
+  return '';
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function applyKnownTypoCorrections(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return value ?? '';
+  }
+  let corrected = value;
+  TYPO_CORRECTIONS.forEach((replacement, typo) => {
+    const pattern = new RegExp(`\\b${escapeRegExp(typo)}\\b`, 'gi');
+    corrected = corrected.replace(pattern, (match) => {
+      if (match === match.toUpperCase()) {
+        return replacement.toUpperCase();
+      }
+      if (match[0] === match[0].toUpperCase()) {
+        return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+      }
+      return replacement;
+    });
+  });
+  return corrected;
+}
+
+function tokeniseString(value) {
+  if (typeof value !== 'string') {
+    if (value === null || value === undefined) {
+      return [];
+    }
+    value = String(value);
+  }
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function extractBuildingCodesFromUnitKeys(unitKeys) {
+  const codes = new Set();
+  unitKeys.forEach((key) => {
+    const match = key.match(/^([a-z]+)[0-9]+$/);
+    if (match && match[1]) {
+      codes.add(match[1]);
+    }
+  });
+  return codes;
+}
+
+function extractBuildingCodesFromText(value) {
+  const codes = new Set();
+  if (typeof value !== 'string') {
+    return codes;
+  }
+  const regex = /\b(?:bldg|building)\s*([A-Za-z]+)/gi;
+  let match = regex.exec(value);
+  while (match) {
+    const code = match[1]?.toLowerCase();
+    if (code) {
+      codes.add(code);
+    }
+    match = regex.exec(value);
+  }
+  return codes;
+}
+
 function parseEntriesFromRows({
   rows,
   waitlistType,
@@ -399,33 +812,83 @@ function parseEntriesFromRows({
   const header = rows[0];
   const { numberIndex, addressLine1Index, addressLine2Index } = resolveColumnIndexes(header);
   const entries = [];
+  const seenPositions = new Set();
+  const seenAddresses = new Set();
 
   for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex];
-    const addressLine1 = sanitiseLine(row[addressLine1Index]);
-    if (!addressLine1) {
+    const rawAddressLine1 = sanitiseLine(row[addressLine1Index]);
+    if (!rawAddressLine1) {
       continue;
     }
-    const addressLine2 = addressLine2Index === null ? '' : sanitiseLine(row[addressLine2Index]);
+    const initialRawAddressLine2 =
+      addressLine2Index === null ? '' : sanitiseLine(row[addressLine2Index]);
+    const addressLine1 = applyKnownTypoCorrections(rawAddressLine1);
+    let addressLine2 = applyKnownTypoCorrections(initialRawAddressLine2);
+    const skipIndexes = new Set([numberIndex, addressLine1Index]);
+    if (addressLine2Index !== null) {
+      skipIndexes.add(addressLine2Index);
+    }
+    const overflowLine = findOverflowAddressLine(row, skipIndexes);
+    if (overflowLine) {
+      const correctedOverflow = applyKnownTypoCorrections(overflowLine);
+      if (!addressLine2) {
+        addressLine2 = correctedOverflow;
+      } else if (
+        correctedOverflow &&
+        !addressLine2.toLowerCase().includes(correctedOverflow.toLowerCase())
+      ) {
+        addressLine2 = `${addressLine2}; ${correctedOverflow}`;
+      }
+    }
     const positionValueRaw = numberIndex === null ? '' : sanitiseLine(row[numberIndex]);
-    const positionValue = Number.parseInt(positionValueRaw, 10);
+    let positionValue = Number.parseInt(positionValueRaw, 10);
+
+    if (!Number.isNaN(positionValue)) {
+      const positionKey = `${waitlistType}|${positionValue}`;
+      if (seenPositions.has(positionKey)) {
+        positionValue = NaN; // Force to null later
+      } else {
+        seenPositions.add(positionKey);
+      }
+    }
+
     const id = randomUUID();
     const normalizedLine1 = normaliseAddressPart(addressLine1);
     const normalizedLine2 = normaliseAddressPart(addressLine2);
     const normalizedAddress = buildNormalisedAddress(addressLine1, addressLine2);
-    const normalizedLine1StrippedRaw = normaliseAddressPart(stripUnitDesignators(addressLine1));
+
+    const addressKey = `${waitlistType}|${normalizedAddress}`;
+    if (seenAddresses.has(addressKey)) {
+      console.warn(
+        `[parse] Skipping duplicate address for ${label} at row ${rowIndex + 1} in ${sourceFilename}: "${rawAddressLine1}"`,
+      );
+      continue;
+    }
+    seenAddresses.add(addressKey);
+
+    const line1Stripped = stripUnitDesignators(addressLine1);
+    const normalizedLine1StrippedRaw = normaliseAddressPart(line1Stripped);
     const normalizedLine1Stripped = normalizedLine1StrippedRaw || normalizedLine1;
     const unitKeys = extractUnitHints(addressLine1, addressLine2);
     const streetUnitKeys = unitKeys
       .map((unitKey) => buildStreetUnitKey(normalizedLine1Stripped, unitKey))
       .filter((key) => key.length > 0);
+    const streetCanonical = normaliseStreetValue(addressLine1);
+    const streetCanonicalStripped = normaliseStreetValue(line1Stripped || addressLine1);
+    const complexHintTokens = extractComplexHintTokens(addressLine2);
+    const buildingCodeSet = extractBuildingCodesFromUnitKeys(unitKeys);
+    extractBuildingCodesFromText(addressLine1).forEach((code) => buildingCodeSet.add(code));
+    extractBuildingCodesFromText(addressLine2).forEach((code) => buildingCodeSet.add(code));
+    const buildingCodes = Array.from(buildingCodeSet);
+    const streetSuffix = getStreetSuffixToken(addressLine1);
 
     entries.push({
       id,
       waitlistType,
       waitlistLabel: label,
       position: Number.isNaN(positionValue) ? null : positionValue,
-      addressLine1,
+      addressLine1: rawAddressLine1,
       addressLine2: addressLine2 || '',
       normalizedLine1,
       normalizedLine2,
@@ -433,11 +896,16 @@ function parseEntriesFromRows({
       normalizedAddress,
       unitKeys,
       streetUnitKeys,
+      streetCanonical,
+      streetCanonicalStripped,
+      complexHintTokens,
+      buildingCodes,
+      streetSuffix,
       sourceFilename,
       sourceRowNumber: rowIndex + 1,
       raw: {
         number: positionValueRaw || null,
-        addressLine1,
+        addressLine1: rawAddressLine1,
         addressLine2: addressLine2 || null,
       },
     });
@@ -462,6 +930,7 @@ async function readWaitlistFile(input) {
 async function fetchAllListings(client) {
   const columns = [
     'id',
+    'complex',
     'owner_name',
     'owner_names',
     'mailing_address',
@@ -509,8 +978,10 @@ function buildListingIndexes(listings) {
   const indexes = {
     mailingExact: new Map(),
     mailingLine1: new Map(),
+    mailingStreetCanonical: new Map(),
     physicalPrimary: new Map(),
     physicalStreet: new Map(),
+    physicalStreetCanonical: new Map(),
     streetUnit: new Map(),
   };
 
@@ -531,8 +1002,16 @@ function buildListingIndexes(listings) {
     }
     pushToMap(indexes.mailingExact, enriched.normalizedMailingAddress, enriched);
     pushToMap(indexes.mailingLine1, enriched.normalizedMailingLine1, enriched);
+    pushToMap(indexes.mailingStreetCanonical, enriched.mailingStreetCanonical, enriched);
     pushToMap(indexes.physicalPrimary, enriched.physicalPrimary, enriched);
     pushToMap(indexes.physicalStreet, enriched.physicalStreetKey, enriched);
+    pushToMap(indexes.physicalStreetCanonical, enriched.physicalStreetCanonical, enriched);
+    if (
+      enriched.physicalPrimaryCanonical &&
+      enriched.physicalPrimaryCanonical !== enriched.physicalStreetCanonical
+    ) {
+      pushToMap(indexes.physicalStreetCanonical, enriched.physicalPrimaryCanonical, enriched);
+    }
     pushToMap(indexes.streetUnit, enriched.streetUnitKey, enriched);
   });
 
@@ -542,17 +1021,54 @@ function buildListingIndexes(listings) {
 function enrichListingForMatching(listing) {
   const mailingLine1 = sanitiseLine(listing.mailing_address_line1);
   const mailingLine2 = sanitiseLine(listing.mailing_address_line2);
-  const normalizedMailingLine1 = normaliseAddressPart(mailingLine1);
+  const correctedMailingLine1 = applyKnownTypoCorrections(mailingLine1);
+  const correctedMailingLine2 = applyKnownTypoCorrections(mailingLine2);
+  const normalizedMailingLine1 = normaliseAddressPart(correctedMailingLine1);
   const normalizedMailingAddress =
-    normalizedMailingLine1.length > 0 ? buildNormalisedAddress(mailingLine1, mailingLine2) : '';
+    normalizedMailingLine1.length > 0
+      ? buildNormalisedAddress(correctedMailingLine1, correctedMailingLine2)
+      : '';
+  const mailingStreetCanonical = normaliseStreetValue(correctedMailingLine1);
 
-  const physicalPrimaryLine = extractPrimaryAddressLine(listing.physical_address ?? '');
-  const physicalPrimary = normaliseAddressPart(physicalPrimaryLine);
-  const physicalStreetRaw = stripUnitDesignators(physicalPrimaryLine);
+  const physicalAddressRaw = typeof listing.physical_address === 'string' ? listing.physical_address : '';
+  const correctedPhysicalAddress = applyKnownTypoCorrections(physicalAddressRaw);
+  const physicalPrimaryLine = extractPrimaryAddressLine(correctedPhysicalAddress);
+  const correctedPhysicalPrimaryLine = applyKnownTypoCorrections(physicalPrimaryLine);
+  const physicalPrimary = normaliseAddressPart(correctedPhysicalPrimaryLine);
+  const physicalStreetRaw = stripUnitDesignators(correctedPhysicalPrimaryLine);
   const physicalStreetKey = normaliseAddressPart(physicalStreetRaw) || physicalPrimary;
+  const physicalPrimaryCanonical = normaliseStreetValue(correctedPhysicalPrimaryLine);
+  const physicalStreetCanonical = normaliseStreetValue(
+    physicalStreetRaw || correctedPhysicalPrimaryLine,
+  );
+  const physicalStreetSuffix = getStreetSuffixToken(correctedPhysicalPrimaryLine);
 
   const unitNormalized = normaliseUnit(listing.unit_normalized ?? listing.unit ?? '');
+  const unitVariantSet = new Set();
+  if (unitNormalized) {
+    unitVariantSet.add(unitNormalized);
+  }
+  const derivedUnitHints = extractUnitHints(
+    listing.unit ?? '',
+    listing.unit_normalized ?? '',
+    correctedPhysicalAddress,
+    correctedPhysicalPrimaryLine,
+  );
+  derivedUnitHints.forEach((hint) => {
+    if (hint) {
+      unitVariantSet.add(hint);
+    }
+  });
+  const unitDigitVariantSet = new Set();
+  unitVariantSet.forEach((variant) => {
+    const digitsOnly = variant.replace(/[^0-9]/g, '');
+    if (digitsOnly.length > 0) {
+      unitDigitVariantSet.add(digitsOnly);
+    }
+  });
   const streetUnitKey = buildStreetUnitKey(physicalStreetKey, unitNormalized);
+  const complexTokenSet = new Set(tokeniseString(listing.complex ?? ''));
+  const buildingCodeSet = extractBuildingCodesFromText(correctedPhysicalAddress);
 
   if (
     !normalizedMailingAddress &&
@@ -565,15 +1081,28 @@ function enrichListingForMatching(listing) {
 
   const ownerName = typeof listing.owner_name === 'string' ? listing.owner_name.trim() : '';
 
+  const complexName = typeof listing.complex === 'string' ? listing.complex : '';
+
   return {
     id: listing.id,
     unitNormalized,
     normalizedMailingAddress,
     normalizedMailingLine1,
+    mailingStreetCanonical,
     physicalPrimary,
     physicalStreetKey,
+    physicalPrimaryCanonical,
+    physicalStreetCanonical,
     streetUnitKey,
     ownerName,
+    complexTokenSet,
+    buildingCodeSet,
+    complexName,
+    mailingLine1Raw: mailingLine1,
+    physicalPrimaryDisplay: correctedPhysicalPrimaryLine,
+    physicalStreetSuffix,
+    unitVariantSet,
+    unitDigitVariantSet,
   };
 }
 
@@ -586,6 +1115,7 @@ function matchEntries(entries, listingIndexes) {
     missed: 0,
     lowConfidenceCount: 0,
     lowConfidenceSamples: [],
+    firstUnmatchedEntry: null,
   };
 
   entries.forEach((entry) => {
@@ -607,6 +1137,20 @@ function matchEntries(entries, listingIndexes) {
         stats.lowConfidenceSamples.push(lowConfidence);
       }
     }
+    if (!stats.firstUnmatchedEntry) {
+      stats.firstUnmatchedEntry = {
+        waitlistType: entry.waitlistType,
+        waitlistLabel: entry.waitlistLabel,
+        addressLine1: entry.addressLine1,
+        addressLine2: entry.addressLine2,
+        position: entry.position,
+        sourceFilename: entry.sourceFilename,
+        sourceRowNumber: entry.sourceRowNumber,
+        attemptType: lowConfidence ? lowConfidence.attemptType : null,
+        candidateCount: lowConfidence ? lowConfidence.candidateCount : 0,
+        candidates: lowConfidence ? lowConfidence.candidateDetails : [],
+      };
+    }
   });
 
   return { matches, stats };
@@ -627,6 +1171,12 @@ function resolveMatchForEntry(entry, listingIndexes) {
       key: entry.normalizedLine1,
       type: 'mailing_line1',
       score: 0.95,
+    },
+    {
+      map: listingIndexes.mailingStreetCanonical,
+      key: entry.streetCanonical,
+      type: 'mailing_street',
+      score: 0.94,
     },
   ];
 
@@ -650,6 +1200,18 @@ function resolveMatchForEntry(entry, listingIndexes) {
       map: listingIndexes.physicalStreet,
       key: entry.normalizedLine1Stripped,
       type: 'physical_street',
+      score: 0.88,
+    },
+    {
+      map: listingIndexes.physicalStreetCanonical,
+      key: entry.streetCanonicalStripped,
+      type: 'physical_street_canonical',
+      score: 0.9,
+    },
+    {
+      map: listingIndexes.physicalStreetCanonical,
+      key: entry.streetCanonical,
+      type: 'physical_street_canonical_full',
       score: 0.88,
     },
   );
@@ -689,10 +1251,23 @@ function createLowConfidenceSample(entry, attempt, candidates) {
     waitlistType: entry.waitlistType,
     waitlistLabel: entry.waitlistLabel,
     addressLine1: entry.addressLine1,
+    addressLine2: entry.addressLine2,
     attemptType: attempt.type,
     candidateCount: Array.isArray(candidates) ? candidates.length : 0,
     candidateListingIds: Array.isArray(candidates)
       ? candidates.slice(0, 5).map((candidate) => candidate.id)
+      : [],
+    unitHints: entry.unitKeys ?? [],
+    buildingCodes: entry.buildingCodes ?? [],
+    candidateDetails: Array.isArray(candidates)
+      ? candidates.slice(0, 5).map((candidate) => ({
+          listingId: candidate.id,
+          ownerName: candidate.ownerName || '',
+          unitNormalized: candidate.unitNormalized || '',
+          complex: candidate.complexName || '',
+          mailingLine1: candidate.mailingLine1Raw || '',
+          physicalPrimary: candidate.physicalPrimaryDisplay || '',
+        }))
       : [],
   };
 }
@@ -706,11 +1281,94 @@ function pickCandidateForEntry(entry, candidates) {
     return candidates[0];
   }
 
-  const entryUnitSet = new Set(entry.unitKeys ?? []);
-  if (entryUnitSet.size > 0) {
-    const unitMatches = candidates.filter(
-      (listing) => listing.unitNormalized && entryUnitSet.has(listing.unitNormalized),
-    );
+  const derivedEntryUnitHints = ensureEntryUnitHints(entry);
+  const entryNumericHints = new Set();
+  const entryAlphaHints = new Set();
+  const entryDigitVariants = new Set();
+  derivedEntryUnitHints.forEach((unit) => {
+    const normalized = normaliseUnit(unit);
+    if (normalized.length === 0) {
+      return;
+    }
+    const hasDigits = /[0-9]/.test(normalized);
+    if (hasDigits) {
+      entryNumericHints.add(normalized);
+      const normalizedDigits = normalized.replace(/[^0-9]/g, '');
+      if (normalizedDigits.length > 0) {
+        entryDigitVariants.add(normalizedDigits);
+      }
+    } else {
+      entryAlphaHints.add(normalized);
+    }
+    const rawDigits = String(unit ?? '')
+      .replace(/[^0-9]/g, '')
+      .trim();
+    if (rawDigits.length > 0) {
+      entryDigitVariants.add(rawDigits);
+    }
+  });
+
+  const hasNumericHints = entryNumericHints.size > 0 || entryDigitVariants.size > 0;
+  if (hasNumericHints) {
+    const unitMatches = candidates.filter((listing) => {
+      const listingDigits =
+        listing.unitDigitVariantSet && listing.unitDigitVariantSet.size > 0
+          ? listing.unitDigitVariantSet
+          : new Set();
+      const listingUnits =
+        listing.unitVariantSet && listing.unitVariantSet.size > 0 ? listing.unitVariantSet : new Set();
+      const listingHasNumericInfo = listingDigits.size > 0 || listingUnits.size > 0;
+      if (!listingHasNumericInfo) {
+        return false;
+      }
+      const digitsArray = Array.from(listingDigits);
+
+      for (const normalized of entryNumericHints) {
+        if (listingUnits.has(normalized)) {
+          return true;
+        }
+        const normalizedDigits = normalized.replace(/[^0-9]/g, '');
+        if (normalizedDigits.length === 0) {
+          continue;
+        }
+        if (digitsArray.some((candidateDigits) => candidateDigits === normalizedDigits)) {
+          return true;
+        }
+        if (
+          normalizedDigits.length >= 2 &&
+          digitsArray.some(
+            (candidateDigits) =>
+              candidateDigits.length > normalizedDigits.length &&
+              candidateDigits.endsWith(normalizedDigits),
+          )
+        ) {
+          return true;
+        }
+      }
+
+      if (entryDigitVariants.size > 0 && digitsArray.length > 0) {
+        for (const entryDigits of entryDigitVariants) {
+          if (entryDigits.length === 0) {
+            continue;
+          }
+          if (digitsArray.some((candidateDigits) => candidateDigits === entryDigits)) {
+            return true;
+          }
+          if (
+            entryDigits.length >= 2 &&
+            digitsArray.some(
+              (candidateDigits) =>
+                candidateDigits.length > entryDigits.length &&
+                candidateDigits.endsWith(entryDigits),
+            )
+          ) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
     if (unitMatches.length === 1) {
       return unitMatches[0];
     }
@@ -719,13 +1377,130 @@ function pickCandidateForEntry(entry, candidates) {
     }
   }
 
-  if (entryUnitSet.size === 0) {
-    const noUnitCandidates = candidates.filter((listing) => !listing.unitNormalized);
+  if (hasNumericHints && candidates.length > 1) {
+    const entryUnitText =
+      typeof entry.addressLine2 === 'string' && entry.addressLine2.trim().length > 0
+        ? entry.addressLine2.trim().toLowerCase()
+        : '';
+    const digitsToMatch = Array.from(entryDigitVariants).filter((digits) => digits.length > 0);
+    if (entryUnitText.length > 0 || digitsToMatch.length > 0) {
+      const fuzzyMatches = candidates.filter((listing) => {
+        const physicalText = (listing.physicalPrimaryDisplay || '').toLowerCase();
+        if (!physicalText) {
+          return false;
+        }
+        if (entryUnitText && physicalText.includes(entryUnitText)) {
+          return true;
+        }
+        return digitsToMatch.some((digits) => {
+          const unitToken = `unit ${digits.toLowerCase()}`;
+          const unitHashToken = `unit #${digits.toLowerCase()}`;
+          return (
+            physicalText.includes(unitToken) ||
+            physicalText.includes(unitHashToken) ||
+            physicalText.includes(`unit${digits.toLowerCase()}`) ||
+            physicalText.includes(`unit-${digits.toLowerCase()}`)
+          );
+        });
+      });
+      if (fuzzyMatches.length === 1) {
+        return fuzzyMatches[0];
+      }
+      if (fuzzyMatches.length > 0) {
+        candidates = fuzzyMatches;
+      }
+    }
+  }
+
+  if (!hasNumericHints && entryAlphaHints.size > 0) {
+    const alphaMatches = candidates.filter((listing) => {
+      if (!listing.unitVariantSet || listing.unitVariantSet.size === 0) {
+        return false;
+      }
+      for (const alphaHint of entryAlphaHints) {
+        if (listing.unitVariantSet.has(alphaHint)) {
+          return true;
+        }
+      }
+      return false;
+    });
+    if (alphaMatches.length === 1) {
+      return alphaMatches[0];
+    }
+    if (alphaMatches.length > 0) {
+      candidates = alphaMatches;
+    }
+  }
+
+  if (!hasNumericHints && entryAlphaHints.size === 0) {
+    const noUnitCandidates = candidates.filter(
+      (listing) =>
+        (!listing.unitVariantSet || listing.unitVariantSet.size === 0) &&
+        (!listing.unitDigitVariantSet || listing.unitDigitVariantSet.size === 0),
+    );
     if (noUnitCandidates.length === 1) {
       return noUnitCandidates[0];
     }
     if (noUnitCandidates.length > 0) {
       candidates = noUnitCandidates;
+    }
+  }
+
+  const entryStreetSuffix =
+    typeof entry.streetSuffix === 'string' && entry.streetSuffix.length > 0
+      ? entry.streetSuffix
+      : getStreetSuffixToken(entry.addressLine1 || '');
+  if (entryStreetSuffix) {
+    const suffixMatches = candidates.filter(
+      (listing) => listing.physicalStreetSuffix === entryStreetSuffix,
+    );
+    if (suffixMatches.length === 1) {
+      return suffixMatches[0];
+    }
+    if (suffixMatches.length > 0) {
+      candidates = suffixMatches;
+    }
+  }
+
+  const buildingCodeSet =
+    Array.isArray(entry.buildingCodes) && entry.buildingCodes.length > 0
+      ? new Set(entry.buildingCodes.filter((code) => typeof code === 'string' && code.length > 0))
+      : null;
+  if (buildingCodeSet && buildingCodeSet.size > 0) {
+    const buildingMatches = candidates.filter((listing) => {
+      if (!listing.buildingCodeSet || listing.buildingCodeSet.size === 0) {
+        return false;
+      }
+      for (const code of buildingCodeSet) {
+        if (listing.buildingCodeSet.has(code)) {
+          return true;
+        }
+      }
+      return false;
+    });
+    if (buildingMatches.length === 1) {
+      return buildingMatches[0];
+    }
+    if (buildingMatches.length > 0) {
+      candidates = buildingMatches;
+    }
+  }
+
+  const complexTokens = Array.isArray(entry.complexHintTokens)
+    ? entry.complexHintTokens.filter((token) => token.length > 1)
+    : [];
+  if (complexTokens.length > 0) {
+    const complexMatches = candidates.filter((listing) => {
+      if (!listing.complexTokenSet || listing.complexTokenSet.size === 0) {
+        return false;
+      }
+      return complexTokens.every((token) => listing.complexTokenSet.has(token));
+    });
+    if (complexMatches.length === 1) {
+      return complexMatches[0];
+    }
+    if (complexMatches.length > 0) {
+      candidates = complexMatches;
     }
   }
 
@@ -866,10 +1641,62 @@ async function main() {
       const label = sample.waitlistLabel || sample.waitlistType || 'waitlist';
       const candidateList =
         sample.candidateListingIds.length > 0 ? sample.candidateListingIds.join(', ') : 'n/a';
+      const detailParts = [];
+      if (typeof sample.addressLine2 === 'string' && sample.addressLine2.trim().length > 0) {
+        detailParts.push(sample.addressLine2.trim());
+      }
+      if (Array.isArray(sample.buildingCodes) && sample.buildingCodes.length > 0) {
+        detailParts.push(`bldg=${sample.buildingCodes.join('/')}`);
+      }
+      if (Array.isArray(sample.unitHints) && sample.unitHints.length > 0) {
+        detailParts.push(`unitHints=${sample.unitHints.join('/')}`);
+      }
+      const detailSuffix = detailParts.length > 0 ? ` | ${detailParts.join(' | ')}` : '';
       console.log(
-        `  - ${label} → ${sample.addressLine1} (${sample.attemptType}) had ${sample.candidateCount} candidate(s) [${candidateList}]`,
+        `  - ${label} → ${sample.addressLine1} (${sample.attemptType}) had ${sample.candidateCount} candidate(s) [${candidateList}]${detailSuffix}`,
       );
     });
+  }
+  if (stats.firstUnmatchedEntry) {
+    const sample = stats.firstUnmatchedEntry;
+    const label = sample.waitlistLabel || sample.waitlistType || 'waitlist';
+    const detailParts = [];
+    if (typeof sample.position === 'number') {
+      detailParts.push(`position ${sample.position}`);
+    }
+    if (sample.sourceFilename) {
+      const row = sample.sourceRowNumber ? `:${sample.sourceRowNumber}` : '';
+      detailParts.push(`source ${sample.sourceFilename}${row}`);
+    }
+    if (typeof sample.addressLine2 === 'string' && sample.addressLine2.trim().length > 0) {
+      detailParts.push(sample.addressLine2.trim());
+    }
+    const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(' | ')})` : '';
+    const attemptInfo = sample.attemptType ? ` via ${sample.attemptType}` : '';
+    console.log(
+      `[match] First unmatched entry: ${label} → ${sample.addressLine1}${detailSuffix}${attemptInfo}`,
+    );
+    if (Array.isArray(sample.candidates) && sample.candidates.length > 0) {
+      console.log(
+        `        Candidates (${sample.candidateCount ?? sample.candidates.length} total analyzed):`,
+      );
+      sample.candidates.forEach((candidate, index) => {
+        const owner = candidate.ownerName ? `owner=${candidate.ownerName}` : 'owner=?';
+        const unit =
+          candidate.unitNormalized && candidate.unitNormalized.length > 0
+            ? `unit=${candidate.unitNormalized}`
+            : 'unit=?';
+        const complex = candidate.complex ? `complex=${candidate.complex}` : 'complex=?';
+        const mailing = candidate.mailingLine1 ? `mail=${candidate.mailingLine1}` : '';
+        const physical = candidate.physicalPrimary ? `phys=${candidate.physicalPrimary}` : '';
+        const details = [owner, unit, complex, mailing, physical]
+          .filter(Boolean)
+          .join(' | ');
+        console.log(
+          `          ${index + 1}. ${candidate.listingId || 'listing ?'}${details ? ` | ${details}` : ''}`,
+        );
+      });
+    }
   }
 
   if (!options.apply) {
