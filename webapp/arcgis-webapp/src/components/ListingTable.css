@@ -824,8 +824,8 @@
 }
 
 .listing-table__row--blacklisted {
-  background-color: rgba(250, 204, 21, 0.16) !important;
-  box-shadow: inset 0 0 0 2px rgba(234, 179, 8, 0.35);
+  background-color: rgba(248, 113, 113, 0.14) !important;
+  box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.35);
 }
 
 .listing-table__owner {
