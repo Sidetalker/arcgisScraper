@@ -39,6 +39,7 @@ function WatchlistDetailPage(): JSX.Element {
     createWatchlist,
     addListing,
     removeListing,
+    deleteWatchlist,
   } = useWatchlists();
 
   const [filters, setFilters] = useState<ListingFilters>({ ...DEFAULT_FILTERS });
@@ -111,6 +112,16 @@ function WatchlistDetailPage(): JSX.Element {
     [],
   );
 
+  const handleSortChange = useCallback(
+    (nextSort: ListingTableState['sort']) => {
+      setTableState((previous) => ({
+        ...previous,
+        sort: nextSort ? { ...nextSort } : null,
+      }));
+    },
+    [],
+  );
+
   const handleFavoriteChange = useCallback(
     async (listingId: string, isFavorited: boolean) => {
       if (!supabaseConfigured) {
@@ -132,6 +143,46 @@ function WatchlistDetailPage(): JSX.Element {
     },
     [favoritesDisabledMessage, setStatusMessage, supabaseConfigured, updateListingFavorite],
   );
+
+  const handleDeleteWatchlist = useCallback(async () => {
+    if (!watchlist) {
+      return;
+    }
+
+    if (!watchlistsSupabaseConfigured) {
+      setStatusMessage(watchlistsDisabledMessage);
+      throw new Error(watchlistsDisabledMessage);
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(
+        `Delete watchlist “${watchlist.name}”? This will remove ${watchlist.listingIds.length.toLocaleString()} tracked properties.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setStatusMessage('Deleting watchlist…');
+    try {
+      await deleteWatchlist(watchlist.id);
+      setStatusMessage(`Deleted watchlist “${watchlist.name}”.`);
+      saveSelectedWatchlistId(null);
+      navigate('/');
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete watchlist.';
+      setStatusMessage(message);
+      throw error instanceof Error ? error : new Error(message);
+    }
+  }, [
+    deleteWatchlist,
+    navigate,
+    setStatusMessage,
+    watchlist,
+    watchlistsDisabledMessage,
+    watchlistsSupabaseConfigured,
+  ]);
 
   const handleListingEdit = useCallback(
     async (listingId: string, overrides: ListingCustomizationOverrides) => {
@@ -329,10 +380,16 @@ function WatchlistDetailPage(): JSX.Element {
             selectedWatchlistId: watchlistId ?? null,
             onSelectWatchlist: handleSelectWatchlist,
             onCreateWatchlist: handleCreateWatchlist,
+            onDeleteWatchlist: watchlist ? handleDeleteWatchlist : undefined,
             isBusy: watchlistsLoading,
             canManage: watchlistsSupabaseConfigured,
             createDisabledReason: watchlistsSupabaseConfigured
               ? undefined
+              : watchlistsDisabledMessage,
+            deleteDisabledReason: watchlistsSupabaseConfigured
+              ? watchlist
+                ? undefined
+                : 'Select a watchlist to delete.'
               : watchlistsDisabledMessage,
             errorMessage: watchlistsError,
             activeSummary: selectedWatchlist
@@ -354,9 +411,11 @@ function WatchlistDetailPage(): JSX.Element {
           columnOrder={tableState.columnOrder}
           hiddenColumns={tableState.hiddenColumns}
           columnFilters={tableState.columnFilters}
+          sort={tableState.sort}
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onSortChange={handleSortChange}
           onFavoriteChange={handleFavoriteChange}
           onListingEdit={handleListingEdit}
           onListingRevert={handleListingRevert}

@@ -389,6 +389,53 @@
   flex: 1 1 auto;
 }
 
+.listing-table__sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
+
+.listing-table__sort-button:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+}
+
+.listing-table__sort-indicator {
+  font-size: 0.75rem;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.listing-table__sort-button:hover .listing-table__sort-indicator,
+.listing-table__sort-button:focus .listing-table__sort-indicator,
+.listing-table__sort-button[data-sorted='true'] .listing-table__sort-indicator {
+  opacity: 1;
+}
+
+.listing-table__sort-indicator[data-direction='desc'] {
+  transform: rotate(0deg);
+}
+
+.listing-table__sort-indicator[data-direction='asc'] {
+  transform: rotate(0deg);
+}
+
+.listing-table th[data-sorted='true'] {
+  color: #1d4ed8;
+}
+
+.listing-table th[data-sorted='true'] .listing-table__sort-button {
+  color: #1d4ed8;
+}
+
 .listing-table__drag-handle {
   border: none;
   background: transparent;

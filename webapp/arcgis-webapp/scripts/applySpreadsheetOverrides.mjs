@@ -859,6 +859,19 @@ function addCandidateEntry(candidateMap, listing, weight) {
   }
 }
 
+function registerComplexAlias(sheetComplexKey, listing, aliasMap) {
+  if (!sheetComplexKey) {
+    return;
+  }
+  if (listing.normalizedComplexes.has(sheetComplexKey)) {
+    return;
+  }
+  const canonical = listing.normalizedComplexes.values().next().value;
+  if (canonical && canonical !== sheetComplexKey) {
+    aliasMap.set(sheetComplexKey, canonical);
+  }
+}
+
 function computeMatchScore(listing, sheetRecord, unitWeight, sheetOwnerNamesLower) {
   let score = 0;
 
@@ -937,18 +950,74 @@ function computeMatchScore(listing, sheetRecord, unitWeight, sheetOwnerNamesLowe
   return score;
 }
 
-function resolveListing(sheetRecord, listingRecords, listingIndex) {
+function computeSupportSignals(
+  listing,
+  sheetRecord,
+  sheetOwnerNamesLower,
+  sheetAddressKey,
+  sheetLine1Key,
+  sheetZip5Key,
+  sheetZip9Key,
+  sheetCityKey,
+) {
+  const ownerOverlap = sheetOwnerNamesLower.some((owner) =>
+    listing.ownerNamesLower.includes(owner),
+  );
+  const addressMatch = Boolean(sheetAddressKey && listing.mailingAddressKey === sheetAddressKey);
+  const line1Match =
+    Boolean(sheetLine1Key && listing.mailingAddressLine1Key === sheetLine1Key);
+  const zip5Match =
+    Boolean(
+      sheetZip5Key &&
+        normaliseZipForComparison(listing.base.mailingZip5 ?? '') === sheetZip5Key,
+    );
+  const zip9Match =
+    Boolean(
+      sheetZip9Key &&
+        normaliseZipForComparison(listing.base.mailingZip9 ?? '') === sheetZip9Key,
+    );
+  const cityMatch =
+    Boolean(
+      sheetRecord.mailingCity &&
+        listing.base.mailingCity.toLowerCase() === sheetCityKey,
+    );
+
+  return {
+    ownerOverlap,
+    addressMatch,
+    line1Match,
+    zip5Match,
+    zip9Match,
+    cityMatch,
+    any: ownerOverlap || addressMatch || line1Match || zip5Match || zip9Match || cityMatch,
+  };
+}
+
+function resolveListing(sheetRecord, listingRecords, listingIndex, complexAliasMap) {
   const complexKey = normaliseComplexName(sheetRecord.complex);
-  const complexVariants = complexKey ? [complexKey] : [];
+  const complexVariants = new Set();
+  if (complexKey) {
+    complexVariants.add(complexKey);
+    let alias = complexAliasMap.get(complexKey);
+    const visited = new Set([complexKey]);
+    while (alias && !complexVariants.has(alias) && !visited.has(alias)) {
+      complexVariants.add(alias);
+      visited.add(alias);
+      alias = complexAliasMap.get(alias);
+    }
+  }
   const sheetUnitVariantWeights = buildSheetUnitVariantWeights(sheetRecord.unit);
   const sheetOwnerNamesLower = sheetRecord.ownerNames
     .map((name) => name.toLowerCase().trim())
     .filter((name) => name.length > 0);
   const sheetAddressKey = sheetRecord.mailingAddressKey;
   const sheetLine1Key = sheetRecord.mailingAddressLine1Key;
-  const sheetZip5Key = sheetRecord.mailingZip5 ? normaliseZipForComparison(sheetRecord.mailingZip5) : '';
-  const sheetZip9Key = sheetRecord.mailingZip9 ? normaliseZipForComparison(sheetRecord.mailingZip9) : '';
+  const sheetZip5Key =
+    sheetRecord.mailingZip5 ? normaliseZipForComparison(sheetRecord.mailingZip5) : '';
+  const sheetZip9Key =
+    sheetRecord.mailingZip9 ? normaliseZipForComparison(sheetRecord.mailingZip9) : '';
   const sheetCityKey = (sheetRecord.mailingCity ?? '').toLowerCase();
+  const sheetUnitNormalized = normaliseUnit(sheetRecord.unit);
 
   const candidateMap = new Map();
 
@@ -969,39 +1038,36 @@ function resolveListing(sheetRecord, listingRecords, listingIndex) {
   if (candidateMap.size === 0) {
     listingRecords.forEach((listing) => {
       const matchesComplex =
-        complexVariants.length > 0 &&
-        (listing.normalizedComplexes.has(complexKey) ||
-          Array.from(listing.normalizedComplexes).some(
-            (value) => value.includes(complexKey) || complexKey.includes(value),
-          ));
-      const ownerOverlap = sheetOwnerNamesLower.some((owner) =>
-        listing.ownerNamesLower.includes(owner),
+        complexVariants.size > 0 &&
+        (complexKey
+          ? listing.normalizedComplexes.has(complexKey) ||
+            Array.from(listing.normalizedComplexes).some(
+              (value) => value.includes(complexKey) || complexKey.includes(value),
+            )
+          : false);
+      const signals = computeSupportSignals(
+        listing,
+        sheetRecord,
+        sheetOwnerNamesLower,
+        sheetAddressKey,
+        sheetLine1Key,
+        sheetZip5Key,
+        sheetZip9Key,
+        sheetCityKey,
       );
-      const addressMatch =
-        sheetAddressKey && listing.mailingAddressKey === sheetAddressKey;
-      const line1Match = sheetLine1Key && listing.mailingAddressLine1Key === sheetLine1Key;
-      const zip5Match =
-        sheetZip5Key &&
-        normaliseZipForComparison(listing.base.mailingZip5 ?? '') === sheetZip5Key;
-      const zip9Match =
-        sheetZip9Key &&
-        normaliseZipForComparison(listing.base.mailingZip9 ?? '') === sheetZip9Key;
-      const cityMatch =
-        sheetRecord.mailingCity &&
-        listing.base.mailingCity.toLowerCase() === sheetCityKey;
 
       let fallbackWeight = null;
-      if (addressMatch) {
+      if (signals.addressMatch) {
         fallbackWeight = 1;
-      } else if (ownerOverlap && zip9Match) {
+      } else if (signals.ownerOverlap && signals.zip9Match) {
         fallbackWeight = 2;
-      } else if (ownerOverlap && zip5Match && cityMatch) {
+      } else if (signals.ownerOverlap && signals.zip5Match && signals.cityMatch) {
         fallbackWeight = 3;
-      } else if (ownerOverlap && line1Match) {
+      } else if (signals.ownerOverlap && signals.line1Match) {
         fallbackWeight = 4;
-      } else if (matchesComplex && (zip5Match || ownerOverlap)) {
+      } else if (matchesComplex && (signals.zip5Match || signals.ownerOverlap)) {
         fallbackWeight = 5;
-      } else if (zip9Match && line1Match) {
+      } else if (signals.zip9Match && signals.line1Match) {
         fallbackWeight = 6;
       }
 
@@ -1015,11 +1081,19 @@ function resolveListing(sheetRecord, listingRecords, listingIndex) {
     return { status: 'missing' };
   }
 
-  const candidates = Array.from(candidateMap.values());
+  const candidates = Array.from(candidateMap.values()).map((candidate) => {
+    const unitExactMatch =
+      Boolean(sheetUnitNormalized) &&
+      candidate.listing.unitVariantWeights &&
+      candidate.listing.unitVariantWeights.has(sheetUnitNormalized);
+    return { ...candidate, unitExactMatch };
+  });
+
   const scored = candidates
     .map((candidate) => ({
       listing: candidate.listing,
       weight: candidate.weight,
+      unitExactMatch: candidate.unitExactMatch,
       score: computeMatchScore(
         candidate.listing,
         sheetRecord,
@@ -1029,10 +1103,41 @@ function resolveListing(sheetRecord, listingRecords, listingIndex) {
     }))
     .sort((a, b) => b.score - a.score || a.weight - b.weight);
 
+  let resolved = null;
   if (scored.length === 1 || scored[0].score > (scored[1]?.score ?? -Infinity)) {
+    resolved = scored[0];
+  } else {
+    const unitMatches = scored.filter((entry) => entry.unitExactMatch);
+    if (unitMatches.length === 1) {
+      resolved = unitMatches[0];
+    }
+  }
+
+  if (resolved) {
+    const signals = computeSupportSignals(
+      resolved.listing,
+      sheetRecord,
+      sheetOwnerNamesLower,
+      sheetAddressKey,
+      sheetLine1Key,
+      sheetZip5Key,
+      sheetZip9Key,
+      sheetCityKey,
+    );
+    if (!signals.any) {
+      resolved = null;
+    }
+  }
+
+  if (!resolved && scored.length === 1) {
+    resolved = scored[0];
+  }
+
+  if (resolved) {
+    registerComplexAlias(complexKey, resolved.listing, complexAliasMap);
     return {
       status: 'matched',
-      listing: scored[0].listing,
+      listing: resolved.listing,
       autoResolved: true,
     };
   }
@@ -1163,6 +1268,17 @@ function computeOverrideUpdate(listing, sheetRecord) {
     key: 'complex',
     targetValue: sheetRecord.complex,
     baseValue: listing.complex,
+    overrides,
+    comparator: (a, b) => a === b,
+    summary,
+    formatter: stringFormatter,
+    preserveExistingOnEmpty: true,
+  });
+
+  applyOverrideField({
+    key: 'unit',
+    targetValue: sheetRecord.unit,
+    baseValue: listing.unit,
     overrides,
     comparator: (a, b) => a === b,
     summary,
@@ -1350,9 +1466,10 @@ async function main() {
   const ambiguous = [];
   const results = [];
   const matchedListingIdsSet = new Set();
+  const complexAliasMap = new Map();
 
   sheetRecords.forEach((record) => {
-    const resolution = resolveListing(record, listingRecords, listingIndex);
+    const resolution = resolveListing(record, listingRecords, listingIndex, complexAliasMap);
     if (resolution.status === 'missing') {
       unmatched.push(record);
       return;

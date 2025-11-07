@@ -139,6 +139,7 @@ function HomePage(): JSX.Element {
     createWatchlist,
     addListing,
     removeListing,
+    deleteWatchlist,
   } = useWatchlists();
   const { setStatusMessage } = useOutletContext<LayoutOutletContext>();
 
@@ -268,6 +269,48 @@ function HomePage(): JSX.Element {
     ],
   );
 
+  const handleDeleteWatchlist = useCallback(async () => {
+    if (!activeWatchlist) {
+      return;
+    }
+
+    if (!watchlistsSupabaseConfigured) {
+      setStatusMessage(watchlistsDisabledMessage);
+      throw new Error(watchlistsDisabledMessage);
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(
+        `Delete watchlist “${activeWatchlist.name}”? This will remove ${activeWatchlist.listingIds.length.toLocaleString()} tracked properties.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setStatusMessage('Deleting watchlist…');
+    try {
+      await deleteWatchlist(activeWatchlist.id);
+      setStatusMessage(`Deleted watchlist “${activeWatchlist.name}”.`);
+      if (selectedWatchlistId === activeWatchlist.id) {
+        setSelectedWatchlistId(null);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete watchlist.';
+      setStatusMessage(message);
+      throw error instanceof Error ? error : new Error(message);
+    }
+  }, [
+    activeWatchlist,
+    deleteWatchlist,
+    selectedWatchlistId,
+    setSelectedWatchlistId,
+    setStatusMessage,
+    watchlistsDisabledMessage,
+    watchlistsSupabaseConfigured,
+  ]);
+
   const handleColumnOrderChange = useCallback(
     (order: ListingTableState['columnOrder']) => {
       setTableState((previous) => ({
@@ -293,6 +336,16 @@ function HomePage(): JSX.Element {
       setTableState((previous) => ({
         ...previous,
         columnFilters: { ...nextFilters },
+      }));
+    },
+    [],
+  );
+
+  const handleSortChange = useCallback(
+    (nextSort: ListingTableState['sort']) => {
+      setTableState((previous) => ({
+        ...previous,
+        sort: nextSort ? { ...nextSort } : null,
       }));
     },
     [],
@@ -491,6 +544,7 @@ function HomePage(): JSX.Element {
           columnOrder: [...tableState.columnOrder],
           hiddenColumns: [...tableState.hiddenColumns],
           columnFilters: { ...tableState.columnFilters },
+          sort: tableState.sort ? { ...tableState.sort } : null,
         },
       };
       window.localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(payload));
@@ -587,6 +641,7 @@ function HomePage(): JSX.Element {
             columnOrder: [...tableState.columnOrder],
             hiddenColumns: [...tableState.hiddenColumns],
             columnFilters: { ...tableState.columnFilters },
+            sort: tableState.sort ? { ...tableState.sort } : null,
           },
         });
         setLocalProfileId(savedProfile.id);
@@ -595,6 +650,7 @@ function HomePage(): JSX.Element {
           columnOrder: [...savedProfile.table.columnOrder],
           hiddenColumns: [...savedProfile.table.hiddenColumns],
           columnFilters: { ...savedProfile.table.columnFilters },
+          sort: savedProfile.table.sort ? { ...savedProfile.table.sort } : null,
         });
         setProfilesError(null);
         setProfiles((current) => {
@@ -669,6 +725,7 @@ function HomePage(): JSX.Element {
         columnOrder: [...profile.table.columnOrder],
         hiddenColumns: [...profile.table.hiddenColumns],
         columnFilters: { ...profile.table.columnFilters },
+        sort: profile.table.sort ? { ...profile.table.sort } : null,
       });
     },
     [handleRegionsChange, profiles],
@@ -716,10 +773,16 @@ function HomePage(): JSX.Element {
             selectedWatchlistId,
             onSelectWatchlist: handleSelectWatchlist,
             onCreateWatchlist: handleCreateWatchlist,
+            onDeleteWatchlist: activeWatchlist ? handleDeleteWatchlist : undefined,
             isBusy: watchlistsLoading,
             canManage: watchlistsSupabaseConfigured,
             createDisabledReason: watchlistsSupabaseConfigured
               ? undefined
+              : watchlistsDisabledMessage,
+            deleteDisabledReason: watchlistsSupabaseConfigured
+              ? activeWatchlist
+                ? undefined
+                : 'Select a watchlist to delete.'
               : watchlistsDisabledMessage,
             errorMessage: watchlistsError,
             activeSummary: activeWatchlist
@@ -784,9 +847,11 @@ function HomePage(): JSX.Element {
           columnOrder={tableState.columnOrder}
           hiddenColumns={tableState.hiddenColumns}
           columnFilters={tableState.columnFilters}
+          sort={tableState.sort}
           onColumnOrderChange={handleColumnOrderChange}
           onHiddenColumnsChange={handleHiddenColumnsChange}
           onColumnFiltersChange={handleColumnFiltersChange}
+          onSortChange={handleSortChange}
           onFavoriteChange={handleFavoriteChange}
           onListingEdit={handleListingEdit}
           onListingRevert={handleListingRevert}

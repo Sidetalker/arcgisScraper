@@ -18,6 +18,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   type ListingTableColumnFilters,
   type ListingTableColumnKey,
+  type ListingTableSort,
 } from '@/constants/listingTable';
 import {
   filterListingsByColumnFilters,
@@ -41,9 +42,11 @@ interface ListingTableProps {
   columnOrder: ListingTableColumnKey[];
   hiddenColumns: ListingTableColumnKey[];
   columnFilters: ListingTableColumnFilters;
+  sort: ListingTableSort | null;
   onColumnOrderChange: (order: ListingTableColumnKey[]) => void;
   onHiddenColumnsChange: (hidden: ListingTableColumnKey[]) => void;
   onColumnFiltersChange: (filters: ListingTableColumnFilters) => void;
+  onSortChange: (sort: ListingTableSort | null) => void;
   onFavoriteChange: (listingId: string, isFavorited: boolean) => Promise<void> | void;
   canToggleFavorites: boolean;
   favoriteDisabledReason?: string;
@@ -142,6 +145,7 @@ interface ColumnDefinition {
   render: (listing: ListingRecord) => ReactNode;
   getFilterValue: (listing: ListingRecord) => string;
   getExportValue: (listing: ListingRecord) => string;
+  getSortValue: (listing: ListingRecord) => string;
   filterType?: 'text' | 'boolean';
 }
 
@@ -275,6 +279,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
       ),
     getFilterValue: (listing) => normalizeText(listing.complex),
     getExportValue: (listing) => normalizeText(listing.complex),
+    getSortValue: (listing) => normalizeText(listing.complex),
   },
   {
     key: 'unit',
@@ -282,6 +287,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.unit || '—',
     getFilterValue: (listing) => normalizeText(listing.unit),
     getExportValue: (listing) => normalizeText(listing.unit),
+    getSortValue: (listing) => normalizeText(listing.unit),
   },
   {
     key: 'owners',
@@ -313,6 +319,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     },
     getFilterValue: (listing) => normalizeText(listing.ownerNames.join(' ')),
     getExportValue: (listing) => toUniqueOwners(listing).join('; '),
+    getSortValue: (listing) => normalizeText(toUniqueOwners(listing).join(' ')),
   },
   {
     key: 'business',
@@ -320,6 +327,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
     getFilterValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
     getExportValue: (listing) => (listing.isBusinessOwner ? 'Yes' : 'No'),
+    getSortValue: (listing) => (listing.isBusinessOwner ? 'yes' : 'no'),
     filterType: 'boolean',
   },
   {
@@ -339,6 +347,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     },
     getFilterValue: (listing) => normalizeText(listing.mailingAddress),
     getExportValue: (listing) => normalizeText(listing.mailingAddress?.replace(/\n/g, ', ') ?? ''),
+    getSortValue: (listing) => normalizeText(listing.mailingAddress),
   },
   {
     key: 'mailingCity',
@@ -346,6 +355,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.mailingCity || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingCity),
     getExportValue: (listing) => normalizeText(listing.mailingCity),
+    getSortValue: (listing) => normalizeText(listing.mailingCity),
   },
   {
     key: 'mailingState',
@@ -353,6 +363,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.mailingState || '—',
     getFilterValue: (listing) => normalizeText(listing.mailingState),
     getExportValue: (listing) => normalizeText(listing.mailingState),
+    getSortValue: (listing) => normalizeText(listing.mailingState),
   },
   {
     key: 'mailingZip',
@@ -361,6 +372,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     getFilterValue: (listing) => normalizeText(listing.mailingZip9 || listing.mailingZip5),
     getExportValue: (listing) =>
       normalizeText(listing.mailingZip9 || listing.mailingZip5 || ''),
+    getSortValue: (listing) => normalizeText(listing.mailingZip9 || listing.mailingZip5),
   },
   {
     key: 'subdivision',
@@ -368,6 +380,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.subdivision || '—',
     getFilterValue: (listing) => normalizeText(listing.subdivision),
     getExportValue: (listing) => normalizeText(listing.subdivision),
+    getSortValue: (listing) => normalizeText(listing.subdivision),
   },
   {
     key: 'scheduleNumber',
@@ -375,6 +388,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.scheduleNumber || '—',
     getFilterValue: (listing) => normalizeText(listing.scheduleNumber),
     getExportValue: (listing) => normalizeText(listing.scheduleNumber),
+    getSortValue: (listing) => normalizeText(listing.scheduleNumber),
   },
   {
     key: 'physicalAddress',
@@ -382,6 +396,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     render: (listing) => listing.physicalAddress || '—',
     getFilterValue: (listing) => normalizeText(listing.physicalAddress),
     getExportValue: (listing) => normalizeText(listing.physicalAddress),
+    getSortValue: (listing) => normalizeText(listing.physicalAddress),
   },
 ];
 
@@ -399,9 +414,11 @@ export function ListingTable({
   columnOrder,
   hiddenColumns,
   columnFilters,
+  sort,
   onColumnOrderChange,
   onHiddenColumnsChange,
   onColumnFiltersChange,
+  onSortChange,
   onFavoriteChange,
   canToggleFavorites,
   favoriteDisabledReason,
@@ -814,6 +831,10 @@ export function ListingTable({
       COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]),
     );
   }, []);
+  const collator = useMemo(
+    () => new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }),
+    [],
+  );
   const renderEditableCell = (
     columnKey: ColumnKey,
     listing: ListingRecord,
@@ -963,11 +984,32 @@ export function ListingTable({
     return filterListingsByColumnFilters(listings, columnFilters);
   }, [columnFilters, listings]);
 
-  const fallbackPageSize = filteredListings.length > 0 ? filteredListings.length : 1;
+  const sortedListings = useMemo(() => {
+    if (!sort) {
+      return filteredListings;
+    }
+
+    const definition = columnDefinitionMap.get(sort.columnKey);
+    if (!definition) {
+      return filteredListings;
+    }
+
+    const sortable = [...filteredListings];
+    sortable.sort((a, b) => {
+      const valueA = definition.getSortValue(a);
+      const valueB = definition.getSortValue(b);
+      const comparison = collator.compare(valueA, valueB);
+      return sort.direction === 'desc' ? -comparison : comparison;
+    });
+
+    return sortable;
+  }, [collator, columnDefinitionMap, filteredListings, sort]);
+
+  const fallbackPageSize = sortedListings.length > 0 ? sortedListings.length : 1;
   const resolvedPageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : fallbackPageSize;
   const effectivePageSize = Math.min(Math.max(resolvedPageSize, 1), MAX_PAGE_SIZE);
-  const totalPages = Math.max(1, Math.ceil(filteredListings.length / effectivePageSize) || 1);
+  const totalPages = Math.max(1, Math.ceil(sortedListings.length / effectivePageSize) || 1);
   const clampPage = (value: number) => Math.min(Math.max(value, 1), totalPages);
   const requestedPage = Number.isFinite(currentPage) ? Math.floor(currentPage) : 1;
   const safePage = clampPage(requestedPage);
@@ -1094,7 +1136,7 @@ export function ListingTable({
       window.removeEventListener('resize', handleScroll);
       stopAutoScroll();
     };
-  }, [handleScroll, updateScrollIndicators, visibleColumns.length, filteredListings.length, stopAutoScroll]);
+  }, [handleScroll, updateScrollIndicators, visibleColumns.length, sortedListings.length, stopAutoScroll]);
 
   useEffect(() => {
     return () => {
@@ -1313,6 +1355,27 @@ export function ListingTable({
       }
     },
     [handleHideColumn, handleUnhideColumn],
+  );
+
+  const handleSortToggle = useCallback(
+    (columnKey: ColumnKey) => {
+      const isActive = sort?.columnKey === columnKey;
+      let nextSort: ListingTableSort | null;
+
+      if (!isActive) {
+        nextSort = { columnKey, direction: 'asc' };
+      } else if (sort?.direction === 'asc') {
+        nextSort = { columnKey, direction: 'desc' };
+      } else if (sort?.direction === 'desc') {
+        nextSort = null;
+      } else {
+        nextSort = { columnKey, direction: 'asc' };
+      }
+
+      onSortChange(nextSort);
+      onPageChange(1);
+    },
+    [onPageChange, onSortChange, sort],
   );
 
   const handleColumnPanelDragStart = useCallback(
@@ -1685,11 +1748,11 @@ export function ListingTable({
   }, [columnDefinitionMap, columnOrder, hiddenColumns]);
 
   const totalListingsCount = listings.length;
-  const filteredListingsCount = filteredListings.length;
+  const displayedListingsCount = sortedListings.length;
   const summaryText = isLoading
     ? 'Loading listings from ArcGIS…'
-    : `Showing ${filteredListingsCount.toLocaleString()} matching listings${
-        filteredListingsCount !== totalListingsCount
+    : `Showing ${displayedListingsCount.toLocaleString()} matching listings${
+        displayedListingsCount !== totalListingsCount
           ? ` (filtered from ${totalListingsCount.toLocaleString()})`
           : ''
       }`;
@@ -1713,7 +1776,7 @@ export function ListingTable({
 
     const rows: string[][] = [
       exportColumnDefinitions.map((definition) => definition.label),
-      ...filteredListings.map((listing) =>
+      ...sortedListings.map((listing) =>
         exportColumnDefinitions.map((definition) => definition.getExportValue(listing)),
       ),
     ];
@@ -1749,7 +1812,7 @@ export function ListingTable({
     window.setTimeout(() => {
       window.URL.revokeObjectURL(url);
     }, 0);
-  }, [columnDefinitionMap, columnOrder, filteredListings, hiddenColumns]);
+  }, [columnDefinitionMap, columnOrder, hiddenColumns, sortedListings]);
 
   return (
     <section className="listing-table">
@@ -1763,8 +1826,8 @@ export function ListingTable({
             Page {safePage} of {totalPages}
           </span>
           <span>
-            {filteredListingsCount > 0
-              ? `Displaying ${startIndex + 1}-${endIndex} of ${filteredListingsCount.toLocaleString()}`
+            {displayedListingsCount > 0
+              ? `Displaying ${startIndex + 1}-${endIndex} of ${displayedListingsCount.toLocaleString()}`
               : 'No rows to display'}
           </span>
         </div>
@@ -1807,7 +1870,7 @@ export function ListingTable({
                 type="button"
                 className="listing-table__export-button"
                 onClick={handleExportCsv}
-                disabled={filteredListingsCount === 0}
+                disabled={displayedListingsCount === 0}
               >
                 Export CSV
               </button>
@@ -1879,7 +1942,7 @@ export function ListingTable({
                     type="button"
                     className="listing-table__export-button listing-table__export-button--secondary"
                     onClick={handleExportCsv}
-                    disabled={filteredListingsCount === 0}
+                    disabled={displayedListingsCount === 0}
                   >
                     Download CSV
                   </button>
@@ -1909,40 +1972,72 @@ export function ListingTable({
                 <th scope="col" className="listing-table__details-header">
                   <span className="visually-hidden">Listing details</span>
                 </th>
-                {visibleColumnDefinitions.map((definition) => (
-                  <th
-                    key={definition.key}
-                  scope="col"
-                  onDragOver={handleDragOver(definition.key)}
-                  onDrop={handleDrop(definition.key)}
-                  onDragLeave={handleDragLeave(definition.key)}
-                  data-drop-target={dragTarget === definition.key}
-                >
-                  <div className="listing-table__column-header">
-                    <button
-                      type="button"
-                      className="listing-table__drag-handle"
-                      draggable
-                      onDragStart={handleDragStart(definition.key)}
-                      onDragEnd={handleDragEnd}
-                      aria-label={`Drag to reorder the ${definition.label} column`}
+                {visibleColumnDefinitions.map((definition) => {
+                  const isSorted = sort?.columnKey === definition.key;
+                  const sortDirection = isSorted ? sort?.direction ?? 'asc' : null;
+                  const ariaSort: 'ascending' | 'descending' | 'none' = isSorted
+                    ? sortDirection === 'desc'
+                      ? 'descending'
+                      : 'ascending'
+                    : 'none';
+
+                  return (
+                    <th
+                      key={definition.key}
+                      scope="col"
+                      onDragOver={handleDragOver(definition.key)}
+                      onDrop={handleDrop(definition.key)}
+                      onDragLeave={handleDragLeave(definition.key)}
+                      data-drop-target={dragTarget === definition.key}
+                      data-sorted={isSorted}
+                      data-sort-direction={isSorted ? sortDirection : undefined}
+                      aria-sort={ariaSort}
                     >
-                      <span aria-hidden="true">⋮⋮</span>
-                    </button>
-                    <span className="listing-table__column-title">{definition.label}</span>
-                    <button
-                      type="button"
-                      className="listing-table__hide-button"
-                      onClick={() => handleHideColumn(definition.key)}
-                      disabled={shouldDisableHide}
-                      aria-label={`Hide the ${definition.label} column`}
-                    >
-                      Hide
-                    </button>
-                  </div>
-                </th>
-              ))}
-            </tr>
+                      <div className="listing-table__column-header">
+                        <button
+                          type="button"
+                          className="listing-table__drag-handle"
+                          draggable
+                          onDragStart={handleDragStart(definition.key)}
+                          onDragEnd={handleDragEnd}
+                          aria-label={`Drag to reorder the ${definition.label} column`}
+                        >
+                          <span aria-hidden="true">⋮⋮</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="listing-table__sort-button"
+                          onClick={() => handleSortToggle(definition.key)}
+                          data-sorted={isSorted}
+                          aria-label={`Sort by ${definition.label}`}
+                        >
+                          <span className="listing-table__column-title">{definition.label}</span>
+                          <span
+                            className="listing-table__sort-indicator"
+                            data-direction={isSorted ? sortDirection : 'none'}
+                            aria-hidden="true"
+                          >
+                            {isSorted
+                              ? sortDirection === 'desc'
+                                ? '▼'
+                                : '▲'
+                              : '↕'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="listing-table__hide-button"
+                          onClick={() => handleHideColumn(definition.key)}
+                          disabled={shouldDisableHide}
+                          aria-label={`Hide the ${definition.label} column`}
+                        >
+                          Hide
+                        </button>
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
             <tr className="listing-table__filters">
               <th aria-hidden="true" />
               <th aria-hidden="true" />
