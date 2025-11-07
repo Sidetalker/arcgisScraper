@@ -244,6 +244,25 @@ Omit `--apply` for a dry run. The script reuses the same normalization logic as
 the spreadsheet importer, so unit edits saved through either path will stay in
 sync.
 
+#### Importing Blue Basin waitlists
+
+Summit County separates the STR waitlist into Upper and Lower Blue Basin
+spreadsheets. Copy each CSV/TSV export locally and run:
+
+```bash
+node webapp/arcgis-webapp/scripts/importWaitlists.mjs \
+  --upper data/UpperBlue.csv \
+  --lower data/LowerBlue.csv
+```
+
+The importer parses both files into a single `waitlist_entries` table, tags each
+row with the originating waitlist, normalizes address lines, and attempts to
+match the entry to an existing listing owner using the mailing address on file.
+Matches are recorded in `waitlist_entry_matches`. Runs default to a dry preview
+and require `SUPABASE_URL` plus `SUPABASE_SERVICE_ROLE_KEY`; re-run with
+`--apply` to wipe the existing waitlist rows for the imported queues, insert the
+new entries, and persist the matches.
+
 Create a `listings` table in Supabase before syncing for the first time:
 
 ```sql
