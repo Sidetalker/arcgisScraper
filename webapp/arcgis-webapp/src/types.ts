@@ -115,6 +115,7 @@ export interface ListingFilters {
   renewalCategories: string[];
   renewalMethods: string[];
   renewalMonths: string[];
+  strLicenseStatuses: StrLicenseStatus[];
 }
 
 export interface RegionPoint {

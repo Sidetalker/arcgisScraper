@@ -5,6 +5,7 @@ import {
   type ConfigurationProfile,
   type ListingFilters,
   type RegionShape,
+  type StrLicenseStatus,
 } from '@/types';
 
 interface ConfigurationProfileRow {
@@ -22,6 +23,19 @@ export interface SaveConfigurationProfileInput {
   filters: ListingFilters;
   regions: RegionShape[];
   table: ListingTableState;
+}
+
+const VALID_STR_LICENSE_STATUSES: StrLicenseStatus[] = [
+  'active',
+  'pending',
+  'expired',
+  'inactive',
+  'revoked',
+  'unknown',
+];
+
+function isStrLicenseStatus(value: string): value is StrLicenseStatus {
+  return (VALID_STR_LICENSE_STATUSES as readonly string[]).includes(value);
 }
 
 function normaliseStringArray(value: unknown): string[] {
@@ -49,6 +63,35 @@ function normaliseStringArray(value: unknown): string[] {
   return result;
 }
 
+function normaliseStatusArray(value: unknown): StrLicenseStatus[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Set<StrLicenseStatus>();
+  const result: StrLicenseStatus[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    const trimmed = entry.trim().toLowerCase();
+    if (!trimmed) {
+      continue;
+    }
+    if (!isStrLicenseStatus(trimmed)) {
+      continue;
+    }
+    if (deduped.has(trimmed)) {
+      continue;
+    }
+    deduped.add(trimmed);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
 function normaliseFilters(filters: ListingFilters | null | undefined): ListingFilters {
   const fallback: ListingFilters = {
     searchTerm: '',
@@ -59,6 +102,7 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     renewalCategories: [],
     renewalMethods: [],
     renewalMonths: [],
+    strLicenseStatuses: [],
   };
 
   if (!filters || typeof filters !== 'object') {
@@ -74,6 +118,7 @@ function normaliseFilters(filters: ListingFilters | null | undefined): ListingFi
     renewalCategories: normaliseStringArray(filters.renewalCategories),
     renewalMethods: normaliseStringArray(filters.renewalMethods),
     renewalMonths: normaliseStringArray(filters.renewalMonths),
+    strLicenseStatuses: normaliseStatusArray(filters.strLicenseStatuses),
   };
 }
 

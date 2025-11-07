@@ -37,6 +37,7 @@ import type {
   ConfigurationProfile,
   ListingFilters,
   RegionShape,
+  StrLicenseStatus,
 } from '@/types';
 import { filterListingsByColumnFilters } from '@/utils/listingColumnFilters';
 
@@ -49,6 +50,19 @@ interface StoredLocalProfile {
   filters?: Partial<ListingFilters> | null;
   regions?: RegionShape[] | null;
   table?: Partial<ListingTableState> | null;
+}
+
+const VALID_STR_LICENSE_STATUSES: StrLicenseStatus[] = [
+  'active',
+  'pending',
+  'expired',
+  'inactive',
+  'revoked',
+  'unknown',
+];
+
+function isStrLicenseStatus(value: string): value is StrLicenseStatus {
+  return (VALID_STR_LICENSE_STATUSES as readonly string[]).includes(value);
 }
 
 function normaliseStringList(value: unknown): string[] {
@@ -76,6 +90,35 @@ function normaliseStringList(value: unknown): string[] {
   return result;
 }
 
+function normaliseStatusList(value: unknown): StrLicenseStatus[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Set<StrLicenseStatus>();
+  const result: StrLicenseStatus[] = [];
+
+  value.forEach((entry) => {
+    if (typeof entry !== 'string') {
+      return;
+    }
+    const trimmed = entry.trim().toLowerCase();
+    if (!trimmed) {
+      return;
+    }
+    if (!isStrLicenseStatus(trimmed)) {
+      return;
+    }
+    if (deduped.has(trimmed)) {
+      return;
+    }
+    deduped.add(trimmed);
+    result.push(trimmed);
+  });
+
+  return result;
+}
+
 function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): ListingFilters {
   return {
     searchTerm: typeof filters?.searchTerm === 'string' ? filters.searchTerm : '',
@@ -86,6 +129,7 @@ function normaliseFilters(filters: Partial<ListingFilters> | null | undefined): 
     renewalCategories: normaliseStringList(filters?.renewalCategories),
     renewalMethods: normaliseStringList(filters?.renewalMethods),
     renewalMonths: normaliseStringList(filters?.renewalMonths),
+    strLicenseStatuses: normaliseStatusList(filters?.strLicenseStatuses),
   };
 }
 
@@ -113,7 +157,8 @@ function filtersEqual(a: ListingFilters, b: ListingFilters): boolean {
     stringSetsEqual(a.subdivisions, b.subdivisions) &&
     stringSetsEqual(a.renewalCategories, b.renewalCategories) &&
     stringSetsEqual(a.renewalMethods, b.renewalMethods) &&
-    stringSetsEqual(a.renewalMonths, b.renewalMonths)
+    stringSetsEqual(a.renewalMonths, b.renewalMonths) &&
+    stringSetsEqual(a.strLicenseStatuses, b.strLicenseStatuses)
   );
 }
 

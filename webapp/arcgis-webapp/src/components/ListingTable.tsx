@@ -26,7 +26,11 @@ import {
   toUniqueOwners,
 } from '@/utils/listingColumnFilters';
 import type { ListingCustomizationOverrides } from '@/services/listingStorage';
-import type { ListingRecord, ListingSourceOfTruth } from '@/types';
+import type {
+  ListingRecord,
+  ListingSourceOfTruth,
+  StrLicenseStatus,
+} from '@/types';
 import ListingComments from '@/components/ListingComments';
 import { fetchListingCommentCounts } from '@/services/listingComments';
 
@@ -70,6 +74,15 @@ type ColumnKey = ListingTableColumnKey;
 
 type SourcePreviewValue = string | string[] | null | undefined;
 
+const STR_LICENSE_STATUS_LABELS: Record<StrLicenseStatus, string> = {
+  active: 'Active',
+  pending: 'Pending',
+  expired: 'Expired',
+  inactive: 'Inactive',
+  revoked: 'Revoked',
+  unknown: 'Unknown',
+};
+
 function formatSourcePreview(value: SourcePreviewValue): string | null {
   if (Array.isArray(value)) {
     const joined = value
@@ -85,6 +98,18 @@ function formatSourcePreview(value: SourcePreviewValue): string | null {
   }
 
   return null;
+}
+
+function formatStrLicenseStatus(listing: ListingRecord): string {
+  const rawStatus = typeof listing.strLicenseStatus === 'string'
+    ? listing.strLicenseStatus.trim()
+    : '';
+  if (rawStatus.length > 0) {
+    return rawStatus;
+  }
+
+  const normalized = listing.strLicenseStatusNormalized ?? 'unknown';
+  return STR_LICENSE_STATUS_LABELS[normalized] ?? STR_LICENSE_STATUS_LABELS.unknown;
 }
 
 function getSourceOfTruthText(listing: ListingRecord, columnKey: ColumnKey): string | null {
@@ -389,6 +414,22 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     getFilterValue: (listing) => normalizeText(listing.scheduleNumber),
     getExportValue: (listing) => normalizeText(listing.scheduleNumber),
     getSortValue: (listing) => normalizeText(listing.scheduleNumber),
+  },
+  {
+    key: 'strLicenseId',
+    label: 'STR license ID',
+    render: (listing) => listing.strLicenseId || '—',
+    getFilterValue: (listing) => normalizeText(listing.strLicenseId),
+    getExportValue: (listing) => normalizeText(listing.strLicenseId),
+    getSortValue: (listing) => normalizeText(listing.strLicenseId),
+  },
+  {
+    key: 'strLicenseStatus',
+    label: 'STR license status',
+    render: (listing) => formatStrLicenseStatus(listing),
+    getFilterValue: (listing) => listing.strLicenseStatusNormalized,
+    getExportValue: (listing) => formatStrLicenseStatus(listing),
+    getSortValue: (listing) => listing.strLicenseStatusNormalized,
   },
   {
     key: 'physicalAddress',

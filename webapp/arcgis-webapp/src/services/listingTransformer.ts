@@ -582,6 +582,13 @@ export function applyFilters(listing: ListingRecord, filters: ListingFilters): b
     }
   }
 
+  if (filters.strLicenseStatuses.length > 0) {
+    const status = listing.strLicenseStatusNormalized ?? 'unknown';
+    if (!filters.strLicenseStatuses.some((value) => value === status)) {
+      return false;
+    }
+  }
+
   if (filters.subdivisions.length > 0) {
     const listingSubdivision = (listing.subdivision ?? '').toLowerCase();
     const subdivisionMatch = filters.subdivisions.some(
