@@ -1176,6 +1176,7 @@
 @media (max-width: 960px) {
   .app {
     padding: 2.5rem clamp(1.25rem, 4vw, 2rem) 3.5rem;
+    gap: 2.5rem;
   }
 
   .app__header {
@@ -1233,6 +1234,7 @@
   .app {
     padding: 2rem 1.25rem 3rem;
     align-items: stretch;
+    gap: 2rem;
   }
 
   .app__header {
@@ -1246,6 +1248,28 @@
 
   .app__status {
     font-size: 0.92rem;
+    padding: 0.9rem 1.1rem;
+  }
+
+  .app__actions {
+    gap: 0.65rem;
+  }
+
+  .app__cache {
+    width: 100%;
+    text-align: center;
+    display: block;
+  }
+
+  .collapsible-section__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .collapsible-section__toggle {
+    width: 100%;
+    text-align: center;
   }
 
   .insight-card {
@@ -1254,5 +1278,40 @@
 
   .detail-sidebar {
     padding: 1.5rem 1.6rem;
+  }
+
+  .insights__summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 540px) {
+  .app {
+    padding: 1.5rem 1rem 2.5rem;
+    gap: 1.75rem;
+  }
+
+  .app__header {
+    padding: 1.5rem 1.35rem;
+  }
+
+  .app__tabs {
+    padding: 0 0.25rem;
+  }
+
+  .app__tab {
+    padding: 0.55rem 0.95rem;
+  }
+
+  .collapsible-section,
+  .insights,
+  .detail-sidebar {
+    padding: 1.4rem 1.25rem;
+    border-radius: 1.25rem;
+  }
+
+  .collapsible-section__summary p,
+  .insights__header p {
+    max-width: none;
   }
 }
