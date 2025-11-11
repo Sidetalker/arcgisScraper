@@ -303,6 +303,7 @@
   text-align: left;
   border-bottom: 1px solid rgba(226, 232, 240, 0.75);
   font-size: 0.95rem;
+  word-break: break-word;
 }
 
 .listing-table__favorite-header,
@@ -1311,6 +1312,98 @@
   border: 0;
 }
 
+@media (max-width: 640px) {
+  .listing-table {
+    --listing-table-min-width: 100%;
+  }
+
+  .listing-table__viewport {
+    border-radius: 1rem;
+  }
+
+  .listing-table__scroll-indicator-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .listing-table__export-controls,
+  .listing-table__export-actions {
+    width: 100%;
+  }
+
+  .listing-table__export-actions {
+    flex-wrap: wrap;
+  }
+
+  .listing-table__export-button,
+  .listing-table__columns-button {
+    flex: 1 1 160px;
+    justify-content: center;
+  }
+
+  .listing-table__columns-button {
+    text-align: center;
+  }
+
+  .listing-table__scroll-indicator {
+    display: none;
+  }
+
+  .listing-table table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  .listing-table th,
+  .listing-table td {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.85rem;
+    white-space: normal;
+  }
+
+  .listing-table__column-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.35rem;
+    white-space: normal;
+  }
+
+  .listing-table__sort-button {
+    align-items: flex-start;
+    white-space: normal;
+  }
+
+  .listing-table__filters th {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .listing-table__filter-input,
+  .listing-table__filter-select {
+    width: 100%;
+  }
+
+  .listing-table__hidden-columns {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .listing-table__hidden-columns ul {
+    width: 100%;
+  }
+
+  .listing-table__hidden-columns button {
+    width: 100%;
+    text-align: left;
+  }
+
+  .listing-table__pagination {
+    align-items: stretch;
+  }
+}
+
 @media (max-width: 1024px) {
   .listing-table__header {
     flex-direction: column;
@@ -1332,7 +1425,7 @@
   }
 
   .listing-table table {
-    min-width: 900px;
+    min-width: 100%;
   }
 
   .listing-table__pagination {

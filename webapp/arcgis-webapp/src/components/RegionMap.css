@@ -588,3 +588,32 @@ body.region-map--fullscreen-active {
     height: 360px;
   }
 }
+
+@media (max-width: 640px) {
+  .region-map {
+    padding: 1.4rem;
+    gap: 0.9rem;
+  }
+
+  .region-map__toolbar,
+  .region-map__fullscreen-control {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .region-map__toolbar-button,
+  .region-map__fullscreen-button {
+    flex: 1 1 45%;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .region-map__selection-wrapper {
+    margin-top: 0.5rem;
+  }
+
+  .region-map__selection {
+    padding: 1rem;
+  }
+}
