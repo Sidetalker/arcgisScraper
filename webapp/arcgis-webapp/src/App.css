@@ -8,10 +8,12 @@
   font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   color: #102a43;
   background: radial-gradient(circle at top, #f0f4ff, #ffffff 65%);
+  box-sizing: border-box;
 }
 
 .app__header {
   width: min(1280px, 100%);
+  margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -50,11 +52,19 @@
 
 .app__tabs {
   width: min(1280px, 100%);
+  margin: 0 auto;
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
   padding: 0 0.75rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app__tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .app__tab {
@@ -69,6 +79,8 @@
   font-weight: 600;
   text-decoration: none;
   transition: color 120ms ease;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .app__tab::after {
@@ -175,6 +187,7 @@
 
 .app__status {
   width: min(1280px, 100%);
+  margin: 0 auto;
   background: rgba(15, 23, 42, 0.04);
   border-radius: 1rem;
   padding: 1rem 1.5rem;
@@ -185,6 +198,7 @@
 
 .app__content {
   width: min(1280px, 100%);
+  margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 2.5rem;
@@ -1162,10 +1176,20 @@
 @media (max-width: 960px) {
   .app {
     padding: 2.5rem clamp(1.25rem, 4vw, 2rem) 3.5rem;
+    gap: 2.5rem;
   }
 
   .app__header {
     flex-direction: column;
+  }
+
+  .app__tabs {
+    gap: 0.35rem;
+    padding-right: 0.5rem;
+  }
+
+  .app__tab {
+    padding: 0.65rem 1.1rem;
   }
 
   .insights__header {
@@ -1209,10 +1233,43 @@
 @media (max-width: 720px) {
   .app {
     padding: 2rem 1.25rem 3rem;
+    align-items: stretch;
+    gap: 2rem;
   }
 
   .app__header {
     padding: 1.75rem 1.85rem;
+    gap: 1.5rem;
+  }
+
+  .app__tabs {
+    padding: 0 0.35rem;
+  }
+
+  .app__status {
+    font-size: 0.92rem;
+    padding: 0.9rem 1.1rem;
+  }
+
+  .app__actions {
+    gap: 0.65rem;
+  }
+
+  .app__cache {
+    width: 100%;
+    text-align: center;
+    display: block;
+  }
+
+  .collapsible-section__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .collapsible-section__toggle {
+    width: 100%;
+    text-align: center;
   }
 
   .insight-card {
@@ -1221,5 +1278,40 @@
 
   .detail-sidebar {
     padding: 1.5rem 1.6rem;
+  }
+
+  .insights__summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 540px) {
+  .app {
+    padding: 1.5rem 1rem 2.5rem;
+    gap: 1.75rem;
+  }
+
+  .app__header {
+    padding: 1.5rem 1.35rem;
+  }
+
+  .app__tabs {
+    padding: 0 0.25rem;
+  }
+
+  .app__tab {
+    padding: 0.55rem 0.95rem;
+  }
+
+  .collapsible-section,
+  .insights,
+  .detail-sidebar {
+    padding: 1.4rem 1.25rem;
+    border-radius: 1.25rem;
+  }
+
+  .collapsible-section__summary p,
+  .insights__header p {
+    max-width: none;
   }
 }
